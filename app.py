@@ -2,7 +2,7 @@ import streamlit as st
 import models
 from ui import define_configure, capture, visualize
 
-st.title("Simple Metric Tracker")
+st.title("QuantifI - Personal Data Tracker")
 
 # 1) Define & configure (categories + metric/unit creation)
 cats, units = define_configure.show_define_and_configure()

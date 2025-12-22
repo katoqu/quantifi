@@ -26,3 +26,10 @@ def create_metric(payload: dict):
 
 def create_entry(payload: dict):
     return sc.insert("entries", payload)
+
+def update_entry(entry_id, payload: dict):
+    # payload should contain the fields to update (e.g. value, recorded_at)
+    return sc.sb.table("entries").update(payload).eq("id", entry_id).execute()
+
+def delete_entry(entry_id):
+    return sc.sb.table("entries").delete().eq("id", entry_id).execute()
