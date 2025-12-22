@@ -78,22 +78,10 @@ def show_visualizations():
     # ... (Steps 1-5 remain identical to your original code) ...
     units = models.get_units() or []
     unit_lookup = {u["id"]: u["name"].title() for u in units}
-    cats = models.get_categories() or []
     metrics = models.get_metrics() or []
 
-    cat_options = [None] + [c["id"] for c in cats]
-    cat_choice = st.selectbox("Filter by category", options=cat_options, 
-        format_func=lambda i: next((c["name"].title() for c in cats if c["id"] == i), "— all —"))
-
-    filtered_metrics = metrics
-    if cat_choice:
-        filtered_metrics = [m for m in metrics if m.get("category_id") == cat_choice]
-
-    if not filtered_metrics:
-        st.info("No metrics found.")
-        return
-
-    selected_metric = st.selectbox("Select Metric to view", options=filtered_metrics,
+    # 2. Filter Metrics with Entries
+    selected_metric = st.selectbox("Select Metric to view", options=metrics,
         format_func=lambda m: m.get("name", "Unknown").title())
 
     mid = selected_metric.get("id")
@@ -156,6 +144,7 @@ def show_visualizations():
     st.subheader("Edit Data")
     edited_df = st.data_editor(
         dfe,
+        column_order=("recorded_at", "value"),
         column_config={
             "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM YYYY, HH:mm"),
             "value": st.column_config.NumberColumn(f"Value ({m_unit})"),
