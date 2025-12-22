@@ -35,8 +35,8 @@ def seed_sample():
     # Seed categories
     categories = [
         {"name": "body"},
-        {"name": "performance"},
-        {"name": "sleep"},
+        {"name": "fitness"},
+        {"name": "health"},
     ]
     res = sb.table("categories").insert(categories).execute()
     print("Inserted categories:", res.data)
@@ -44,7 +44,7 @@ def seed_sample():
     # Seed units
     units = [
         {"name": "kg", "unit_type": "float"},
-        {"name": "lb", "unit_type": "float"},
+        {"name": "quality", "unit_type": "int", "range_start": 0, "range_end": 10},
         {"name": "reps", "unit_type": "int", "range_start": 0},
         {"name": "minutes", "unit_type": "int"},
     ]
@@ -58,8 +58,9 @@ def seed_sample():
     # Seed metrics
     metrics = [
         {"name": "weight", "category_id": cats.get("body"), "unit_id": uns.get("kg")},
-        {"name": "bench_press", "category_id": cats.get("performance"), "unit_id": uns.get("reps")},
-        {"name": "sleep", "category_id": cats.get("sleep"), "unit_id": uns.get("minutes")},
+        {"name": "floor press", "category_id": cats.get("fitness"), "unit_id": uns.get("kg")},
+        {"name": "sleep", "category_id": cats.get("health"), "unit_id": uns.get("quality")},
+        {"name": "yoga", "category_id": cats.get("fitness"), "unit_id": uns.get("minutes")}        
     ]
     res = sb.table("metrics").insert(metrics).execute()
     print("Inserted metrics:", res.data)
@@ -77,11 +78,11 @@ def seed_sample():
             "recorded_at": (today - timedelta(days=i)).isoformat(),
         })
 
-    # bench_press: 5 days
-    for i in range(5):
+    # floor press: 10 days
+    for i in range(10):
         entries.append({
-            "metric_id": metrics_map.get("bench_press"),
-            "value": 5 + i,
+            "metric_id": metrics_map.get("floor press"),
+            "value": 20 + i,
             "recorded_at": (today - timedelta(days=i)).isoformat(),
         })
 
@@ -89,9 +90,18 @@ def seed_sample():
     for i in range(7):
         entries.append({
             "metric_id": metrics_map.get("sleep"),
-            "value": 420 - i * 10,
+            "value": i,
             "recorded_at": (today - timedelta(days=i)).isoformat(),
         })
+
+    # yoga: last 8 days
+    for i in range(7):
+        entries.append({
+            "metric_id": metrics_map.get("yoga"),
+            "value": 20 +i,
+            "recorded_at": (today - timedelta(days=i)).isoformat(),
+        })
+
 
     res = sb.table("entries").insert(entries).execute()
     print("Inserted entries (sample):", len(res.data) if res.data else res)
