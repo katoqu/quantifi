@@ -27,4 +27,22 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+Development helpers
+-------------------
+
+You can purge and seed the development Supabase database using the included script `dev_db.py`.
+
+Examples:
+
+```bash
+# Purge all data (interactive confirmation)
+python dev_db.py --purge
+
+# Purge without prompt and then seed sample data
+python dev_db.py --both --yes
+
+# Only seed sample data
+python dev_db.py --seed
+```
+
 Deployment: push this repo to GitHub and deploy on Streamlit Cloud; set `SUPABASE_URL` and `SUPABASE_KEY` in the app secrets.
