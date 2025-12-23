@@ -1,14 +1,19 @@
 import streamlit as st
-import models
 from ui import define_configure, capture, visualize
 
-st.title("QuantifI - Personal Data Tracker")
+def main_dashboard():
+    st.title("QuantifI - Dashboard")
+    capture.show_capture()
+    visualize.show_visualizations()
 
-# 1) Define & configure (categories + metric/unit creation)
-cats, units = define_configure.show_define_and_configure()
+def settings_page():
+    st.title("Settings")
+    define_configure.show_define_and_configure()
 
-# 2) Capture data
-capture.show_capture()
+# Define pages with icons
+pg = st.navigation([
+    st.Page(main_dashboard, title="Tracker", icon="📊"),
+    st.Page(settings_page, title="Configure", icon="⚙️"),
+])
 
-# 3) Visualizations (groupable by category)
-visualize.show_visualizations()
+pg.run()
