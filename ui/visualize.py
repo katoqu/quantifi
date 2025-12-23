@@ -75,7 +75,7 @@ def confirm_save_dialog(dfe, edited_df, mid):
 def show_visualizations():
     st.header("Visualizations")
     
-    # ... (Steps 1-5 remain identical to your original code) ...
+    # 1. Fetch Units and Metrics
     units = models.get_units() or []
     unit_lookup = {u["id"]: u["name"].title() for u in units}
     metrics = models.get_metrics() or []
@@ -93,12 +93,12 @@ def show_visualizations():
         st.warning(f"No data entries found for {m_name}.")
         return
         
-    # ... (Step 4: Process Data) ...
+    # 3. Data Preparation
     dfe = pd.DataFrame(entries)
     dfe["recorded_at"] = pd.to_datetime(dfe["recorded_at"])
     dfe = dfe.sort_values("recorded_at")
 
-    # 5. Render Enhanced Visualization
+    # 4. Time Series Plot 
     avg_value = dfe["value"].mean()
     fig = go.Figure()
 
@@ -142,16 +142,28 @@ def show_visualizations():
 
     # 6. Editable Table
     st.subheader("Edit Data")
+
+    # Provide clear instructions for the dynamic row deletion UI
+    st.info("💡 **To Delete:** Select row(s) using the checkbox on the left and press **Delete** on your keyboard or click the trash icon.")
+
     edited_df = st.data_editor(
         dfe,
         column_order=("recorded_at", "value"),
         column_config={
-            "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM YYYY, HH:mm"),
+            "recorded_at": st.column_config.DatetimeColumn(
+                "Date", 
+                format="D MMM YYYY, HH:mm",
+                help="This column is read-only."
+            ),
             "value": st.column_config.NumberColumn(f"Value ({m_unit})"),
             "id": None 
         },
+        # Only allow editing of the 'value' column
+        disabled=["recorded_at"], 
         hide_index=True,
         use_container_width=True,
+        # Enables the selection checkbox for adding/deleting rows
+        num_rows="dynamic", 
         key="metric_editor"
     )
 
