@@ -1,130 +1,113 @@
-"""Development helper: purge and seed the Supabase DB.
+"""Development helper: purge and seed the Supabase DB for specific users.
 
 Usage:
-  python dev_db.py --purge --yes      # purge all data
-  python dev_db.py --seed             # seed sample data
-  python dev_db.py --both --yes       # purge then seed
-
-Requires that Streamlit secrets are available (same as the app).
+  python dev_db.py --purge --user test@example.com
+  python dev_db.py --seed --user test1@example.com test2@example.com
 """
 from datetime import date, timedelta
 import argparse
-from supabase_client import sb
+import sys
+from supabase_config import sb_admin
 
+def get_user_id(email: str):
+    """Fetch the UUID for a given email from Supabase Auth."""
+    # Note: Requires service_role key if fetching other users, 
+    # or admin privileges depending on your client setup.
+    try:
+        res = sb_admin.auth.admin.list_users()
+        user = next((u for u in res if u.email == email), None)
+        if not user:
+            print(f"Error: User with email {email} not found.")
+            return None
+        return user.id
+    except Exception as e:
+        print(f"Auth Error: Ensure you are using the Service Role Key to list users. {e}")
+        return None
 
-def purge_all(yes: bool = False):
+def purge_user_data(user_id: str, email: str, yes: bool = False):
     if not yes:
-        confirm = input("This will DELETE ALL DATA from the Supabase DB. Type 'yes' to continue: ")
+        confirm = input(f"DELETE ALL DATA for user {email}? Type 'yes': ")
         if confirm.strip().lower() != "yes":
-            print("Aborted.")
             return
 
     tables = ["entries", "metrics", "categories", "units"]
     for t in tables:
-        # PostgREST requires a WHERE clause for deletes; delete by id list instead.
-        rows = sb.table(t).select("id").execute().data or []
-        if not rows:
-            print(f"No rows to delete in {t}")
-            continue
-        ids = [r["id"] for r in rows]
-        res = sb.table(t).delete().in_("id", ids).execute()
-        print(f"Deleted {len(ids)} rows from {t}")
+        # Delete only rows belonging to this user
+        res = sb_admin.table(t).delete().eq("user_id", user_id).execute()
+        print(f"Deleted {len(res.data) if res.data else 0} rows from {t} for {email}")
 
+def seed_sample(user_id: str, email: str):
+    print(f"Seeding data for {email}...")
 
-def seed_sample():
-    # Seed categories
+    # 1. Seed categories
     categories = [
-        {"name": "body"},
-        {"name": "fitness"},
-        {"name": "health"},
+        {"name": "body", "user_id": user_id},
+        {"name": "fitness", "user_id": user_id},
+        {"name": "health", "user_id": user_id},
     ]
-    res = sb.table("categories").insert(categories).execute()
-    print("Inserted categories:", res.data)
+    sb_admin.table("categories").insert(categories).execute()
 
-    # Seed units
+    # 2. Seed units
     units = [
-        {"name": "kg", "unit_type": "float"},
-        {"name": "quality", "unit_type": "int", "range_start": 0, "range_end": 10},
-        {"name": "reps", "unit_type": "int", "range_start": 0},
-        {"name": "minutes", "unit_type": "int"},
+        {"name": "kg", "unit_type": "float", "user_id": user_id},
+        {"name": "quality", "unit_type": "int", "range_start": 0, "range_end": 10, "user_id": user_id},
+        {"name": "reps", "unit_type": "int", "range_start": 0, "user_id": user_id},
+        {"name": "minutes", "unit_type": "int", "user_id": user_id},
     ]
-    res = sb.table("units").insert(units).execute()
-    print("Inserted units:", res.data)
+    sb_admin.table("units").insert(units).execute()
 
-    # Fetch IDs for relationships
-    cats = {c["name"]: c["id"] for c in sb.table("categories").select("*").execute().data}
-    uns = {u["name"]: u["id"] for u in sb.table("units").select("*").execute().data}
+    # Fetch IDs (filtered by user) to maintain relationships
+    cats = {c["name"]: c["id"] for c in sb_admin.table("categories").select("*").eq("user_id", user_id).execute().data}
+    uns = {u["name"]: u["id"] for u in sb_admin.table("units").select("*").eq("user_id", user_id).execute().data}
 
-    # Seed metrics
+    # 3. Seed metrics
     metrics = [
-        {"name": "weight", "category_id": cats.get("body"), "unit_id": uns.get("kg")},
-        {"name": "floor press", "category_id": cats.get("fitness"), "unit_id": uns.get("kg")},
-        {"name": "sleep", "category_id": cats.get("health"), "unit_id": uns.get("quality")},
-        {"name": "yoga", "category_id": cats.get("fitness"), "unit_id": uns.get("minutes")}        
+        {"name": "weight", "category_id": cats.get("body"), "unit_id": uns.get("kg"), "user_id": user_id},
+        {"name": "floor press", "category_id": cats.get("fitness"), "unit_id": uns.get("kg"), "user_id": user_id},
+        {"name": "sleep", "category_id": cats.get("health"), "unit_id": uns.get("quality"), "user_id": user_id},
+        {"name": "yoga", "category_id": cats.get("fitness"), "unit_id": uns.get("minutes"), "user_id": user_id}        
     ]
-    res = sb.table("metrics").insert(metrics).execute()
-    print("Inserted metrics:", res.data)
+    sb_admin.table("metrics").insert(metrics).execute()
 
-    # Seed entries (some sample history for each metric)
-    metrics_map = {m["name"]: m["id"] for m in sb.table("metrics").select("*").execute().data}
-
+    # 4. Seed entries
+    metrics_map = {m["name"]: m["id"] for m in sb_admin.table("metrics").select("*").eq("user_id", user_id).execute().data}
     today = date.today()
     entries = []
-    # weight: last 7 days
-    for i in range(7):
-        entries.append({
-            "metric_id": metrics_map.get("weight"),
-            "value": 80 - i * 0.2,
-            "recorded_at": (today - timedelta(days=i)).isoformat(),
-        })
+    
+    # Generic loop to generate history
+    sample_configs = [("weight", 7, 80), ("floor press", 10, 20), ("sleep", 7, 8), ("yoga", 5, 30)]
+    
+    for m_name, days, start_val in sample_configs:
+        m_id = metrics_map.get(m_name)
+        for i in range(days):
+            entries.append({
+                "user_id": user_id,
+                "metric_id": m_id,
+                "value": start_val + (i * 0.5),
+                "recorded_at": (today - timedelta(days=i)).isoformat(),
+            })
 
-    # floor press: 10 days
-    for i in range(10):
-        entries.append({
-            "metric_id": metrics_map.get("floor press"),
-            "value": 20 + i,
-            "recorded_at": (today - timedelta(days=i)).isoformat(),
-        })
-
-    # sleep: last 7 days
-    for i in range(7):
-        entries.append({
-            "metric_id": metrics_map.get("sleep"),
-            "value": i,
-            "recorded_at": (today - timedelta(days=i)).isoformat(),
-        })
-
-    # yoga: last 8 days
-    for i in range(7):
-        entries.append({
-            "metric_id": metrics_map.get("yoga"),
-            "value": 20 +i,
-            "recorded_at": (today - timedelta(days=i)).isoformat(),
-        })
-
-
-    res = sb.table("entries").insert(entries).execute()
-    print("Inserted entries (sample):", len(res.data) if res.data else res)
+    res = sb_admin.table("entries").insert(entries).execute()
+    print(f"Successfully seeded {len(res.data)} entries for {email}")
 
 
 def main():
-    p = argparse.ArgumentParser(description="Dev helpers to purge/seed Supabase DB")
-    p.add_argument("--purge", action="store_true", help="Delete all rows from tables")
-    p.add_argument("--seed", action="store_true", help="Insert sample seed data")
-    p.add_argument("--both", action="store_true", help="Purge then seed")
-    p.add_argument("--yes", action="store_true", help="Skip interactive confirmation for destructive actions")
+    p = argparse.ArgumentParser(description="Multi-user Dev helpers for Supabase")
+    p.add_argument("--users", nargs="+", required=True, help="Emails of users to process")
+    p.add_argument("--purge", action="store_true", help="Delete user data")
+    p.add_argument("--seed", action="store_true", help="Seed user data")
+    p.add_argument("--yes", action="store_true", help="Skip confirmation")
     args = p.parse_args()
 
-    if args.both:
-        purge_all(yes=args.yes)
-        seed_sample()
-        return
-
-    if args.purge:
-        purge_all(yes=args.yes)
-    if args.seed:
-        seed_sample()
-
+    for email in args.users:
+        uid = get_user_id(email)
+        if not uid:
+            continue
+        
+        if args.purge:
+            purge_user_data(uid, email, yes=args.yes)
+        if args.seed:
+            seed_sample(uid, email)
 
 if __name__ == "__main__":
     main()

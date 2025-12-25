@@ -1,35 +1,38 @@
-import supabase_client as sc
-
+from supabase_config import sb
 def get_categories():
-    return sc.fetch("categories")
+    response = sb.table("categories").select("*").execute()
+    return response.data
 
 def get_units():
-    return sc.fetch("units")
+    response = sb.table("units").select("*").execute()
+    return response.data
 
 def get_metrics():
-    return sc.fetch("metrics")
+    response = sb.table("metrics").select("*").execute()
+    return response.data
 
 def get_entries(metric_id=None):
-    entries = sc.fetch("entries")
+    query = sb.table("entries").select("*")
     if metric_id:
-        return [e for e in entries if e.get("metric_id") == metric_id]
-    return entries
+        # It is more efficient to filter in the database than in Python
+        query = query.eq("metric_id", metric_id)
+    response = query.execute()
+    return response.data
 
 def create_category(name: str):
-    return sc.insert("categories", {"name": name})
+    return sb.table("categories").insert({"name": name}).execute()
 
 def create_unit(payload: dict):
-    return sc.insert("units", payload)
+    return sb.table("units").insert(payload).execute()
 
 def create_metric(payload: dict):
-    return sc.insert("metrics", payload)
+    return sb.table("metrics").insert(payload).execute()
 
 def create_entry(payload: dict):
-    return sc.insert("entries", payload)
+    return sb.table("entries").insert(payload).execute()
 
 def update_entry(entry_id, payload: dict):
-    # payload should contain the fields to update (e.g. value, recorded_at)
-    return sc.sb.table("entries").update(payload).eq("id", entry_id).execute()
+    return sb.table("entries").update(payload).eq("id", entry_id).execute()
 
 def delete_entry(entry_id):
-    return sc.sb.table("entries").delete().eq("id", entry_id).execute()
+    return sb.table("entries").delete().eq("id", entry_id).execute()
