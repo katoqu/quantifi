@@ -2,28 +2,14 @@ import streamlit as st
 import models
 import utils
 
-def show_capture():
+def show_capture(selected_metric, unit_meta):
     st.header("Capture data")
-    metrics = models.get_metrics() or []
-    units = models.get_units() or []
-    if not metrics:
-        st.info("No metrics defined yet. Create one in 'Define & configure'.")
-        return
 
-    unit_meta = {u["id"]: u for u in units}
+    if not selected_metric:
+        st.warning("No metrics defined yet. Create one in 'Define & configure'.")
+        return    
 
-    def metric_label(m):
-        name = m.get("name")
-        display_name = name.title() if isinstance(name, str) else name
-        unit = unit_meta.get(m.get("unit_id"))
-        unit_name = unit.get("name").title() if unit else None
-        if unit_name:
-            return f"{display_name} ({unit_name})"
-        return display_name
-
-    metric_idx = st.selectbox("Metric to capture", options=list(range(len(metrics))), format_func=lambda i: metric_label(metrics[i]))
-    selected_metric = metrics[metric_idx]
-    selected_unit = unit_meta.get(selected_metric.get("unit_id")) if unit_meta else None
+    selected_unit = unit_meta.get(selected_metric.get("unit_id"))
 
     with st.form("capture_entry"):
         utype = selected_unit.get("unit_type", "float") if selected_unit else "float"
@@ -82,3 +68,4 @@ def show_capture():
             if valid:
                 models.create_entry({"metric_id": selected_metric.get("id"), "value": val, "recorded_at": datetz.isoformat()})
                 st.success("Entry added")
+                st.rerun() 

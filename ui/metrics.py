@@ -30,14 +30,7 @@ def select_metric(metrics, cats, units):
     unit_map = {u["id"]: u["name"].title() for u in (units or [])}
     unit_meta = {u["id"]: u for u in (units or [])}
 
-    def metric_label(m):
-        name = m.get("name")
-        display_name = name.title() if isinstance(name, str) else name
-        unit = unit_map.get(m.get("unit_id"))
-        if unit:
-            return f"{display_name} ({unit})"
-        return display_name
-
-    metric_idx = st.selectbox("Metric", options=list(range(len(metrics))), format_func=lambda i: metric_label(metrics[i]))
+    metric_idx = st.selectbox("Metric", options=list(range(len(metrics))), 
+                              format_func=lambda i: utils.format_metric_label(metrics[i], unit_map))
     selected_metric = metrics[metric_idx]
     return selected_metric, unit_meta, unit_map
