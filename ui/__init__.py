@@ -1,4 +1,4 @@
 """UI package for app components"""
-from . import define_configure, capture, visualize
+from ui import manage_lookups, capture, visualize, metrics
 
-__all__ = ["define_configure", "capture", "visualize"]
+__all__ = ["manage_lookups", "capture", "visualize", "metrics"]

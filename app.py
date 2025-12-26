@@ -1,5 +1,5 @@
 import streamlit as st
-from ui import define_configure, capture, visualize
+from ui import manage_lookups, capture, visualize, metrics
 import models
 import utils
 import auth
@@ -50,8 +50,16 @@ def main_dashboard():
 
 def settings_page():
     st.title("Settings")
-    # You can keep the configuration logic here
-    define_configure.show_define_and_configure()
+    
+    # Get data for selection
+    cats = models.get_categories()
+    units = models.get_units()
+    
+    # Manage lookups (categories and units)
+    manage_lookups.show_manage_lookups()
+    
+    # Create metrics
+    metrics.show_create_metric(cats, units)
 
 # Define pages with icons
 pg = st.navigation([
