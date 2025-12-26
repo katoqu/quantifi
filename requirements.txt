@@ -3,3 +3,4 @@ supabase
 pandas
 plotly
 statsmodels
+psycopg2-binary
