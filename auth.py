@@ -48,10 +48,18 @@ def sign_in(email: str, password: str):
     """Sign in an existing user"""
     try:
         response = sb.auth.sign_in_with_password({"email": email, "password": password})
-        st.session_state.user = response.user
-        st.session_state.access_token = response.session.access_token
-        st.session_state.auth_error = None
-        return response
+        
+        # 2. iOS FIX: Wait briefly and re-fetch to ensure the session is "stuck"
+        if not response.session:
+            time.sleep(0.5) 
+            response = sb.auth.get_session()
+
+        if response and response.user:
+            st.session_state.user = response.user
+            st.session_state.access_token = response.session.access_token
+            st.session_state.auth_error = None
+            return response    
+
     except Exception as e:
         st.session_state.auth_error = str(e)
         return None
@@ -73,7 +81,7 @@ def reset_password(email: str):
     try:
         response = sb.auth.reset_password_for_email(
             email,
-            {"redirect_to": st.secrets.get("REDIRECT_URL", "http://localhost:8501")}
+            {"redirect_to": st.secrets.get("REDIRECT_URL", "http://localhost:8503")}
         )
         st.session_state.auth_error = None
         return True
@@ -99,11 +107,13 @@ def get_current_user():
     """Get the currently authenticated user"""
     return st.session_state.get("user")
 
-
 def is_authenticated():
-    """Check if user is currently authenticated"""
+    # If session is null, do one last check before giving up
+    if st.session_state.get("user") is None:
+        session = sb.auth.get_session()
+        if session:
+            st.session_state.user = session.user
     return st.session_state.get("user") is not None
-
 
 def password_reset_dialog():
     """Render password reset dialog"""
