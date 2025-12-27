@@ -5,29 +5,33 @@ from urllib.parse import urlparse, parse_qs
 from supabase_config import sb
 
 def init_session_state():
-    """Initialize session state for authentication"""
-    if "user" not in st.session_state:
-        # Check Supabase first
-        res = sb.auth.get_session()
-        if res and res.user:
-            st.session_state.user = res.user
-        else:
-            st.session_state.user = None
+    """Initialize state and sync with Supabase server-side session."""
+    defaults = {
+        "user": None,
+        "access_token": None,
+        "auth_error": None,
+        "show_password_reset": False,
+        "show_recovery_form": False,
+        "reset_email": "",
+        "recovery_token": None
+    }
+    
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+    # iPhone/Safari Fix: Verify session with the server if state is empty
     if st.session_state.user is None:
-        time.sleep(0.1) # Micro-delay for Safari hydration
-        res = sb.auth.get_session()
-        if res:
-            st.session_state.user = res.user
-    if "access_token" not in st.session_state:
-        st.session_state.access_token = None
-    if "auth_error" not in st.session_state:
-        st.session_state.auth_error = None
-    if "show_password_reset" not in st.session_state:
-        st.session_state.show_password_reset = False
-    if "reset_email" not in st.session_state:
-        st.session_state.reset_email = ""
-    if "recovery_token" not in st.session_state:
-        st.session_state.recovery_token = None
+        try:
+            # get_user() is more reliable on mobile than get_session()
+            res = sb.auth.get_user()
+            if res and res.user:
+                st.session_state.user = res.user
+                session = sb.auth.get_session()
+                if session:
+                    st.session_state.access_token = session.access_token
+        except:
+            pass
 
 
 def get_recovery_token_from_url():
@@ -43,36 +47,30 @@ def get_recovery_token_from_url():
     return None
 
 
-def sign_up(email: str, password: str):
-    """Sign up a new user"""
-    try:
-        response = sb.auth.sign_up({"email": email, "password": password})
-        st.session_state.auth_error = None
-        return response
-    except Exception as e:
-        st.session_state.auth_error = str(e)
-        return None
-
-
 def sign_in(email: str, password: str):
-    """Sign in an existing user"""
+    """Sign in with iOS stability fixes (whitespace stripping and session retry)."""
     try:
-        response = sb.auth.sign_in_with_password({"email": email, "password": password})
+        # iOS Fix: Strip whitespace from autofill
+        response = sb.auth.sign_in_with_password({
+            "email": email.strip(), 
+            "password": password.strip()
+        })
         
-        # 2. iOS FIX: Wait briefly and re-fetch to ensure the session is "stuck"
-        if not response.session:
-            time.sleep(0.5) 
+        # iOS Fix: If session is delayed, retry briefly
+        if response and not response.session:
+            time.sleep(0.5)
             response = sb.auth.get_session()
 
         if response and response.user:
+            # Explicitly set session in client and state
+            sb.auth.set_session(response.session.access_token, response.session.refresh_token)
             st.session_state.user = response.user
             st.session_state.access_token = response.session.access_token
             st.session_state.auth_error = None
             return response    
-
     except Exception as e:
         st.session_state.auth_error = str(e)
-        return None
+    return None
 
 
 def sign_out():
@@ -175,8 +173,21 @@ def password_recovery_form():
 def auth_page():
     """Render authentication page with sign in / sign up tabs"""
     
-    # 2. HANDLE THE RESET LINK FIRST (The "token_hash" logic)
+    # HANDLE THE RESET LINK FIRST (The "token_hash" logic)
     query_params = st.query_params
+
+    # Handle PKCE Auth Code Exchange
+    if "code" in query_params:
+        auth_code = query_params["code"]
+        try:
+            res = sb.auth.exchange_code_for_session({"auth_code": auth_code})
+            st.session_state.user = res.user
+            st.session_state.access_token = res.session.access_token
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Authentication failed: {e}")
+
     if "token_hash" in query_params and "type" in query_params:
         token_hash = query_params["token_hash"]
         otp_type = query_params["type"]
