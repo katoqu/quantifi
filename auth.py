@@ -7,7 +7,17 @@ from supabase_config import sb
 def init_session_state():
     """Initialize session state for authentication"""
     if "user" not in st.session_state:
-        st.session_state.user = None
+        # Check Supabase first
+        res = sb.auth.get_session()
+        if res and res.user:
+            st.session_state.user = res.user
+        else:
+            st.session_state.user = None
+    if st.session_state.user is None:
+        time.sleep(0.1) # Micro-delay for Safari hydration
+        res = sb.auth.get_session()
+        if res:
+            st.session_state.user = res.user
     if "access_token" not in st.session_state:
         st.session_state.access_token = None
     if "auth_error" not in st.session_state:
