@@ -4,25 +4,36 @@ import models
 import utils
 import auth
 
-# 1. Initialize EVERYTHING first
+# 1. Initialize State
 auth.init_session_state()
-if "auth_debug" not in st.session_state:
-    st.session_state.auth_debug = []
+if "show_debug_panel" not in st.session_state:
+    st.session_state.show_debug_panel = False
 
-
-# 2. DEBUG VIEWER (Add this at the top)
 def show_debug_logs():
-    if st.session_state.auth_debug:
-        with st.expander("🛠 Auth Debug Logs", expanded=True):
-            for log in st.session_state.auth_debug:
-                st.text(log)
-            if st.button("Clear Logs"):
-                st.session_state.auth_debug = []
-                st.rerun()
+    # Only show if the user toggled it on
+    if st.session_state.show_debug_panel:
+        with st.expander("🛠 Auth Debug Logs (Newest First)", expanded=True):
+            if not st.session_state.get("auth_debug"):
+                st.info("No logs captured yet.")
+            else:
+                for log in reversed(st.session_state.auth_debug):
+                    st.text(log)
+                if st.button("Clear History"):
+                    st.session_state.auth_debug = []
+                    st.rerun()
+
+# 2. Sidebar Toggle (Always visible)
+with st.sidebar:
+    st.title("Admin")
+    if st.button("Toggle Debug View"):
+        st.session_state.show_debug_panel = not st.session_state.show_debug_panel
+        st.rerun()
+
+# 3. Execution Order
+show_debug_logs() # Show logs at the very top if enabled
 
 # 3. If not authenticated, show auth page
 if not auth.is_authenticated():
-    show_debug_logs()
     auth.auth_page()
     st.stop()
 

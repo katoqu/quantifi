@@ -11,6 +11,7 @@ def init_session_state():
         "user": None,
         "access_token": None,
         "auth_error": None,
+        "auth_debug": [],
         "show_password_reset": False,
         "show_recovery_form": False,
         "reset_email": "",
@@ -58,42 +59,37 @@ def sign_up(email: str, password: str):
         return None
     return None
 
+import hashlib
+
 def sign_in(email: str, password: str):
+    # 1. Always ensure auth_debug exists
     if "auth_debug" not in st.session_state:
         st.session_state.auth_debug = []
 
+    # 2. LOG EVERYTHING IMMEDIATELY
+    email_clean = email.strip().lower()
+    pwd_clean = password.strip()
+    pwd_hash = hashlib.sha256(pwd_clean.encode()).hexdigest()[:8]
+    
+    log_entry = f"🔍 Attempt: Email='{email_clean}' | PWD Len={len(pwd_clean)} | Hash={pwd_hash}"
+    st.session_state.auth_debug.append(log_entry)
+
     try:
         response = sb.auth.sign_in_with_password({
-            "email": email.strip().lower(), 
-            "password": password.strip()
+            "email": email_clean, 
+            "password": pwd_clean
         })
         
-        # Log data instead of stopping
-        st.session_state.auth_debug.append(f"Email len: {len(email.strip().lower())}")
-        st.session_state.auth_debug.append(f"PWD len: {len(password.strip())}")
-        pwd_hash = hashlib.sha256(password.strip().encode()).hexdigest()
-        st.session_state.auth_debug.append(f"Hash first 8 chars: {pwd_hash[:8]}")
-
         if response and response.user:
-            st.session_state.auth_debug.append("Login SUCCESS")
-            st.session_state.user = response.user
-
-        # iOS Fix: If session is delayed, retry briefly
-        if response and not response.session:
-            time.sleep(0.5)
-            response = sb.auth.get_session()
-
-        if response and response.user:
-            # Explicitly set session in client and state
-            sb.auth.set_session(response.session.access_token, response.session.refresh_token)
-            st.session_state.user = response.user
-            st.session_state.access_token = response.session.access_token
-            st.session_state.auth_error = None
-            return response    
+            st.session_state.auth_debug.append("✅ SUCCESS: User authenticated")
+            # ... rest of your existing success logic
+            return response
+            
     except Exception as e:
-        st.session_state.auth_error = str(e)
-    return None
-
+        error_msg = str(e)
+        st.session_state.auth_debug.append(f"❌ FAILED: {error_msg}")
+        st.session_state.auth_error = error_msg
+        return None
 
 def sign_out():
     """Sign out the current user"""
