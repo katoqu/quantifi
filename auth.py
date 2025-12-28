@@ -59,8 +59,6 @@ def sign_up(email: str, password: str):
         return None
     return None
 
-import hashlib
-
 def sign_in(email: str, password: str):
     # 1. Always ensure auth_debug exists
     if "auth_debug" not in st.session_state:
@@ -68,7 +66,7 @@ def sign_in(email: str, password: str):
 
     # 2. LOG EVERYTHING IMMEDIATELY
     email_clean = email.strip().lower()
-    pwd_clean = password.strip()
+    pwd_clean = password.strip().replace('“', '"').replace('”', '"')
     pwd_hash = hashlib.sha256(pwd_clean.encode()).hexdigest()[:8]
     
     log_entry = f"🔍 Attempt: Email='{email_clean}' | PWD Len={len(pwd_clean)} | Hash={pwd_hash}"
