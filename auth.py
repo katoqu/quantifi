@@ -1,6 +1,7 @@
 import streamlit as st
 from supabase import ClientOptions, create_client
 import time
+import hashlib
 from urllib.parse import urlparse, parse_qs
 from supabase_config import sb
 
@@ -52,9 +53,16 @@ def sign_in(email: str, password: str):
     try:
         # iOS Fix: Strip whitespace from autofill
         response = sb.auth.sign_in_with_password({
-            "email": email.strip(), 
+            "email": email.strip().lower(), 
             "password": password.strip()
         })
+        st.write(f"Email length: {len(email.strip().lower())}")
+        st.write(f"PWD length: {len(password.strip())}")
+
+        pwd_hash = hashlib.sha256(password.strip().encode()).hexdigest()
+        st.info(f"Password Hash (first 8): {pwd_hash[:8]}")
+        st.stop() 
+
         st.success("Supabase accepted the login")
         st.write(response.user)
         

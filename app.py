@@ -14,11 +14,11 @@ if not auth.is_authenticated():
 
 # 3. Sidebar Logout Logic
 # This stays visible on both "Tracker" and "Configure" pages
-with st.sidebar:
-    st.write(f"Logged in as: **{auth.get_current_user().email}**")
-    if st.button("Log Out", use_container_width=True):
-        auth.sign_out()
-        st.rerun()
+#with st.sidebar:
+#    st.write(f"Logged in as: **{auth.get_current_user().email}**")
+#    if st.button("Log Out", use_container_width=True):
+#        auth.sign_out()
+#        st.rerun()
 
 def main_dashboard():
     st.title("QuantifI - Dashboard")
@@ -67,4 +67,4 @@ pg = st.navigation([
     st.Page(settings_page, title="Configure", icon="⚙️"),
 ])
 
-pg.run()
+#pg.run()
