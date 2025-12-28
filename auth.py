@@ -59,6 +59,18 @@ def sign_up(email: str, password: str):
         return None
     return None
 
+def normalize_ios_input(text):
+    # Map of common iOS "Smart" characters to standard ASCII
+    replacements = {
+        '“': '"', '”': '"',  # Smart double quotes
+        '‘': "'", '’': "'",  # Smart single quotes/apostrophes
+        '—': '--',           # Em dash
+        '–': '-'             # En dash
+    }
+    for smart, standard in replacements.items():
+        text = text.replace(smart, standard)
+    return text
+
 def sign_in(email: str, password: str):
     # 1. Always ensure auth_debug exists
     if "auth_debug" not in st.session_state:
@@ -66,7 +78,7 @@ def sign_in(email: str, password: str):
 
     # 2. LOG EVERYTHING IMMEDIATELY
     email_clean = email.strip().lower()
-    pwd_clean = password.strip().replace('“', '"').replace('”', '"')
+    pwd_clean = password.strip().normalize_ios_input()
     pwd_hash = hashlib.sha256(pwd_clean.encode()).hexdigest()[:8]
     
     log_entry = f"🔍 Attempt: Email='{email_clean}' | PWD Len={len(pwd_clean)} | Hash={pwd_hash}"
