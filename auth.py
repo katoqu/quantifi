@@ -55,6 +55,8 @@ def sign_in(email: str, password: str):
             "email": email.strip(), 
             "password": password.strip()
         })
+        st.success("Supabase accepted the login")
+        st.write(response.user)
         
         # iOS Fix: If session is delayed, retry briefly
         if response and not response.session:
@@ -69,6 +71,7 @@ def sign_in(email: str, password: str):
             st.session_state.auth_error = None
             return response    
     except Exception as e:
+        st.error(f"Sign in error: {e}")
         st.session_state.auth_error = str(e)
     return None
 
