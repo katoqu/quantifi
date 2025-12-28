@@ -47,6 +47,16 @@ def get_recovery_token_from_url():
         pass
     return None
 
+def sign_up(email: str, password: str):
+    """Sign up a new user"""
+    try:
+        response = sb.auth.sign_up({"email": email, "password": password})
+        st.session_state.auth_error = None
+        return response
+    except Exception as e:
+        st.session_state.auth_error = str(e)
+        return None
+    return None
 
 def sign_in(email: str, password: str):
     if "auth_debug" not in st.session_state:

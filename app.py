@@ -23,7 +23,7 @@ if not auth.is_authenticated():
 
 # 4. Sidebar Logout Logic
 # This stays visible on both "Tracker" and "Configure" pages
-#with st.sidebar:
+with st.sidebar:
     st.write(f"Logged in as: **{auth.get_current_user().email}**")
     if st.button("Log Out", use_container_width=True):
         auth.sign_out()
