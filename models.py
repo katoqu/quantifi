@@ -1,14 +1,23 @@
 from supabase_config import sb
+import streamlit as st  # <-- ADD THIS LINE
+
+@st.cache_data(ttl=60) # Only fetch from DB once every minute
 def get_categories():
     response = sb.table("categories").select("*").execute()
     return response.data
 
+@st.cache_data(ttl=60)
 def get_units():
     response = sb.table("units").select("*").execute()
     return response.data
 
+@st.cache_data(ttl=60)
 def get_metrics():
     response = sb.table("metrics").select("*").execute()
+    if not response.data:
+        # We clear the specific cache for this function so the 
+        # "No metrics" message doesn't get stuck.
+        get_metrics.clear()
     return response.data
 
 def get_entries(metric_id=None):

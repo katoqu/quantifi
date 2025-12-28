@@ -11,6 +11,8 @@ class AuthUI:
             if st.form_submit_button("Sign In", use_container_width=True):
                 user, err = AuthEngine.sign_in(email, pwd)
                 if user:
+                    # --- FIX: Clear cache so user-specific data loads immediately ---
+                    st.cache_data.clear() 
                     st.session_state.user = user
                     st.rerun()
                 else:
@@ -46,6 +48,8 @@ class AuthUI:
                 if new_p == conf_p and new_p:
                     success, err = AuthEngine.update_password(new_p)
                     if success:
+                        # --- FIX: Clear cache on successful recovery/login ---
+                        st.cache_data.clear() 
                         st.success("Updated! Redirecting to login...")
                         st.query_params.clear()
                         st.session_state.show_recovery_form = False

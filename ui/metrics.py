@@ -21,7 +21,9 @@ def show_create_metric(cats, units):
                 if unit_choice:
                     payload["unit_id"] = unit_choice
                 models.create_metric(payload)
+                st.cache_data.clear()
                 st.success("Metric created")
+                st.rerun()
 
 def select_metric(metrics, cats, units):
     if not metrics:

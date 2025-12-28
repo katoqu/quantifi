@@ -5,7 +5,9 @@ class AuthEngine:
     @staticmethod
     def normalize_input(text):
         """Standardizes input and handles iOS smart punctuation for stability."""
-        if not text: return ""
+        if not text: 
+            return ""
+        # Fixes common mobile input issues (e.g., smart quotes)
         replacements = {'“': '"', '”': '"', '‘': "'", '’': "'", '—': '--', '–': '-'}
         for s, r in replacements.items():
             text = text.replace(s, r)
@@ -13,6 +15,7 @@ class AuthEngine:
 
     @staticmethod
     def sign_in(email, password):
+        """Standardizes login credentials and authenticates with Supabase."""
         try:
             email_clean = email.strip().lower()
             pwd_clean = AuthEngine.normalize_input(password)
@@ -23,6 +26,7 @@ class AuthEngine:
 
     @staticmethod
     def sign_up(email, password):
+        """Creates a new user account."""
         try:
             res = sb.auth.sign_up({"email": email, "password": password})
             return res.user, None
@@ -31,10 +35,16 @@ class AuthEngine:
 
     @staticmethod
     def update_password(new_password):
-        """Updates password and kills recovery session to ensure no stale state."""
+        """
+        Updates password for the current recovery session.
+        Note: We keep the user signed out after a reset to ensure 
+        they re-authenticate with the fresh credentials.
+        """
         try:
             clean_pwd = AuthEngine.normalize_input(new_password)
             sb.auth.update_user({"password": clean_pwd})
+            # Explicitly signing out ensures no lingering recovery tokens 
+            # or partial sessions remain active.
             sb.auth.sign_out() 
             return True, None
         except Exception as e:
@@ -42,9 +52,11 @@ class AuthEngine:
 
     @staticmethod
     def request_reset(email):
+        """Sends a password recovery email using the configured redirect URL."""
         try:
+            # Safely fetch redirect URL from secrets or default to local
             url = st.secrets.get("REDIRECT_URL", "http://localhost:8501").strip()
-            sb.auth.reset_password_for_email(email, {"redirect_to": url})
+            sb.auth.reset_password_for_email(email.strip(), {"redirect_to": url})
             return True, None
         except Exception as e:
             return False, str(e)

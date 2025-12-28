@@ -13,7 +13,9 @@ def show_manage_lookups():
                 st.info("Category already exists (case-insensitive)")
             else:
                 models.create_category(name_norm)
+                st.cache_data.clear() 
                 st.success("Category added")
+                st.rerun()
 
         new_unit = st.text_input("New unit")
         unit_type = st.selectbox("Unit type", ("float", "integer", "integer range"))
@@ -37,7 +39,10 @@ def show_manage_lookups():
                     payload["range_start"] = int(range_start)
                     payload["range_end"] = int(range_end)
                 models.create_unit(payload)
+                # --- ADD THIS LINE ---
+                st.cache_data.clear() 
                 st.success("Unit added")
+                st.rerun()
 
         units_list = models.get_units() or []
         if units_list:

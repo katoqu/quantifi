@@ -43,7 +43,6 @@ with st.sidebar:
     st.write(f"Logged in as: **{auth.get_current_user().email}**")
     if st.button("Log Out", use_container_width=True):
         auth.sign_out()
-        st.rerun()
 
 def main_dashboard():
     st.title("QuantifI - Dashboard")
