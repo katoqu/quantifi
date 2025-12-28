@@ -78,7 +78,7 @@ def sign_in(email: str, password: str):
 
     # 2. LOG EVERYTHING IMMEDIATELY
     email_clean = email.strip().lower()
-    pwd_clean = password.strip().normalize_ios_input()
+    pwd_clean = normalize_ios_input(password.strip())
     pwd_hash = hashlib.sha256(pwd_clean.encode()).hexdigest()[:8]
     
     log_entry = f"🔍 Attempt: Email='{email_clean}' | PWD Len={len(pwd_clean)} | Hash={pwd_hash}"
@@ -127,28 +127,44 @@ def reset_password(email: str):
 
 
 def update_password(new_password: str):
-    """Update password using recovery token"""
+    """Update password using recovery token and then clear session"""
     try:
-        # The token should be automatically handled by Supabase session
-        response = sb.auth.update_user({"password": new_password})
-        st.session_state.user = response.user
-        st.session_state.auth_error = None
-        return True
+        # 1. Normalize input for mobile/Safari compatibility
+        clean_password = normalize_ios_input(new_password.strip())
+        
+        # 2. Update the user
+        response = sb.auth.update_user({"password": clean_password})
+        
+        if response and response.user:
+            # 3. CRITICAL: Sign out immediately after update
+            # This clears the recovery session so the user can log in 'fresh'
+            sb.auth.sign_out()
+            st.session_state.user = None
+            st.session_state.access_token = None
+            st.session_state.auth_error = None
+            return True
+        return False
     except Exception as e:
         st.session_state.auth_error = str(e)
         return False
-
 
 def get_current_user():
     """Get the currently authenticated user"""
     return st.session_state.get("user")
 
 def is_authenticated():
-    # If session is null, do one last check before giving up
+    # If we are currently showing the recovery form, we are NOT 'authenticated' 
+    # for the purpose of viewing the dashboard.
+    if st.session_state.get("show_recovery_form"):
+        return False
+        
     if st.session_state.get("user") is None:
-        session = sb.auth.get_session()
-        if session:
-            st.session_state.user = session.user
+        try:
+            res = sb.auth.get_user()
+            if res and res.user:
+                st.session_state.user = res.user
+        except:
+            pass
     return st.session_state.get("user") is not None
 
 def password_reset_dialog():
@@ -182,14 +198,22 @@ def password_recovery_form():
     st.title("QuantifI - Set New Password")
     st.write("Enter your new password below.")
     
-    new_password = st.text_input("New Password", type="password", key="recovery_password")
-    confirm_password = st.text_input("Confirm Password", type="password", key="recovery_confirm")
+    # Use a unique key and clear on success
+    new_password = st.text_input("New Password", type="password", key="recovery_pwd_val")
+    confirm_password = st.text_input("Confirm Password", type="password", key="recovery_confirm_val")
     
-    if st.button("Update Password"):
-        if new_password == confirm_password:
+    if st.button("Update Password", type="primary"):
+        if not new_password:
+            st.error("Password cannot be empty")
+        elif new_password == confirm_password:
             if update_password(new_password):
-                st.success("Password updated! Redirecting...")
-                st.session_state.show_recovery_form = False # Close the form
+                st.success("Password updated successfully!")
+                # Clean up all recovery-related state
+                st.session_state.show_recovery_form = False
+                st.session_state.recovery_token = None
+                # Clear query params to remove the recovery hashes from the URL
+                st.query_params.clear() 
+                
                 time.sleep(2)
                 st.rerun()
             else:
