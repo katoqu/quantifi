@@ -7,18 +7,27 @@ import auth
 # 1. Initialize authentication
 auth.init_session_state()
 
-# 2. If not authenticated, show auth page
+# 2. DEBUG VIEWER (Add this at the top)
+if "auth_debug" in st.session_state and st.session_state.auth_debug:
+    with st.expander("🛠 Auth Debug Logs", expanded=True):
+        for log in st.session_state.auth_debug:
+            st.text(log)
+        if st.button("Clear Logs"):
+            st.session_state.auth_debug = []
+            st.rerun()
+
+# 3. If not authenticated, show auth page
 if not auth.is_authenticated():
     auth.auth_page()
     st.stop()
 
-# 3. Sidebar Logout Logic
+# 4. Sidebar Logout Logic
 # This stays visible on both "Tracker" and "Configure" pages
 #with st.sidebar:
-#    st.write(f"Logged in as: **{auth.get_current_user().email}**")
-#    if st.button("Log Out", use_container_width=True):
-#        auth.sign_out()
-#        st.rerun()
+    st.write(f"Logged in as: **{auth.get_current_user().email}**")
+    if st.button("Log Out", use_container_width=True):
+        auth.sign_out()
+        st.rerun()
 
 def main_dashboard():
     st.title("QuantifI - Dashboard")
@@ -67,4 +76,4 @@ pg = st.navigation([
     st.Page(settings_page, title="Configure", icon="⚙️"),
 ])
 
-#pg.run()
+pg.run()

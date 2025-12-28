@@ -49,23 +49,25 @@ def get_recovery_token_from_url():
 
 
 def sign_in(email: str, password: str):
-    """Sign in with iOS stability fixes (whitespace stripping and session retry)."""
+    if "auth_debug" not in st.session_state:
+        st.session_state.auth_debug = []
+
     try:
-        # iOS Fix: Strip whitespace from autofill
         response = sb.auth.sign_in_with_password({
             "email": email.strip().lower(), 
             "password": password.strip()
         })
-        st.write(f"Email length: {len(email.strip().lower())}")
-        st.write(f"PWD length: {len(password.strip())}")
-
-        pwd_hash = hashlib.sha256(password.strip().encode()).hexdigest()
-        st.info(f"Password Hash (first 8): {pwd_hash[:8]}")
-        st.stop() 
-
-        st.success("Supabase accepted the login")
-        st.write(response.user)
         
+        # Log data instead of stopping
+        st.session_state.auth_debug.append(f"Email len: {len(email.strip().lower())}")
+        st.session_state.auth_debug.append(f"PWD len: {len(password.strip())}")
+        pwd_hash = hashlib.sha256(password.strip().encode()).hexdigest()
+        st.session_state.auth_debug.append(f"Hash first 8 chars: {pwd_hash[:8]}")
+
+        if response and response.user:
+            st.session_state.auth_debug.append("Login SUCCESS")
+            st.session_state.user = response.user
+
         # iOS Fix: If session is delayed, retry briefly
         if response and not response.session:
             time.sleep(0.5)
@@ -79,7 +81,6 @@ def sign_in(email: str, password: str):
             st.session_state.auth_error = None
             return response    
     except Exception as e:
-        st.error(f"Sign in error: {e}")
         st.session_state.auth_error = str(e)
     return None
 
