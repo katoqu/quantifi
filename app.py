@@ -4,20 +4,25 @@ import models
 import utils
 import auth
 
-# 1. Initialize authentication
+# 1. Initialize EVERYTHING first
 auth.init_session_state()
+if "auth_debug" not in st.session_state:
+    st.session_state.auth_debug = []
+
 
 # 2. DEBUG VIEWER (Add this at the top)
-if "auth_debug" in st.session_state and st.session_state.auth_debug:
-    with st.expander("🛠 Auth Debug Logs", expanded=True):
-        for log in st.session_state.auth_debug:
-            st.text(log)
-        if st.button("Clear Logs"):
-            st.session_state.auth_debug = []
-            st.rerun()
+def show_debug_logs():
+    if st.session_state.auth_debug:
+        with st.expander("🛠 Auth Debug Logs", expanded=True):
+            for log in st.session_state.auth_debug:
+                st.text(log)
+            if st.button("Clear Logs"):
+                st.session_state.auth_debug = []
+                st.rerun()
 
 # 3. If not authenticated, show auth page
 if not auth.is_authenticated():
+    show_debug_logs()
     auth.auth_page()
     st.stop()
 
