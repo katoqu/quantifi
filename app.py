@@ -5,6 +5,7 @@ import models
 import utils
 import auth
 from datetime import timedelta
+from data_editor import editable_metric_table
 
 # 1. Initialize State
 auth.init_session_state()
@@ -104,43 +105,105 @@ def edit_data_page():
     )
     selected_metric = metrics_list[metric_idx]
     mid = selected_metric.get("id")
+    
+    # --- Unsaved Changes Detection Logic ---
+    state_key = f"data_{mid}"
+    has_unsaved_changes = False
+    if state_key in st.session_state:
+        df_draft = st.session_state[state_key]
+        has_unsaved_changes = (df_draft["Change Log"] != "").any()
 
-    # 3. Collect FULL Dataset from models
+    # 3. Collect FULL Dataset
     dfe, m_unit, m_name = utils.collect_data(selected_metric, unit_meta)
 
     if dfe is not None and not dfe.empty:
-        # Convert to datetime objects immediately for accurate comparison
         dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'])
         abs_min = dfe['recorded_at'].min().date()
         abs_max = dfe['recorded_at'].max().date()
 
-        # 4. Flexible Date Range Selector
         st.subheader("🗓️ Filter Management Window")
         
+        # 1. Setup Keys for this specific metric
+        date_picker_key = f"date_range_{mid}"
+        prev_date_key = f"prev_date_{mid}"
+
+        # 2. Initialize tracking state if first run
+        if prev_date_key not in st.session_state:
+            st.session_state[prev_date_key] = (abs_min, abs_max)
+        
+        # 3. Handle the "Revert" or "Accept" logic BEFORE the widget is rendered
+        # We look at the value currently in session state from the PREVIOUS interaction
+        if date_picker_key in st.session_state:
+            current_ui_val = st.session_state[date_picker_key]
+            
+            # Conflict Check: UI changed, but we have unsaved work
+            if current_ui_val != st.session_state[prev_date_key] and has_unsaved_changes:
+                st.warning("⚠️ **Unsaved Changes Detected!** Changing the date range will discard your current edits.")
+                
+                c1, c2 = st.columns(2)
+                if c1.button("Discard Changes & Update Range", use_container_width=True):
+                    # Accept the new date, clear the draft, update tracker
+                    del st.session_state[state_key]
+                    st.session_state[prev_date_key] = current_ui_val
+                    st.rerun()
+                
+                if c2.button("Keep Editing (Revert Date)", type="primary", use_container_width=True):
+                    # SUCCESS: We can modify this key because st.date_input hasn't run yet in THIS execution
+                    st.session_state[date_picker_key] = st.session_state[prev_date_key]
+                    st.rerun()
+                
+                st.stop() # Prevent the rest of the page from loading while warning is active
+            else:
+                # No conflict: Update our tracker for next time
+                st.session_state[prev_date_key] = current_ui_val
+
+        # 4. Initialize the widget key if it's the very first load for this metric
+        if date_picker_key not in st.session_state:
+            st.session_state[date_picker_key] = st.session_state[prev_date_key]
+
+        # 5. Render the Widget (Binds to the key we just potentially reverted)
         col1, col2 = st.columns([2, 1])
         with col1:
-            # We use the full range of existing data as the default value
-            date_range = st.date_input(
+            current_date_range = st.date_input(
                 "Select range (Click start date, then end date)",
-                value=(abs_min, abs_max), 
+                key=date_picker_key,
                 min_value=abs_min,
                 max_value=abs_max + timedelta(days=365) 
             )
 
+        # --- Revert Logic Fix ---
+        # If the user changed the date but has unsaved work
+        if current_date_range != st.session_state[prev_date_key] and has_unsaved_changes:
+            st.warning("⚠️ **Unsaved Changes Detected!** Changing the date range will discard your current edits.")
+            
+            c1, c2 = st.columns(2)
+            if c1.button("Discard Changes & Update Range", use_container_width=True):
+                # Accept the new date, clear the draft
+                del st.session_state[state_key]
+                st.session_state[prev_date_key] = current_date_range
+                st.rerun()
+            
+            if c2.button("Keep Editing (Revert Date)", type="primary", use_container_width=True):
+                # FORCE the widget to go back to the previous value by overwriting its state key
+                st.session_state[date_picker_key] = st.session_state[prev_date_key]
+                st.rerun()
+            
+            st.stop()
+        else:
+            # No conflict: Update the "previous" tracker to match current UI
+            st.session_state[prev_date_key] = current_date_range
+
         # 5. Filter Execution Logic
-        # We only apply the visual and editor updates if a full range is selected
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            start_date, end_date = date_range
+        if isinstance(current_date_range, tuple) and len(current_date_range) == 2:
+            start_date, end_date = current_date_range
             mask = (dfe['recorded_at'].dt.date >= start_date) & (dfe['recorded_at'].dt.date <= end_date)
             filtered_df = dfe.loc[mask].sort_values("recorded_at", ascending=False)
 
-            # 6. Visual Sanity Check (Uses the filtered slice)
             st.write(f"### Visual Trend: {m_name}")
             visualize.show_visualizations(filtered_df, m_unit, m_name)
             
             st.divider()
 
-            # 7. Data Editor (Passes the filtered slice to the session-state-aware component)
             st.write("### ✏️ Edit Records")
             st.caption(f"Showing {len(filtered_df)} entries found between {start_date} and {end_date}")
             
