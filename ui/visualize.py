@@ -5,8 +5,6 @@ import numpy as np
 from data_editor import editable_metric_table
 
 def show_visualizations(dfe, m_unit, m_name):
-    st.header("Visualizations")
-
     if dfe is None:
         st.warning("No data available.")
         return

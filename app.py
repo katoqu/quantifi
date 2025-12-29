@@ -26,11 +26,11 @@ def show_debug_logs():
                     st.rerun()
 
 # 2. Sidebar Toggle (Always visible)
-with st.sidebar:
-    st.title("Admin")
-    if st.button("Toggle Debug View"):
-        st.session_state.show_debug_panel = not st.session_state.show_debug_panel
-        st.rerun()
+#with st.sidebar:
+#    st.title("Admin")
+#    if st.button("Toggle Debug View"):
+#        st.session_state.show_debug_panel = not st.session_state.show_debug_panel
+#        st.rerun()
 
 # 3. Execution Order
 show_debug_logs() # Show logs at the very top if enabled
@@ -199,7 +199,6 @@ def edit_data_page():
             mask = (dfe['recorded_at'].dt.date >= start_date) & (dfe['recorded_at'].dt.date <= end_date)
             filtered_df = dfe.loc[mask].sort_values("recorded_at", ascending=False)
 
-            st.write(f"### Visual Trend: {m_name}")
             visualize.show_visualizations(filtered_df, m_unit, m_name)
             
             st.divider()
