@@ -45,49 +45,69 @@ def confirm_save_dialog(mid, editor_key):
             st.success("Changes saved successfully!")
             st.rerun()
 
+
 def editable_metric_table(dfe, m_unit, mid):
     state_key, editor_key = f"data_{mid}", f"editor_{mid}"
-
+    
+    # 1. INITIALIZATION / RE-SYNC
+    # If the state doesn't exist, OR if the database gave us different IDs 
+    # (e.g. you added a new record via the 'Capture' form), we refresh the draft.
     if state_key not in st.session_state:
         df_init = dfe.sort_values("recorded_at").reset_index(drop=True)
-        # Reintroducing the Change Log column
         st.session_state[state_key] = df_init.assign(**{"Change Log": "", "Select": False})
+    else:
+        # Check if the database has new rows that our session state doesn't have yet
+        current_ids = set(st.session_state[state_key]["id"].dropna())
+        incoming_ids = set(dfe["id"].dropna())
+        
+        if not incoming_ids.issubset(current_ids):
+            # This handles the case where you added an entry in the 'Capture' tab
+            # We merge the new data while keeping existing 'Change Log' entries
+            old_df = st.session_state[state_key]
+            # Only add rows that aren't already in our draft
+            new_rows = dfe[~dfe["id"].isin(old_df["id"])]
+            if not new_rows.empty:
+                new_rows = new_rows.assign(**{"Change Log": "", "Select": False})
+                st.session_state[state_key] = pd.concat([old_df, new_rows]).sort_values("recorded_at").reset_index(drop=True)
 
+    # 2. HANDLE EDITS (Remains the same)
     def handle_change():
-        """Tracks edits and native deletions in the Change Log."""
         state = st.session_state[editor_key]
         df = st.session_state[state_key]
-        
-        # Track Native Deletions
         for idx in state.get("deleted_rows", []):
             df.at[idx, "Change Log"] = "DELETED"
-
-        # Track Edits specifically for the Change Log
         for idx, changes in state.get("edited_rows", {}).items():
             for col, new_val in changes.items():
-                # Update the value in our session state DF
                 df.at[idx, col] = new_val
-                # Update the log string
                 current_log = str(df.at[idx, "Change Log"])
                 log_entry = f"{col} updated"
                 if log_entry not in current_log:
                     df.at[idx, "Change Log"] = f"{current_log} | {log_entry}".strip(" | ")
 
+    # 3. FILTERING THE VIEW (The Fix)
+    # We always use the full session state as the source, 
+    # but we filter it based on the dates currently active in the UI
+    full_draft_df = st.session_state[state_key]
+    
+    # We need to make sure we filter against the IDs provided by the app.py filter
+    view_df = full_draft_df[full_draft_df['id'].isin(dfe['id'])]
+
     # UI Buttons
     col_del, col_res = st.columns([1.5, 1])
     with col_del:
         if st.button("🗑️ Mark Selected for Deletion", use_container_width=True):
-            st.session_state[state_key].loc[st.session_state[state_key]["Select"] == True, "Change Log"] = "DELETED"
+            # Use index mapping to update the master state
+            st.session_state[state_key].loc[view_df[view_df["Select"] == True].index, "Change Log"] = "DELETED"
             st.rerun()
 
     with col_res:
-        if st.button("Reset", type="secondary", use_container_width=True):
+        if st.button("Reset Draft", type="secondary", use_container_width=True):
             del st.session_state[state_key]
             st.rerun()
 
-    # Re-enabled on_change for real-time logging of edits
+    # 4. DATA EDITOR
     st.data_editor(
-        st.session_state[state_key],
+        view_df,
         column_order=["Select", "recorded_at", "value", "Change Log"],
         column_config={
             "Select": st.column_config.CheckboxColumn("Select"),
@@ -96,15 +116,14 @@ def editable_metric_table(dfe, m_unit, mid):
             "Change Log": st.column_config.TextColumn("Status / Change Log", disabled=True)
         },
         key=editor_key,
-        num_rows="dynamic",
         on_change=handle_change,
         hide_index=True,
         use_container_width=True
     )
 
+    # 5. SAVE LOGIC (Checks master state)
     if st.button("Save All Changes to Backend", type="primary", use_container_width=True):
-        # Trigger save if there are edits in the DF or pending additions in the editor state
-        has_changes = st.session_state[state_key]["Change Log"].str.strip().any()
+        has_changes = full_draft_df["Change Log"].str.strip().any()
         has_additions = len(st.session_state[editor_key].get("added_rows", [])) > 0
         
         if has_changes or has_additions:
