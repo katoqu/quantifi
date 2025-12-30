@@ -2,7 +2,6 @@ import streamlit as st
 import plotly.graph_objects as go
 import models
 import numpy as np
-from data_editor import editable_metric_table
 
 def show_visualizations(dfe, m_unit, m_name):
     if dfe is None:

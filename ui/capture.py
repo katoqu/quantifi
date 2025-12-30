@@ -1,21 +1,36 @@
+# capture.py
 import streamlit as st
 import models
 import utils
 import datetime as dt
 import time
+from ui import visualize
+
+def show_tracker_suite(selected_metric, unit_meta):
+
+    # 1. Collect data for this specific metric
+    dfe, m_unit, m_name = utils.collect_data(selected_metric, unit_meta)
+    
+    # 2. Show capture form
+    show_capture(selected_metric, unit_meta)
+    
+    st.divider()
+    
+    # 3. Show visualization
+    if dfe is not None and not dfe.empty:
+        visualize.show_visualizations(dfe, m_unit, m_name)
+    else:
+        st.info("No data entries found for this metric yet. Use the form above to add your first entry.")
 
 def show_capture(selected_metric, unit_meta):
-    st.header("Capture data")
-
-    if not selected_metric:
-        st.warning("No metrics defined yet. Create one in 'Define & configure'.")
-        return    
-
+    # ... (Keep your existing show_capture logic here) ...
+    # Ensure it still handles the 'last_val' proposal and state clearing
+    st.header("Capture Data")
+    
     mid = selected_metric.get("id")
     selected_unit = unit_meta.get(selected_metric.get("unit_id"))
     utype = selected_unit.get("unit_type", "float") if selected_unit else "float"
     
-    # 1. Proposal Logic: Check session state first, then database
     last_val_key = f"last_val_{mid}"
     proposal_val = st.session_state.get(last_val_key)
 
@@ -26,13 +41,10 @@ def show_capture(selected_metric, unit_meta):
             proposal_val = recent_entries[0].get("value")
             st.session_state[last_val_key] = proposal_val
 
-    # 2. Simplified "Capture Bar" with persistent-style feedback
     with st.form("capture_entry_submit", border=True):
         col_date, col_val, col_btn = st.columns([1.2, 1, 0.8])
-        
         with col_date:
             date = st.date_input("📅 Date", value=dt.date.today())
-            
         with col_val:
             if utype == "integer_range":
                 rs, re = int(selected_unit.get("range_start", 0)), int(selected_unit.get("range_end", 100))
@@ -45,29 +57,25 @@ def show_capture(selected_metric, unit_meta):
                 val = st.number_input("Value", format="%.1f", step=1.0, value=float(proposal_val or 0.0))
 
         with col_btn:
-            # Adding vertical padding to align the button with the inputs
             st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
             submitted = st.form_submit_button("Add Entry", use_container_width=True, type="primary")
         
         if submitted:
-            # Logic execution
             datetz = utils.to_datetz(date)
             models.create_entry({
                 "metric_id": mid, 
                 "value": val, 
                 "recorded_at": datetz.isoformat()
             })
-            
-            # State Management
+
+            #Clear the global cache so other pages see the new record
+            st.cache_data.clear()
+
             st.session_state[last_val_key] = val
             state_key = f"data_{mid}"
             if state_key in st.session_state:
-                del st.session_state[state_key]
+                del st.session_state[state_key] # Invalidates edit-page cache
             
-            # THE FEEDBACK: A toast is less jarring than an st.success box 
-            # and survives the rerun long enough to be read.
             st.toast(f"Saved: {val}", icon="✅")
-            
-            # Give the user 0.8 seconds to see the toast before the page refreshes
             time.sleep(0.8)
             st.rerun()
