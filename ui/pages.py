@@ -1,8 +1,7 @@
 import streamlit as st
 import models
 import utils
-import data_editor
-from ui import manage_lookups, capture, metrics
+from ui import manage_lookups, capture, metrics, data_editor
 
 def tracker_page():
     """Main dashboard for capturing and viewing daily metrics."""
@@ -41,7 +40,6 @@ def editor_page():
     units = models.get_units() or []
     unit_meta = {u["id"]: u for u in units}
 
-    # Metric selection for editing
     metric_idx = st.selectbox(
         "Select metric to manage", 
         options=list(range(len(metrics_list))), 
@@ -50,9 +48,7 @@ def editor_page():
     )
     selected_metric = metrics_list[metric_idx]
     
-    # Hand off to the data editor suite
     data_editor.show_data_management_suite(selected_metric, unit_meta)
-
 
 def configure_page():
     """Settings page for managing categories, units, and metric definitions."""
