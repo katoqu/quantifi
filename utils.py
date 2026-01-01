@@ -1,71 +1,43 @@
-from datetime import datetime, time
-from zoneinfo import ZoneInfo
-import models
 import pandas as pd
+import models
+import datetime as dt
 
+def normalize_name(name: str):
+    """Standardizes names for database storage."""
+    return name.strip().lower()
 
-USER_TZ = ZoneInfo("Europe/London")
-
-def normalize_name(s: str) -> str:
-    return s.strip().lower()
-
-def to_datetz(date):
-    return datetime.combine(date, time.min, tzinfo=USER_TZ)
-
-def safe_rerun():
-    """Try to trigger a Streamlit rerun if the function exists on the installed version.
-
-    Older Streamlit releases may not expose `st.experimental_rerun`. This helper
-    calls it if present and otherwise does nothing (graceful fallback).
+def format_metric_label(metric, unit_map=None):
     """
-    try:
-        import streamlit as st
-        rerun = getattr(st, "experimental_rerun", None)
-        if callable(rerun):
-            rerun()
-    except Exception:
-        # Best-effort only — if rerun isn't available we simply continue.
-        return
-
-def format_metric_label(metric, unit_meta):
+    Refactored: Now pulls unit_name directly from the metric object.
+    The unit_map parameter is kept as an optional None for backward compatibility 
+    during the transition but is no longer used.
     """
-    Formats a metric name and its unit for display.
-    unit_meta: dict of {unit_id: unit_info}
+    name = metric.get("name", "").title()
+    # Direct access instead of dictionary lookup
+    unit = metric.get("unit_name", "").title()
+    return f"{name} ({unit})" if unit else name
+
+def collect_data(selected_metric, unit_meta=None):
     """
-
-    # Fetch Units 
-    unit = unit_meta.get(metric.get("unit_id"))
-    unit_display_name = unit.get("name").title() if unit else None
-
-    name = metric.get("name", "Unknown")
-    display_name = name.title() if isinstance(name, str) else str(name)
-
-
-    if unit_display_name:
-        return f"{display_name} ({unit_display_name})"
-    return display_name
-
-def collect_data(selected_metric, unit_meta):
-    # Fetch Units and Metrics
-    units = models.get_units() or []
-    unit_lookup = {u["id"]: u["name"].title() for u in units}
-
+    Fetches entries for a metric and extracts unit/name metadata 
+    directly from the metric object.
+    """
     mid = selected_metric.get("id")
+    m_name = selected_metric.get("name", "Metric").title()
+    # Pull unit directly from the metric record
+    m_unit = selected_metric.get("unit_name", "") 
 
-    unit = unit_meta.get(selected_metric.get("unit_id"))
-    m_unit = unit.get("name").title()
-    m_name = selected_metric.get("name", "Unknown").title()
-
-    # Fetch Data Entries
-    entries = models.get_entries(mid) or []
+    entries = models.get_entries(metric_id=mid)
+    
     if not entries:
-        return None, None, None
-
-    # Data Preparation
+        return pd.DataFrame(), m_unit, m_name
+        
     dfe = pd.DataFrame(entries)
     dfe["recorded_at"] = pd.to_datetime(dfe["recorded_at"])
     dfe = dfe.sort_values("recorded_at")
-
+    
     return dfe, m_unit, m_name
 
-
+def to_datetz(date_obj):
+    """Converts a date object to a datetime with a basic timestamp."""
+    return dt.datetime.combine(date_obj, dt.time(12, 0))

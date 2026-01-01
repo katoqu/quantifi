@@ -5,8 +5,12 @@ from datetime import timedelta
 from ui import visualize
 from logic import editor_handler
 
-def show_data_management_suite(selected_metric, unit_meta):
-    dfe, m_unit, m_name = utils.collect_data(selected_metric, unit_meta)
+def show_data_management_suite(selected_metric):
+    """
+    Refactored to pull unit metadata directly from the selected_metric object.
+    """
+    # 1. Collect data: The updated utils.collect_data now only needs the metric object
+    dfe, m_unit, m_name = utils.collect_data(selected_metric)
     mid = selected_metric.get("id")
     state_key = f"data_{mid}"
     
@@ -14,13 +18,13 @@ def show_data_management_suite(selected_metric, unit_meta):
         st.info("No data recorded for this metric yet.")
         return
 
-    # 1. Initialize Master Draft from the full dataset immediately
+    # Initialize Master Draft
     if state_key not in st.session_state:
         st.session_state[state_key] = dfe.assign(**{"Change Log": "", "Select": False})
 
     abs_min, abs_max = editor_handler.get_date_bounds(dfe, mid)
 
-    # 2. Render Date Input
+    # Render Date Input
     date_range = st.date_input(
         "Select range",
         key=f"date_range_{mid}",
@@ -29,12 +33,12 @@ def show_data_management_suite(selected_metric, unit_meta):
         max_value=abs_max + timedelta(days=365)
     )
 
-    # 3. Check for conflicts
+    # Check for conflicts
     if editor_handler.is_date_conflict(mid, state_key):
         _render_conflict_warning(mid, state_key)
         return 
 
-    # 4. Filter View from the Master Draft
+    # Filter View and Render
     if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
         start_date, end_date = date_range
         master_draft = st.session_state[state_key]
@@ -58,7 +62,7 @@ def _render_editable_table(view_df, m_unit, mid, state_key):
         column_config={
             "Select": st.column_config.CheckboxColumn("🗑️"),
             "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM, HH:mm"),
-            "value": st.column_config.NumberColumn(f"Value ({m_unit})"),
+            "value": st.column_config.NumberColumn(f"Value ({m_unit})"), # Uses direct unit name
             "Change Log": st.column_config.TextColumn("Status", disabled=True),
         },
         key=editor_key,
@@ -66,7 +70,6 @@ def _render_editable_table(view_df, m_unit, mid, state_key):
         use_container_width=True,
         hide_index=True
     )
-
     col_save, col_clear = st.columns(2)
     with col_save:
         if st.button("💾 Save All Changes", type="primary", use_container_width=True):

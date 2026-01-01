@@ -7,25 +7,17 @@ def tracker_page():
     """Main dashboard for capturing and viewing daily metrics."""
     st.title("QuantifI - Dashboard")
 
-    # Fetch data required for selection
     all_metrics = models.get_metrics() or []
     if not all_metrics:
         st.info("No metrics defined yet. Create one in 'Configure'.")
         return
 
-    units = models.get_units() or []
-    unit_meta = {u["id"]: u for u in units}
+    # Metric selection logic: No unit_meta needed
+    selected_metric = metrics.select_metric(all_metrics)
 
-    # Metric selection logic
-    metric_idx = st.selectbox(
-        "Metric to capture", 
-        options=list(range(len(all_metrics))), 
-        format_func=lambda i: utils.format_metric_label(all_metrics[i], unit_meta)
-    )
-    selected_metric = all_metrics[metric_idx]
-
-    # Render capture form and visualizations
-    capture.show_tracker_suite(selected_metric, unit_meta)
+    if selected_metric:
+        # Render capture form and visualizations without unit_meta
+        capture.show_tracker_suite(selected_metric)
 
 
 def editor_page():
@@ -37,29 +29,21 @@ def editor_page():
         st.info("No metrics defined yet.")
         return
 
-    units = models.get_units() or []
-    unit_meta = {u["id"]: u for u in units}
-
-    metric_idx = st.selectbox(
-        "Select metric to manage", 
-        options=list(range(len(metrics_list))), 
-        format_func=lambda i: utils.format_metric_label(metrics_list[i], unit_meta),
-        key="edit_page_metric_select"
-    )
-    selected_metric = metrics_list[metric_idx]
+    # Simplified selection
+    selected_metric = metrics.select_metric(metrics_list)
     
-    data_editor.show_data_management_suite(selected_metric, unit_meta)
+    if selected_metric:
+        # data_editor.py will also need to be updated to remove unit_meta
+        data_editor.show_data_management_suite(selected_metric)
 
 def configure_page():
-    """Settings page for managing categories, units, and metric definitions."""
+    """Settings page for managing categories and metric definitions."""
     st.title("Settings")
     
-    # Fetch lookup data
     cats = models.get_categories()
-    units = models.get_units()
     
-    # 1. Manage categories and units (lookups)
+    # 1. Manage categories only (Units section removed from UI)
     manage_lookups.show_manage_lookups()
     
-    # 2. Create new metrics
-    metrics.show_create_metric(cats, units)
+    # 2. Create new metrics (Passing only categories)
+    metrics.show_create_metric(cats)

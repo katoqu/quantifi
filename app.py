@@ -16,7 +16,9 @@ with st.sidebar:
     if st.button("Log Out", use_container_width=True):
         auth.sign_out()
 
-# 4. Navigation Definition using the new pages module
+# 4. Navigation Definition
+# Note: The pages themselves (tracker_page, editor_page, etc.) 
+# have already been refactored to remove unit dependencies.
 pg = st.navigation([
     st.Page(pages.tracker_page, title="Tracker", icon="📊"),
     st.Page(pages.editor_page, title="Edit Data", icon="✏️"),

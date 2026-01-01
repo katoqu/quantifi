@@ -6,13 +6,17 @@ import datetime as dt
 import time
 from ui import visualize
 
-def show_tracker_suite(selected_metric, unit_meta):
-
-    # 1. Collect data for this specific metric
-    dfe, m_unit, m_name = utils.collect_data(selected_metric, unit_meta)
+def show_tracker_suite(selected_metric):
+    """
+    Refactored: No longer requires unit_meta. 
+    Information is accessed directly from selected_metric.
+    """
+    # 1. Collect data using the metric's internal unit info
+    # We pass None for unit_meta as collect_data should be updated to handle this
+    dfe, m_unit, m_name = utils.collect_data(selected_metric)
     
     # 2. Show capture form
-    show_capture(selected_metric, unit_meta)
+    show_capture(selected_metric)
     
     st.divider()
     
@@ -22,14 +26,13 @@ def show_tracker_suite(selected_metric, unit_meta):
     else:
         st.info("No data entries found for this metric yet. Use the form above to add your first entry.")
 
-def show_capture(selected_metric, unit_meta):
-    # ... (Keep your existing show_capture logic here) ...
-    # Ensure it still handles the 'last_val' proposal and state clearing
+def show_capture(selected_metric):
     st.header("Capture Data")
     
     mid = selected_metric.get("id")
-    selected_unit = unit_meta.get(selected_metric.get("unit_id"))
-    utype = selected_unit.get("unit_type", "float") if selected_unit else "float"
+    # Access unit info directly from the metric object
+    unit_name = selected_metric.get("unit_name", "")
+    utype = selected_metric.get("unit_type", "float")
     
     last_val_key = f"last_val_{mid}"
     proposal_val = st.session_state.get(last_val_key)
@@ -46,15 +49,17 @@ def show_capture(selected_metric, unit_meta):
         with col_date:
             date = st.date_input("📅 Date", value=dt.date.today())
         with col_val:
+            # Logic now uses the metric's direct properties
             if utype == "integer_range":
-                rs, re = int(selected_unit.get("range_start", 0)), int(selected_unit.get("range_end", 100))
+                rs = int(selected_metric.get("range_start", 0))
+                re = int(selected_metric.get("range_end", 100))
                 allowed_values = list(range(rs, re + 1))
                 start_idx = allowed_values.index(int(proposal_val)) if proposal_val in allowed_values else 0
-                val = st.selectbox("Value", options=allowed_values, index=start_idx)
+                val = st.selectbox(f"Value ({unit_name})", options=allowed_values, index=start_idx)
             elif utype == "integer":
-                val = st.number_input("Value", step=1, format="%d", value=int(proposal_val or 0))
+                val = st.number_input(f"Value ({unit_name})", step=1, format="%d", value=int(proposal_val or 0))
             else:
-                val = st.number_input("Value", format="%.1f", step=1.0, value=float(proposal_val or 0.0))
+                val = st.number_input(f"Value ({unit_name})", format="%.1f", step=1.0, value=float(proposal_val or 0.0))
 
         with col_btn:
             st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
@@ -68,14 +73,12 @@ def show_capture(selected_metric, unit_meta):
                 "recorded_at": datetz.isoformat()
             })
 
-            #Clear the global cache so other pages see the new record
             st.cache_data.clear()
-
             st.session_state[last_val_key] = val
             state_key = f"data_{mid}"
             if state_key in st.session_state:
-                del st.session_state[state_key] # Invalidates edit-page cache
+                del st.session_state[state_key] 
             
-            st.toast(f"Saved: {val}", icon="✅")
+            st.toast(f"Saved: {val} {unit_name}", icon="✅")
             time.sleep(0.8)
             st.rerun()
