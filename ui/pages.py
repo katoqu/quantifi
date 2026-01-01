@@ -12,11 +12,10 @@ def tracker_page():
         st.info("No metrics defined yet. Create one in 'Configure'.")
         return
 
-    # Metric selection logic: No unit_meta needed
+    # Metric selection logic
     selected_metric = metrics.select_metric(all_metrics)
 
     if selected_metric:
-        # Render capture form and visualizations without unit_meta
         capture.show_tracker_suite(selected_metric)
 
 
@@ -29,21 +28,27 @@ def editor_page():
         st.info("No metrics defined yet.")
         return
 
-    # Simplified selection
     selected_metric = metrics.select_metric(metrics_list)
     
     if selected_metric:
-        # data_editor.py will also need to be updated to remove unit_meta
         data_editor.show_data_management_suite(selected_metric)
 
 def configure_page():
     """Settings page for managing categories and metric definitions."""
     st.title("Settings")
     
-    cats = models.get_categories()
+    # 1. Fetch current data
+    cats = models.get_categories() or []
+    metrics_list = models.get_metrics() or []
     
-    # 1. Manage categories only (Units section removed from UI)
+    # 2. Category Management (Includes the new Edit logic)
     manage_lookups.show_manage_lookups()
     
-    # 2. Create new metrics (Passing only categories)
+    st.divider()
+    
+    # 3. Metric Management (New: Edit existing metrics)
+    st.header("Metrics Configuration")
+    metrics.show_edit_metrics(metrics_list, cats)
+    
+    # 4. Create New Metric (Add new metrics)
     metrics.show_create_metric(cats)

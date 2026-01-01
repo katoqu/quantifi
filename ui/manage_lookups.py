@@ -4,27 +4,28 @@ import models
 import utils
 
 def show_manage_lookups():
-    """
-    Simplified to handle only categories. Units are now defined 
-    directly within each metric.
-    """
-    with st.expander("Manage categories", expanded=False):
-        new_cat = st.text_input("New category name")
-        if st.button("Add category") and new_cat.strip():
-            name_norm = utils.normalize_name(new_cat)
-            existing = models.get_categories() or []
-            if any(c["name"].lower() == name_norm for c in existing):
-                st.info("Category already exists.")
-            else:
-                models.create_category(name_norm)
-                st.cache_data.clear() 
-                st.success("Category added")
+    st.subheader("Manage Categories")
+    cats = models.get_categories() or []
+    
+    # 1. Existing Categories with Edit option
+    for cat in cats:
+        col1, col2 = st.columns([3, 1])
+        col1.write(f"**{cat['name'].title()}**")
+        
+        with col2.popover("Edit"):
+            new_name = st.text_input("New Name", value=cat['name'], key=f"edit_cat_{cat['id']}")
+            if st.button("Save", key=f"btn_cat_{cat['id']}"):
+                models.update_category(cat['id'], utils.normalize_name(new_name))
+                st.cache_data.clear() # Clear cache so changes show everywhere
                 st.rerun()
 
-        # Display current categories
-        cats_list = models.get_categories() or []
-        if cats_list:
-            df_cats = pd.DataFrame([{"Name": c["name"].title()} for c in cats_list])
-            st.table(df_cats)
-
-    return cats_list
+    # 2. Add New Category
+    new_cat = st.text_input("New category name")
+    if st.button("Add category") and new_cat.strip():
+        name_norm = utils.normalize_name(new_cat)
+        if any(c["name"].lower() == name_norm for c in cats):
+            st.info("Category already exists.")
+        else:
+            models.create_category(name_norm)
+            st.cache_data.clear() 
+            st.rerun()

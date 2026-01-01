@@ -36,3 +36,21 @@ def update_entry(entry_id, payload: dict):
 
 def delete_entry(entry_id):
     return sb.table("entries").delete().eq("id", entry_id).execute()
+
+def update_category(cat_id: str, name: str):
+    """Updates the name of an existing category."""
+    return sb.table("categories").update({"name": name}).eq("id", cat_id).execute()
+
+def update_metric(metric_id: str, payload: dict):
+    """Updates metric metadata (name, unit_name, category, etc.)."""
+    return sb.table("metrics").update(payload).eq("id", metric_id).execute()
+
+def get_entry_count(metric_id: str):
+    """Checks how many entries exist for a specific metric."""
+    response = sb.table("entries").select("id", count="exact").eq("metric_id", metric_id).execute()
+    return response.count if response.count is not None else 0
+
+def delete_metric(metric_id: str):
+    """Deletes a metric. Note: This will fail if foreign key constraints 
+    exist and entries aren't deleted first."""
+    return sb.table("metrics").delete().eq("id", metric_id).execute()
