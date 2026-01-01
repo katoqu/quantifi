@@ -33,22 +33,20 @@ def editor_page():
     if selected_metric:
         data_editor.show_data_management_suite(selected_metric)
 
+
 def configure_page():
-    """Settings page for managing categories and metric definitions."""
     st.title("Settings")
-    
-    # 1. Fetch current data
     cats = models.get_categories() or []
     metrics_list = models.get_metrics() or []
     
-    # 2. Category Management (Includes the new Edit logic)
     manage_lookups.show_manage_lookups()
-    
     st.divider()
     
-    # 3. Metric Management (New: Edit existing metrics)
-    st.header("Metrics Configuration")
     metrics.show_edit_metrics(metrics_list, cats)
-    
-    # 4. Create New Metric (Add new metrics)
     metrics.show_create_metric(cats)
+    
+    # Add the New Lifecycle Management Section
+    from ui import importer
+    last_ts = models.get_last_backup_timestamp()
+    st.caption(f"🛡️ Last local backup: **{last_ts}**")
+    importer.show_data_lifecycle_management()

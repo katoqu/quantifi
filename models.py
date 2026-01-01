@@ -1,5 +1,8 @@
 from supabase_config import sb
 import streamlit as st
+import json
+import os
+from datetime import datetime
 
 @st.cache_data(ttl=60)
 def get_categories():
@@ -54,3 +57,58 @@ def delete_metric(metric_id: str):
     """Deletes a metric. Note: This will fail if foreign key constraints 
     exist and entries aren't deleted first."""
     return sb.table("metrics").delete().eq("id", metric_id).execute()
+
+def get_category_by_name(name: str):
+    """Finds a category by name for the current user."""
+    res = sb.table("categories").select("*").eq("name", name.lower()).execute()
+    return res.data[0] if res.data else None
+
+def get_metric_by_name(name: str):
+    """Finds a metric by name for the current user."""
+    res = sb.table("metrics").select("*").eq("name", name.lower()).execute()
+    return res.data[0] if res.data else None
+
+def get_flat_export_data():
+    """
+    Fetches a flattened dataset for the current user.
+    """
+    # Uses the simplified model where unit data is inside metrics
+    query = sb.table("entries").select(
+        "recorded_at, value, metrics(name, unit_name, categories(name))"
+    ).execute()
+    
+    rows = []
+    for entry in query.data:
+        rows.append({
+            "Date": entry["recorded_at"],
+            "Metric": entry["metrics"]["name"],
+            "Value": entry["value"],
+            "Unit": entry["metrics"]["unit_name"],
+            "Category": entry["metrics"]["categories"]["name"] if entry["metrics"]["categories"] else "None"
+        })
+    return rows
+
+def wipe_user_data():
+    """
+    Deletes all entries, metrics, and categories for the user.
+    Order matters due to foreign key constraints.
+    """
+    # 1. Delete Entries
+    sb.table("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    # 2. Delete Metrics
+    sb.table("metrics").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    # 3. Delete Categories
+    sb.table("categories").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    
+def save_backup_timestamp():
+    """Saves the current time to a local config file."""
+    data = {"last_backup": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    with open("config.json", "w") as f:
+        json.dump(data, f)
+
+def get_last_backup_timestamp():
+    """Retrieves the last backup time."""
+    if os.path.exists("config.json"):
+        with open("config.json", "r") as f:
+            return json.load(f).get("last_backup", "Never")
+    return "Never" 
