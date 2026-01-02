@@ -5,67 +5,8 @@ from ui import manage_lookups, capture, metrics, data_editor, importer, landing_
 
 import streamlit as st
 import models
-import utils
+from utils import apply_custom_tabs_css 
 from ui import landing_page, metrics, capture
-
-def apply_custom_tabs_css():
-    """
-    Ultra-robust CSS for segmented tabs.
-    Targets the specific Streamlit radio button structure to ensure 
-    active state highlighting is visible.
-    """
-    st.markdown("""
-        <style>
-        /* 1. Main Container */
-        div[data-testid="stRadio"] > div[role="radiogroup"] {
-            display: flex;
-            flex-direction: row;
-            background-color: #f0f2f6;
-            padding: 5px;
-            border-radius: 12px;
-            border: 1px solid #e0e0e0;
-            width: fit-content;
-            margin-bottom: 20px;
-        }
-
-        /* 2. Hide the radio circle input */
-        div[data-testid="stRadio"] label div:first-child:not([data-testid="stMarkdownContainer"]) {
-            display: none !important;
-        }
-
-        /* 3. Base Label (Inactive Tab) */
-        div[data-testid="stRadio"] label {
-            background-color: transparent !important;
-            padding: 8px 25px !important;
-            border-radius: 9px !important;
-            margin: 0px 3px !important;
-            cursor: pointer !important;
-            border: none !important;
-            transition: all 0.2s ease;
-            font-weight: 500;
-            color: #555 !important;
-        }
-
-        /* 4. Active Tab Highlighting */
-        /* This looks for the label that contains the 'checked' input */
-        div[data-testid="stRadio"] label:has(input:checked) {
-            background-color: white !important;
-            box-shadow: 0px 2px 8px rgba(0,0,0,0.1) !important;
-        }
-        
-        /* Forces the text color/style for the active label */
-        div[data-testid="stRadio"] label:has(input:checked) p {
-            color: #FF4B4B !important;
-            font-weight: 700 !important;
-        }
-
-        /* Reset p-tag margins for vertical centering */
-        div[data-testid="stRadio"] label p {
-            margin: 0px !important;
-            font-size: 16px;
-        }
-        </style>
-    """, unsafe_allow_html=True)
 
 def tracker_page():
     """
@@ -139,7 +80,7 @@ def tracker_page():
 
 def editor_page():
     """Dedicated page for historical data management and editing."""
-    st.title("Manage & Edit Data")
+    st.title("Edit Data")
     
     metrics_list = models.get_metrics() or []
     if not metrics_list:

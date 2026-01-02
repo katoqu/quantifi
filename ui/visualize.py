@@ -20,24 +20,32 @@ def show_visualizations(dfe, m_unit, m_name):
     if len(dfe) > 1:
         delta = latest_val - dfe["value"].iloc[-2]
 
-    # 2. Render Quick Stats Row
-    st.subheader(f"{m_name} Overview")
-    c1, c2, c3 = st.columns(3)
+
+    delta_color = "#28a745" if (delta or 0) >= 0 else "#dc3545"
+    delta_str = f"<span style='color:{delta_color}; font-size: 0.8em;'>({'%+g' % delta if delta is not None else ''})</span>"
     
-    with c1:
-        st.metric("Latest Entry", f"{latest_val:g} {m_unit}", 
-                  delta=f"{delta:g}" if delta is not None else None)
-    with c2:
-        st.metric("Average", f"{avg_val:.2f} {m_unit}")
-    with c3:
-        st.metric("Entries in View", len(dfe))
+    st.markdown(f"""
+        <div style="display: flex; justify-content: space-between; align-items: center; 
+                    padding: 12px; border-radius: 10px; background: var(--secondary-background-color); 
+                    border: 1px solid var(--border-color); margin-bottom: 20px;">
+            <div style="text-align: center; flex: 1;">
+                <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Latest</div>
+                <div style="font-weight: bold; font-size: 1rem;">{latest_val:g} {delta_str}</div>
+            </div>
+            <div style="text-align: center; flex: 1; border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color);">
+                <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Average</div>
+                <div style="font-weight: bold; font-size: 1rem;">{avg_val:.2f}</div>
+            </div>
+            <div style="text-align: center; flex: 1;">
+                <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Entries</div>
+                <div style="font-weight: bold; font-size: 1rem;">{len(dfe)}</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    st.divider()
-
-    # 3. Time Series Plot 
+    # 3. Time Series Plot (Untouched logic)
     fig = go.Figure()
     
-    # Add the primary data line
     fig.add_trace(go.Scatter(
         x=dfe["recorded_at"], 
         y=dfe["value"], 
@@ -48,7 +56,6 @@ def show_visualizations(dfe, m_unit, m_name):
         hovertemplate="<b>Date:</b> %{x}<br><b>Value:</b> %{y} " + f"{m_unit}<extra></extra>"
     ))
 
-    # Update layout to handle date scaling
     fig.update_layout(
         yaxis_title=f"Value ({m_unit})",
         margin=dict(l=0, r=0, t=20, b=0),
@@ -57,9 +64,4 @@ def show_visualizations(dfe, m_unit, m_name):
         hovermode="x unified"
     )
 
-    # 4. Sync X-Axis with UI Date Pickers
-    # We pull the current widget values directly to force the chart 
-    # to show the full range selected by the user
-    # Search for keys based on typical naming convention in your data_editor.py
-    # This ensures the chart 'zooms' to exactly what the user selected.
     st.plotly_chart(fig, use_container_width=True)

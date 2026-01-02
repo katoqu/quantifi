@@ -51,56 +51,56 @@ def to_datetz(date_obj):
     return dt.datetime.combine(date_obj, dt.time(12, 0))
 
 def apply_custom_tabs_css():
-    """
-    Robust CSS to transform radio buttons into segmented tabs.
-    Updated with fallback selectors to ensure active state highlighting.
-    """
     st.markdown("""
         <style>
-        /* 1. Main Segmented Control Container */
+        /* 1. Main Container - Responsive & Adaptive */
         div[data-testid="stRadio"] > div[role="radiogroup"] {
             display: flex;
             flex-direction: row;
-            background-color: #f0f2f6;
-            padding: 5px;
+            background-color: var(--secondary-background-color);
+            padding: 4px;
             border-radius: 12px;
-            border: 1px solid #e0e0e0;
-            width: fit-content;
+            border: 1px solid var(--border-color);
+            width: 100%; /* Full width on mobile */
+            max-width: 400px;
             margin-bottom: 20px;
         }
 
-        /* 2. Hide ONLY the default radio input circle */
+        /* 2. Hide the radio circle input */
         div[data-testid="stRadio"] label div:first-child:not([data-testid="stMarkdownContainer"]) {
             display: none !important;
         }
 
-        /* 3. Base Tab Style (Inactive) */
+        /* 3. Base Label (Inactive Tab) */
         div[data-testid="stRadio"] label {
+            flex: 1; /* Equal width tabs on mobile */
+            text-align: center;
             background-color: transparent !important;
-            padding: 8px 25px !important;
+            padding: 8px 10px !important;
             border-radius: 9px !important;
-            margin: 0px 3px !important;
+            margin: 2px !important;
             cursor: pointer !important;
             border: none !important;
-            transition: all 0.2s ease-in-out;
-            font-weight: 500;
-            color: #555;
+            transition: all 0.2s ease;
+            color: var(--text-color) !important;
+            opacity: 0.7;
         }
 
         /* 4. Active Tab Highlighting */
-        /* Targets the label when the internal input is checked */
-        div[data-testid="stRadio"] label:has(input[checked]),
-        div[data-testid="stRadio"] label[data-checked="true"] {
-            background-color: white !important;
-            box-shadow: 0px 2px 8px rgba(0,0,0,0.1) !important;
-            color: #FF4B4B !important;
+        div[data-testid="stRadio"] label:has(input:checked) {
+            background-color: var(--background-color) !important;
+            box-shadow: 0px 2px 5px rgba(0,0,0,0.1) !important;
+            opacity: 1;
+        }
+        
+        div[data-testid="stRadio"] label:has(input:checked) p {
+            color: #FF4B4B !important; /* Streamlit Red */
+            font-weight: 700 !important;
         }
 
-        /* Ensure label text is visible, centered, and inherit color from state */
         div[data-testid="stRadio"] label p {
             margin: 0px !important;
-            font-size: 16px;
-            color: inherit !important;
+            font-size: 14px; /* Slightly smaller for mobile */
         }
         </style>
     """, unsafe_allow_html=True)
