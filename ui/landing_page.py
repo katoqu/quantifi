@@ -5,91 +5,129 @@ import auth
 
 def show_landing_page():
     """
-    Ultra-dense mobile dashboard with perfectly equal spacing using Flexbox.
-    Sorted by most recently updated metric.
+    Ultra-dense mobile dashboard. 
+    Forces columns to sit tight against each other with zero unnecessary gaps.
     """
-    # 1. Personalize welcome message
+    # 1. Inject CSS for tight horizontal alignment
+    st.markdown("""
+        <style>
+        [data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+            gap: 0.3rem !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+        }
+        [data-testid="column"] {
+            min-width: 0px !important;
+            flex-shrink: 1 !important;
+            width: auto !important;
+        }
+        [data-testid="stHorizontalBlock"] > div:first-child {
+            padding-left: 0px !important;
+            padding-right: 0px !important;
+            flex: 0 1 auto !important;
+        }
+        [data-testid="stHorizontalBlock"] > div:last-child {
+            padding-right: 4px !important;
+            padding-left: 2px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding: 0.3rem !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     user = auth.get_current_user()
     user_display = user.email.split('@')[0].capitalize() if user else "User"
-    st.title(f"🚀 Welcome back, {user_display}")
+    st.title(f"🚀 Welcome, {user_display}")
     
     metrics_list = models.get_metrics() or []
     if not metrics_list:
-        st.info("No metrics found. Head over to Settings to get started!")
+        st.info("No metrics found. Head to Settings to get started.")
         return
 
     cats = models.get_categories() or []
     cat_map = {c['id']: c['name'].title() for c in cats}
     
-    # 2. Sorting Logic: Most Recent First
+    # 3. Sorting Logic: Fixed Timezone comparison
     scored_metrics = []
+    # Create a timezone-aware floor for comparison
+    ts_min = pd.Timestamp.min.tz_localize('UTC') 
+
     for m in metrics_list:
         entries = models.get_entries(metric_id=m['id'])
-        latest_ts = pd.to_datetime(max([e['recorded_at'] for e in entries])) if entries else pd.Timestamp.min
+        if entries:
+            # Convert to datetime and ensure UTC awareness for the max calculation
+            timestamps = pd.to_datetime([e['recorded_at'] for e in entries], format='ISO8601', utc=True)
+            latest_ts = max(timestamps) 
+        else:
+            latest_ts = ts_min
+            
         scored_metrics.append((latest_ts, m, entries))
     
+    # Now both latest_ts and ts_min are UTC-aware, so sorting works
     scored_metrics.sort(key=lambda x: x[0], reverse=True)
 
-    # 3. Render Dashboard Rows
     for _, m, entries in scored_metrics:
-        _render_balanced_row(m, cat_map, entries)
+        _render_true_single_row(m, cat_map, entries)
 
-def _render_balanced_row(metric, cat_map, entries):
-    """
-    Renders a single dashboard row with equal spacing between four key modules.
-    """
+def _render_true_single_row(metric, cat_map, entries):
     mid = metric['id']
     m_name = metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
     
+    count = len(entries)
+    last_date = "—"
+    latest_val = 0.0
+    avg_val = 0.0
+
+    if count > 0:
+        df = pd.DataFrame(entries)
+        # Ensure UTC and localize to local or generic format for display
+        df['recorded_at'] = pd.to_datetime(df['recorded_at'], format='ISO8601', utc=True)
+        last_date = df['recorded_at'].max().strftime('%d/%m')
+        latest_val = df["value"].iloc[-1]
+        avg_val = df["value"].mean()
+
     with st.container(border=True):
-        # We use st.columns with equal weights [1, 1, 1, 1] to force equal distribution
-        # even on the narrowest mobile screens.
-        cols = st.columns([1, 1, 1, 1], gap="small")
+        cols = st.columns([0.8, 3.5, 0.4])
         
-        # Module 1: Metadata
         with cols[0]:
-            st.markdown(f"**{m_name}**<br><span style='font-size: 0.65rem; opacity: 0.7;'>📁 {cat_name}</span>", unsafe_allow_html=True)
+            st.markdown(f"""
+                <div style="line-height: 1; min-width: 60px;">
+                    <b style="font-size: 0.75rem;">{m_name}</b><br>
+                    <span style="font-size: 0.5rem; opacity: 0.7;">📁 {cat_name}</span>
+                </div>
+            """, unsafe_allow_html=True)
 
-        # Module 2: Trendline
         with cols[1]:
-            if entries and len(entries) > 1:
-                df = pd.DataFrame(entries)
-                df['recorded_at'] = pd.to_datetime(df['recorded_at'])
-                spark_data = df.sort_values("recorded_at").tail(7).set_index('recorded_at')['value']
-                # Height 80 ensures visibility on mobile
-                st.line_chart(spark_data, height=80, use_container_width=True)
-            else:
-                st.write("") 
-
-        # Module 3: KPIs
-        with cols[2]:
-            if entries:
-                df = pd.DataFrame(entries)
-                latest_val = df["value"].iloc[-1]
-                avg_val = df["value"].mean()
-                
-                # Formatted to 1 decimal digit
-                st.markdown(f"""
-                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; 
-                                background: var(--secondary-background-color); border-radius: 4px; padding: 4px; 
-                                border: 1px solid var(--border-color); height: 80px;">
-                        <div style="text-align: center; margin-bottom: 4px;">
-                            <div style="font-size: 0.5rem; opacity: 0.7; text-transform: uppercase;">Latest</div>
-                            <div style="font-size: 0.8rem; font-weight: bold;">{latest_val:.1f}</div>
-                        </div>
-                        <div style="width: 80%; height: 1px; background: var(--border-color); margin: 2px 0;"></div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 0.5rem; opacity: 0.7; text-transform: uppercase;">Avg</div>
-                            <div style="font-size: 0.8rem; font-weight: bold;">{avg_val:.1f}</div>
-                        </div>
+            st.markdown(f"""
+                <div style="display: flex; justify-content: space-between; align-items: center; 
+                            background: var(--secondary-background-color); border-radius: 6px; 
+                            padding: 4px; border: 1px solid var(--border-color); height: 36px; width: 100%;">
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 0.4rem; opacity: 0.6;">Latest</div>
+                        <div style="font-size: 0.7rem; font-weight: bold;">{latest_val:.1f}</div>
                     </div>
-                """, unsafe_allow_html=True)
+                    <div style="width: 1px; height: 12px; background: var(--border-color);"></div>
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 0.4rem; opacity: 0.6;">Avg</div>
+                        <div style="font-size: 0.7rem; font-weight: bold;">{avg_val:.1f}</div>
+                    </div>
+                    <div style="width: 1px; height: 12px; background: var(--border-color);"></div>
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 0.4rem; opacity: 0.6;">Entries</div>
+                        <div style="font-size: 0.7rem; font-weight: bold;">{count}</div>
+                    </div>
+                    <div style="width: 1px; height: 12px; background: var(--border-color);"></div>
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 0.4rem; opacity: 0.6;">Last entry</div>
+                        <div style="font-size: 0.65rem; font-weight: bold;">{last_date}</div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
-        # Module 4: Record Action
-        with cols[3]:
-            # Spacer to center the button vertically relative to the 80px chart
-            st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        with cols[2]:
             if st.button("➕", key=f"rec_{mid}", use_container_width=True):
                 st.query_params["metric_id"] = mid
                 st.rerun()

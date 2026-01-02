@@ -24,14 +24,35 @@ npx supabase db push
 ```
 
 
-4. Reset & Seed (Development)
-To purge existing test data and populate the database with fresh random records for development, use the included Python script. It automatically reads your connection details from Streamlit secrets.
+4. 🛠️ Database Management
 
-```bash
-# Purge and Reseed database for defined test users
-python reseed.py
-```bash
-Note: This script deletes existing entries for the target UUIDs and generates new data for the last 7 days.
+The project uses Supabase (PostgreSQL) with a unified schema that handles metrics, categories, and data entries. Business logic for value ranges is enforced at both the UI level and the database level.
+ 
+    1. Initial Setup
+
+        To set up or completely reset the database structure, execute the contents of schema.sql in the Supabase SQL Editor. This script: 
+        
+        - Drops existing objects: Clears existing tables, triggers, and functions to ensure a clean state.
+
+        - Creates unified tables: Sets up categories, metrics, and entries.
+
+        - *Enforces range logic*: Adds a CHECK constraint to the metrics table to ensure range_end > range_start for integer ranges.
+
+        Installs Validation Triggers: Prevents out-of-range data entry at the database level via the validate_entry_range function.
+
+    2. **Administrative Tool(manage_db.py)**
+    The manage_db.py script is a consolidated tool for development and administration. It replaces older legacy scripts (reseed.py, dev_db.py, seed.sql).
+
+| Action | Command | Description |
+| :--- | :--- | :--- |
+| **Hard Reset** | `python manage_db.py --reset` | Wipes and seeds default development accounts via high-speed SQL. |
+| **Purge User** | `python manage_db.py --purge --users email@example.com` | Deletes all data for a specific user found via Supabase Auth. |
+| **Seed User** | `python manage_db.py --seed --users email@example.com` | Seeds basic metrics and sample data for a specific user. |
+
+
+    4. **Reset & Seed (Development)**
+    To purge existing test data and populate the database with fresh random records for development, use the included Python script. It automatically reads your connection details from Streamlit secrets.
+
 
 5. Making Future Changes
 To maintain version control, never create tables directly in the Supabase Web UI:

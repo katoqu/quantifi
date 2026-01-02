@@ -22,7 +22,7 @@ def show_visualizations(dfe, m_unit, m_name):
 
 
     delta_color = "#28a745" if (delta or 0) >= 0 else "#dc3545"
-    delta_str = f"<span style='color:{delta_color}; font-size: 0.8em;'>({'%+g' % delta if delta is not None else ''})</span>"
+    delta_str = f"<span style='color:{delta_color}; font-size: 0.8em;'>({'%+.0f' % delta if delta is not None else ''})</span>"
     
     st.markdown(f"""
         <div style="display: flex; justify-content: space-between; align-items: center; 
@@ -30,11 +30,11 @@ def show_visualizations(dfe, m_unit, m_name):
                     border: 1px solid var(--border-color); margin-bottom: 20px;">
             <div style="text-align: center; flex: 1;">
                 <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Latest</div>
-                <div style="font-weight: bold; font-size: 1rem;">{latest_val:g} {delta_str}</div>
+                <div style="font-weight: bold; font-size: 1rem;">{latest_val:.0f} {delta_str}</div>
             </div>
             <div style="text-align: center; flex: 1; border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color);">
                 <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Average</div>
-                <div style="font-weight: bold; font-size: 1rem;">{avg_val:.2f}</div>
+                <div style="font-weight: bold; font-size: 1rem;">{avg_val:.0f}</div>
             </div>
             <div style="text-align: center; flex: 1;">
                 <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Entries</div>

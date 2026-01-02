@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
 import models
+import utils
 import datetime as dt
 
 def get_date_bounds(dfe, mid):
     """Calculates boundaries and ensures baseline state exists."""
-    dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'])
+    # FIX: Explicit format for bounds calculation
+    dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='ISO8601', utc=True)
     abs_min = dfe['recorded_at'].min().date()
     abs_max = dfe['recorded_at'].max().date()
 
@@ -43,11 +45,10 @@ def has_unsaved_changes(state_key):
     return False
 
 def reset_editor_state(state_key, mid=None):
-    """Clears draft and baseline. The graph will revert to DB state on next rerun."""
+    """Clears draft and baseline."""
     if state_key in st.session_state:
         del st.session_state[state_key]
     
-    # Clear the saved_data cache so it re-initializes from the fresh DB pull
     saved_key = f"saved_data_{mid}"
     if saved_key in st.session_state:
         del st.session_state[saved_key]
@@ -90,34 +91,51 @@ def get_change_summary(state_key, editor_key):
         "add": len(state.get("added_rows", []))
     }
 
-
 def execute_save(mid, state_key, editor_key):
-    """Commits all deletions, updates, and new rows to Supabase."""
+    """Commits all deletions, updates, and new rows to Supabase with validation."""
     df = st.session_state[state_key]
     state = st.session_state[editor_key]
+
+    res = models._safe_execute(models.sb.table("metrics").select("*").eq("id", mid))
+    metric = res.data[0] if res and res.data else {}
+    is_range = metric.get("unit_type") == "integer_range"
+    r_min = metric.get("range_start", 0)
+    r_max = metric.get("range_end", 10)
     
-    # Process Deletes
     for _, row in df[df["Change Log"] == "🗑️ DELETED"].iterrows():
         if pd.notna(row.get("id")):
             models.delete_entry(row["id"])
 
-    # Process Updates
     for _, row in df[df["Change Log"].str.contains("📝", na=False)].iterrows():
         rid = row.get("id")
+        val = float(row["value"])
+        if is_range and not (r_min <= val <= r_max):
+            st.error(f"Save failed: {val} is outside valid range ({r_min}-{r_max})")
+            return
+
         if pd.notna(rid):
             models.update_entry(rid, {
-                "value": float(row["value"]),
-                "recorded_at": pd.to_datetime(row["recorded_at"]).isoformat()
+                "value": val,
+                # FIX: Handle ISO8601 format during update
+                "recorded_at": pd.to_datetime(row["recorded_at"], format='ISO8601', utc=True).isoformat()
             })
 
-    # Process Adds
     for row in state.get("added_rows", []):
         if row.get("value") is not None:
+            val = float(row["value"])
+            if is_range and not (r_min <= val <= r_max):
+                st.error(f"Save failed: New value {val} is outside range ({r_min}-{r_max})")
+                return
+
             models.create_entry({
-                "value": float(row["value"]),
-                "recorded_at": pd.to_datetime(row.get("recorded_at", dt.datetime.now())).isoformat(),
+                "value": val,
+                # FIX: Handle ISO8601 format during addition
+                "recorded_at": pd.to_datetime(row.get("recorded_at", dt.datetime.now()), format='ISO8601', utc=True).isoformat(),
                 "metric_id": mid
             })
-    
-    st.cache_data.clear()
+
     reset_editor_state(state_key, mid)
+
+    # Centralized finish logic
+    utils.finalize_action("Changes pushed to database")
+

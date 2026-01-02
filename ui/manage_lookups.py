@@ -2,15 +2,23 @@ import streamlit as st
 import models
 import utils
 
+import streamlit as st
+import models
+import utils
+
+import streamlit as st
+import models
+import utils
+
 def show_manage_lookups():
     """
     Ultra-compact, single-line category management.
     Optimized for maximum information density on mobile screens.
     """
-    st.subheader("📁 Categories") # Shortened title
+    st.subheader("📁 Categories")
     cats = models.get_categories() or []
     
-    # 1. Header with 'Add' Popover - Streamlined
+    # 1. Header with 'Add' Popover
     col_info, col_btn = st.columns([1, 1])
     with col_info:
         st.caption("Manage groups")
@@ -19,9 +27,10 @@ def show_manage_lookups():
             new_name = st.text_input("Name", key="new_cat_input")
             if st.button("Save", type="primary", use_container_width=True):
                 if new_name.strip():
-                    models.create_category(utils.normalize_name(new_name))
-                    st.cache_data.clear()
-                    st.rerun()
+                    normalized = utils.normalize_name(new_name)
+                    models.create_category(normalized)
+                    # This triggers the toast and the rerun that closes the popover
+                    utils.finalize_action(f"Created: {normalized.title()}")
 
     # 2. Filter Box
     cat_names = [c['name'].title() for c in cats]
@@ -48,29 +57,27 @@ def show_manage_lookups():
         usage_count = sum(1 for m in metrics_list if m.get('category_id') == cat['id'])
         
         with st.container(border=True):
-            # One single row for everything: [Title (Count)] [Edit] [Delete]
-            # Ratio 3:1:1 keeps buttons small and aligned to the right
             c1, c2, c3 = st.columns([3, 1, 1])
             
             with c1:
-                # Text is now on one line with the count in brackets
                 st.markdown(f"**{cat['name'].title()}** ({usage_count})")
             
             with c2:
                 with st.popover("📝", use_container_width=True):
                     upd_val = st.text_input("Rename", value=cat['name'], key=f"ren_v_{cat['id']}")
                     if st.button("Update", key=f"upd_v_{cat['id']}", type="primary", use_container_width=True):
-                        models.update_category(cat['id'], utils.normalize_name(upd_val))
-                        st.cache_data.clear()
-                        st.rerun()
+                        new_cat_name = utils.normalize_name(upd_val)
+                        models.update_category(cat['id'], new_cat_name)
+                        # finalize_action ensures the popover clears upon the subsequent rerun
+                        utils.finalize_action(f"Renamed to: {new_cat_name.title()}")
 
             with c3:
                 if usage_count == 0:
                     with st.popover("🗑️", use_container_width=True):
-                        if st.button("Delete?", key=f"del_v_{cat['id']}", type="secondary", use_container_width=True):
+                        st.warning("Delete this category?")
+                        if st.button("Confirm Delete", key=f"del_v_{cat['id']}", type="secondary", use_container_width=True):
                             models.delete_category(cat['id'])
-                            st.cache_data.clear()
-                            st.rerun()
+                            # Use centralized finalize_action with a custom icon
+                            utils.finalize_action(f"Deleted: {cat['name'].title()}", icon="🗑️")
                 else:
-                    # Small lock icon if category is in use
-                    st.button("🔒", help="In use", disabled=True, use_container_width=True, key=f"lck_v_{cat['id']}")
+                    st.button("🔒", help="In use by metrics", disabled=True, use_container_width=True, key=f"lck_v_{cat['id']}")

@@ -61,6 +61,5 @@ def show_capture(selected_metric):
             })
 
             st.cache_data.clear()
-            st.toast(f"Saved: {val} {unit_name}", icon="✅")
-            time.sleep(0.5)
-            st.rerun()
+            # Centralized finish logic
+            utils.finalize_action(f"Saved: {val} {unit_name}")

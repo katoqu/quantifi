@@ -2,6 +2,8 @@ import pandas as pd
 import models
 import datetime as dt
 import streamlit as st
+import time
+
 
 def normalize_name(name: str):
     """Standardizes names for database storage."""
@@ -43,7 +45,10 @@ def collect_data(selected_metric, unit_meta=None):
         return pd.DataFrame(), m_unit, m_name
         
     dfe = pd.DataFrame(entries)
-    dfe["recorded_at"] = pd.to_datetime(dfe["recorded_at"])
+    
+    # FIX: Use format='ISO8601' to handle mixed precision (with/without microseconds)
+    dfe["recorded_at"] = pd.to_datetime(dfe["recorded_at"], format='ISO8601', utc=True)
+    
     return dfe.sort_values("recorded_at"), m_unit, m_name
 
 def to_datetz(date_obj):
@@ -104,3 +109,17 @@ def apply_custom_tabs_css():
         }
         </style>
     """, unsafe_allow_html=True)
+
+
+def finalize_action(message, icon="✅", delay=0.5):
+    """
+    Standardizes the post-save experience: 
+    1. Clears cache 
+    2. Shows a toast notification 
+    3. Waits briefly 
+    4. Triggers a rerun
+    """
+    st.cache_data.clear()
+    st.toast(message, icon=icon)
+    time.sleep(delay)
+    st.rerun()
