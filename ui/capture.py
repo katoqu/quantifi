@@ -18,7 +18,7 @@ def show_tracker_suite(selected_metric):
         st.info("No data entries found. Add your first entry above.")
 
 def show_capture(selected_metric):
-    st.header("Capture Data")
+#    st.header("Capture Data")
     
     mid = selected_metric.get("id")
     unit_name = selected_metric.get("unit_name", "")

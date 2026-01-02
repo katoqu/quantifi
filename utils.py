@@ -49,3 +49,58 @@ def collect_data(selected_metric, unit_meta=None):
 def to_datetz(date_obj):
     """Converts a date object to a datetime with a midday timestamp."""
     return dt.datetime.combine(date_obj, dt.time(12, 0))
+
+def apply_custom_tabs_css():
+    """
+    Robust CSS to transform radio buttons into segmented tabs.
+    Updated with fallback selectors to ensure active state highlighting.
+    """
+    st.markdown("""
+        <style>
+        /* 1. Main Segmented Control Container */
+        div[data-testid="stRadio"] > div[role="radiogroup"] {
+            display: flex;
+            flex-direction: row;
+            background-color: #f0f2f6;
+            padding: 5px;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            width: fit-content;
+            margin-bottom: 20px;
+        }
+
+        /* 2. Hide ONLY the default radio input circle */
+        div[data-testid="stRadio"] label div:first-child:not([data-testid="stMarkdownContainer"]) {
+            display: none !important;
+        }
+
+        /* 3. Base Tab Style (Inactive) */
+        div[data-testid="stRadio"] label {
+            background-color: transparent !important;
+            padding: 8px 25px !important;
+            border-radius: 9px !important;
+            margin: 0px 3px !important;
+            cursor: pointer !important;
+            border: none !important;
+            transition: all 0.2s ease-in-out;
+            font-weight: 500;
+            color: #555;
+        }
+
+        /* 4. Active Tab Highlighting */
+        /* Targets the label when the internal input is checked */
+        div[data-testid="stRadio"] label:has(input[checked]),
+        div[data-testid="stRadio"] label[data-checked="true"] {
+            background-color: white !important;
+            box-shadow: 0px 2px 8px rgba(0,0,0,0.1) !important;
+            color: #FF4B4B !important;
+        }
+
+        /* Ensure label text is visible, centered, and inherit color from state */
+        div[data-testid="stRadio"] label p {
+            margin: 0px !important;
+            font-size: 16px;
+            color: inherit !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)

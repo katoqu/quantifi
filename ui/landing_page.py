@@ -48,5 +48,4 @@ def _render_summary_card(metric, cat_map):
         # Instead of a form, we set a query param and change the view mode
         if st.button(f"➕ Record {m_name}", key=f"rec_{mid}", use_container_width=True):
             st.query_params["metric_id"] = mid
-            st.session_state["view_mode"] = "Record Data"
             st.rerun()
