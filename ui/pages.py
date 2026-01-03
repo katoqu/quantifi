@@ -10,8 +10,8 @@ from ui import landing_page, metrics, capture
 
 def tracker_page():
     """
-    Main dashboard controller. 
-    Uses Session State as the single source of truth to avoid 'Duplicate Value' errors.
+    Main dashboard controller optimized for mobile. 
+    Uses Session State as the single source of truth for 'Sticky' selection.
     """
     # 1. Fetch metrics from the database
     all_metrics = models.get_metrics() or []
@@ -21,23 +21,28 @@ def tracker_page():
         st.info("👋 Welcome! Go to Settings to create your first tracking target.")
         return
 
-    # Apply the visual theme for the custom tabs
-    apply_custom_tabs_css()
+    # 2. Apply the visual theme for the custom tabs (from utils.py)
+    utils.apply_custom_tabs_css()
 
-    # --- 1. STATE INITIALIZATION ---
+    # --- 3. STATE INITIALIZATION ---
     if "tracker_view_selector" not in st.session_state:
         st.session_state["tracker_view_selector"] = "Overview"
+    
+    # Initialize the sticky metric ID if it doesn't exist
+    if "last_active_mid" not in st.session_state:
+        st.session_state["last_active_mid"] = None
 
-    # --- 2. HANDLE DEEP LINK TRIGGER (e.g., from Dashboard "➕" button) ---
+    # --- 4. HANDLE DEEP LINK TRIGGER (e.g., from Dashboard "➕" button) ---
     requested_mid = st.query_params.get("metric_id")
     if requested_mid:
-        # Update session state to switch view and store the requested ID
+        # Switch view to recording mode
         st.session_state["tracker_view_selector"] = "Record Data"
-        st.session_state["requested_metric_id"] = requested_mid
-        # Clear query params to prevent re-triggering on refresh
+        # Set this as the sticky active metric
+        st.session_state["last_active_mid"] = requested_mid
+        # Clear query params to prevent re-triggering on browser refresh
         st.query_params.clear()
 
-    # --- 3. RENDER NAVIGATION (Segmented Radio Tabs) ---
+    # --- 5. RENDER NAVIGATION (Mobile Segmented Tabs) ---
     view_options = ["Overview", "Record Data"]
     st.radio(
         "Navigation", 
@@ -50,25 +55,22 @@ def tracker_page():
     view_mode = st.session_state["tracker_view_selector"]
     st.divider()
 
-    # --- 4. ROUTING LOGIC ---
+    # --- 6. ROUTING LOGIC ---
     if view_mode == "Overview":
-        # Clear the requested ID when returning to overview to reset selection later
-        if "requested_metric_id" in st.session_state:
-            del st.session_state["requested_metric_id"]
         landing_page.show_landing_page()
         
     else:
         # --- RECORD DATA VIEW ---
-        active_mid = st.session_state.get("requested_metric_id")
+        # Get the ID from the sticky session state
+        active_id = st.session_state.get("last_active_mid")
         
-        # FIX: Pass the 'active_mid' directly to the selector. 
-        # This allows metrics.select_metric to find the correct index in its 
-        # own internally sorted list, preventing the index-offset bug.
-        selected_metric = metrics.select_metric(all_metrics, target_id=active_mid)
+        # Pass the sticky ID to the selector to auto-focus the right metric
+        selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
         
         if selected_metric:
-            # Persist the selection in session state
-            st.session_state["requested_metric_id"] = selected_metric['id']
+            # Update the sticky state if the user manually changes selection in the dropdown
+            st.session_state["last_active_mid"] = selected_metric['id']
+            # Show the capture suite (Capture + Visualization)
             capture.show_tracker_suite(selected_metric)
 
 def editor_page():
@@ -81,43 +83,54 @@ def editor_page():
         st.info("No metrics found. Please create metrics in Settings before editing data.")
         return
 
-    # 2. Initialize state for this specific page
-    # This ensures the selection persists after a save/rerun
-    if "editor_metric_id" not in st.session_state:
-        st.session_state["editor_metric_id"] = None
+    # 2. SMART DEFAULT: Link to the shared global active metric key
+    if "last_active_mid" not in st.session_state:
+        st.session_state["last_active_mid"] = None
 
-    # 3. Call selector using the new target_id parameter
-    active_id = st.session_state["editor_metric_id"]
+    # 3. Use the shared 'sticky' ID
+    active_id = st.session_state["last_active_mid"]
     selected_metric = metrics.select_metric(metrics_list, target_id=active_id)
     
     if selected_metric:
-        # 4. Update state with the user's current selection
-        st.session_state["editor_metric_id"] = selected_metric['id']
+        # 4. Update the shared state so it sticks if changed here too
+        st.session_state["last_active_mid"] = selected_metric['id']
         data_editor.show_data_management_suite(selected_metric)
 
 def configure_page():
-    """Refactored Settings page using Tabs for a cleaner UX."""
+    """
+    Refactored Settings: Distinguishes between Metric management 
+    and Category organization using a task-oriented tab structure.
+    """
     st.title("Settings & Maintenance")
     
     cats = models.get_categories() or []
     metrics_list = models.get_metrics() or []
     last_ts = models.get_last_backup_timestamp()
 
-    tab_metrics, tab_cats, tab_life = st.tabs([
-        "📊 Manage Metrics", 
+    # Semantic separation: Metrics vs Categories vs System
+    tab_metrics, tab_new_metric, tab_cats, tab_system = st.tabs([
+        "📊 Edit Metric", 
+        "✨ New Metric",
         "📁 Categories", 
-        "💾 Data Lifecycle"
+        "⚙️ Export & Import"
     ])
 
     with tab_metrics:
+        # Focus: Modifying existing tracking targets
         if metrics_list:
             metrics.show_edit_metrics(metrics_list, cats)
-            st.divider()
+        else:
+            st.info("No metrics found yet.")
+
+    with tab_new_metric:
+        # Focus: Pure creation flow (clears the screen of existing data)
         metrics.show_create_metric(cats)
 
     with tab_cats:
+        # Focus: Organizational groups (Mirrors your current compact logic)
         manage_lookups.show_manage_lookups()
 
-    with tab_life:
+    with tab_system:
+        # Focus: Backend and data lifecycle
         st.caption(f"🛡️ Last local backup: **{last_ts}**")
         importer.show_data_lifecycle_management()

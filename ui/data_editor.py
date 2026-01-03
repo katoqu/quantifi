@@ -8,52 +8,70 @@ from logic import editor_handler
 @st.dialog("Confirm Changes")
 def _confirm_save_dialog(mid, editor_key, state_key):
     """
-    Pops up a confirmation dialog showing a summary of pending changes.
+    Dynamically generates descriptive logs including 'From -> To' transitions.
     """
     summary = editor_handler.get_change_summary(state_key, editor_key)
-    st.markdown(f"**🗑️ Deleting:** {summary['del']} | **📝 Updating:** {summary['upd']} | **➕ Adding:** {summary['add']}")
+    master_draft = st.session_state[state_key]
+    
+    # Access the original baseline for comparison
+    saved_key = f"saved_data_{mid}"
+    baseline_df = st.session_state.get(saved_key)
+    
+    st.markdown("### 📋 Review Edits")
+    
+    # 1. Summary Metrics
+    m_col1, m_col2, m_col3 = st.columns(3)
+    m_col1.metric("New", summary['add'])
+    m_col2.metric("Edit", summary['upd'])
+    m_col3.metric("Del", summary['del'], delta_color="inverse")
+    
+    st.divider()
+    
+    # 2. Detailed Card-based Change Log
+    changes = master_draft[master_draft["Change Log"] != ""]
+    
+    if not changes.empty:
+        for _, row in changes.iterrows():
+            with st.container(border=True):
+                if row["Change Log"] == "🔴":
+                    st.markdown("**🔴 DELETING ENTRY**")
+                else:
+                    # Logic to find the 'From' value
+                    from_val = "???"
+                    if baseline_df is not None and pd.notna(row.get('id')):
+                        # Locate the original value by ID
+                        orig_row = baseline_df[baseline_df['id'] == row['id']]
+                        if not orig_row.empty:
+                            from_val = orig_row.iloc[0]['value']
+                    
+                    st.markdown(f"**🟡 UPDATED VALUE**")
+                    st.write(f"**{from_val}** ➡️ **{row['value']}**") # High-contrast comparison
+                
+                st.caption(f"📅 {row['recorded_at'].strftime('%d %b, %H:%M')}")
+    else:
+        st.info("No changes to review.")
 
-    if st.button("Confirm & Push to Backend", type="primary", use_container_width=True):
-        with st.spinner("Saving..."):
-            editor_handler.execute_save(mid, state_key, editor_key)
-        st.success("Changes saved!")
-        st.rerun()
+    if st.button("Confirm & Save", type="primary", use_container_width=True):
+        editor_handler.execute_save(mid, state_key, editor_key)
+        utils.finalize_action("Changes saved!")
 
 def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
     """
-    Renders the data editor table with range-aware column configurations.
-    Enforces min/max bounds directly in the UI based on metric type.
+    Renders the table with the 'Status' emoji visible but narrow.
     """
     editor_key = f"editor_{mid}"
-    
-    # 1. Determine Range and Step constraints
     utype = selected_metric.get("unit_type", "float")
-    is_range = utype == "integer_range"
-    
-    # Configure numeric bounds if applicable
-    r_min = float(selected_metric.get("range_start", 0)) if is_range else None
-    r_max = float(selected_metric.get("range_end", 10)) if is_range else None
-    
-    # Use step=1 for integers to prevent decimal noise
-    step = 1 if (is_range or utype == "integer") else 0.1
+    step = 1 if (utype in ["integer", "integer_range"]) else 0.1
 
     st.data_editor(
         view_df,
+        # 'Change Log' is visible as 'Status' but kept narrow
         column_order=["Select", "recorded_at", "value", "Change Log"],
         column_config={
-            "Select": st.column_config.CheckboxColumn("🗑️"),
-            "recorded_at": st.column_config.DatetimeColumn(
-                "Date", 
-                format="D MMM, HH:mm",
-                timezone="UTC" # Aligns with database/utils UTC logic
-            ),
-            "value": st.column_config.NumberColumn(
-                f"Value ({m_unit})",
-                min_value=r_min,
-                max_value=r_max,
-                step=step
-            ),
-            "Change Log": st.column_config.TextColumn("Status", disabled=True),
+            "Select": st.column_config.CheckboxColumn("🗑️", width="small"),
+            "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM, HH:mm", width="medium"),
+            "value": st.column_config.NumberColumn(f"{m_unit}", step=step, width="small"),
+            "Change Log": st.column_config.TextColumn("Status", width="small", disabled=True),
         },
         key=editor_key,
         on_change=lambda: editor_handler.sync_editor_changes(state_key, editor_key, view_df.index),
@@ -62,14 +80,13 @@ def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
         hide_index=True
     )
 
-    # Compact Action Row
+    # Action Row
     col_save, col_clear = st.columns(2)
     with col_save:
         if st.button("💾 Save", type="primary", use_container_width=True):
             _confirm_save_dialog(mid, f"editor_{mid}", state_key)
     with col_clear:
-        unsaved = editor_handler.has_unsaved_changes(state_key)
-        if st.button("🧹 Clear", use_container_width=True, disabled=not unsaved):
+        if st.button("🧹 Reset", use_container_width=True, disabled=not editor_handler.has_unsaved_changes(state_key)):
             editor_handler.reset_editor_state(state_key, mid)
             st.rerun()
 
@@ -123,16 +140,14 @@ def show_data_management_suite(selected_metric):
     abs_min, abs_max = editor_handler.get_date_bounds(dfe, mid)
 
     # --- COMPACT FILTER ROW ---
-    with st.expander("📅 Filter Date Range", expanded=False):
-        f_col1, f_col2 = st.columns(2)
+    st.subheader("📅 Filter Range")
+    with st.container(border=True):
+            f_col1, f_col2 = st.columns(2)
         
-        # Ensure we have valid dates from session state or fallback to database bounds
-        default_start, default_end = st.session_state.get(f"prev_date_{mid}", (abs_min, abs_max))
+            default_start, default_end = st.session_state.get(f"prev_date_{mid}", (abs_min, abs_max))
         
-        # We use standard keys but ensure the variables are populated
-        start_date = f_col1.date_input("Start", value=default_start, key=f"start_date_{mid}")
-        end_date = f_col2.date_input("End", value=default_end, key=f"end_date_{mid}")
-
+            start_date = f_col1.date_input("Start", value=default_start, key=f"start_date_{mid}")
+            end_date = f_col2.date_input("End", value=default_end, key=f"end_date_{mid}")
     # 5. NULL-SAFE COMPARISON
     # This prevents the '<=' not supported between NoneType error
     if start_date is not None and end_date is not None:

@@ -2,82 +2,73 @@ import streamlit as st
 import models
 import utils
 
-import streamlit as st
-import models
-import utils
-
-import streamlit as st
-import models
-import utils
-
 def show_manage_lookups():
     """
-    Ultra-compact, single-line category management.
-    Optimized for maximum information density on mobile screens.
+    Refactored Category Management: Uses the sticky 'Focus' pattern 
+    to match the Metric Editor layout.
     """
-    st.subheader("📁 Categories")
-    cats = models.get_categories() or []
+    st.subheader("Manage Categories")
     
-    # 1. Header with 'Add' Popover
-    col_info, col_btn = st.columns([1, 1])
-    with col_info:
-        st.caption("Manage groups")
-    with col_btn:
-        with st.popover("➕ New", use_container_width=True):
-            new_name = st.text_input("Name", key="new_cat_input")
-            if st.button("Save", type="primary", use_container_width=True):
-                if new_name.strip():
-                    normalized = utils.normalize_name(new_name)
-                    models.create_category(normalized)
-                    # This triggers the toast and the rerun that closes the popover
-                    utils.finalize_action(f"Created: {normalized.title()}")
-
-    # 2. Filter Box
-    cat_names = [c['name'].title() for c in cats]
-    selected_search = st.selectbox(
-        "Search",
-        options=["— All —"] + sorted(cat_names),
-        index=0,
-        label_visibility="collapsed"
-    )
-
-    filtered = [
-        c for c in cats 
-        if selected_search == "— All —" or c['name'].lower() == selected_search.lower()
-    ]
-
-    if not filtered:
-        st.info("No categories.")
+    # 1. Fetch Categories
+    cats = models.get_categories() or []
+    if not cats:
+        st.info("No categories found. Use the 'New' button to create one.")
         return
 
-    metrics_list = models.get_metrics() or []
+    # 2. Search & Select (Sticky Pattern)
+    # We store the selected category ID in session state to keep it 'sticky'
+    if "last_active_cat_id" not in st.session_state:
+        st.session_state["last_active_cat_id"] = None
 
-    # 3. Ultra-Compact List
-    for cat in filtered:
-        usage_count = sum(1 for m in metrics_list if m.get('category_id') == cat['id'])
+    cat_options = {c['id']: c['name'].title() for c in cats}
+    sorted_cat_ids = sorted(cat_options.keys(), key=lambda x: cat_options[x].lower())
+    
+    # Calculate index for stickiness
+    default_index = 0
+    active_id = st.session_state["last_active_cat_id"]
+    if active_id and active_id in sorted_cat_ids:
+        default_index = sorted_cat_ids.index(active_id)
+
+    selected_cat_id = st.selectbox(
+        "🔍 Search or Select Category",
+        options=sorted_cat_ids,
+        format_func=lambda x: cat_options[x],
+        index=default_index,
+        key="cat_search_selector"
+    )
+    
+    # Update global stickiness
+    st.session_state["last_active_cat_id"] = selected_cat_id
+    
+    # 3. The Focused Editor Block
+    # Fetch details for the focused category
+    target_cat = next((c for c in cats if c['id'] == selected_cat_id), None)
+    
+    if target_cat:
+        metrics_list = models.get_metrics() or []
+        usage_count = sum(1 for m in metrics_list if m.get('category_id') == target_cat['id'])
         
-        with st.container(border=True):
-            c1, c2, c3 = st.columns([3, 1, 1])
-            
-            with c1:
-                st.markdown(f"**{cat['name'].title()}** ({usage_count})")
-            
-            with c2:
-                with st.popover("📝", use_container_width=True):
-                    upd_val = st.text_input("Rename", value=cat['name'], key=f"ren_v_{cat['id']}")
-                    if st.button("Update", key=f"upd_v_{cat['id']}", type="primary", use_container_width=True):
-                        new_cat_name = utils.normalize_name(upd_val)
-                        models.update_category(cat['id'], new_cat_name)
-                        # finalize_action ensures the popover clears upon the subsequent rerun
-                        utils.finalize_action(f"Renamed to: {new_cat_name.title()}")
+        _render_category_editor_block(target_cat, usage_count)
 
-            with c3:
-                if usage_count == 0:
-                    with st.popover("🗑️", use_container_width=True):
-                        st.warning("Delete this category?")
-                        if st.button("Confirm Delete", key=f"del_v_{cat['id']}", type="secondary", use_container_width=True):
-                            models.delete_category(cat['id'])
-                            # Use centralized finalize_action with a custom icon
-                            utils.finalize_action(f"Deleted: {cat['name'].title()}", icon="🗑️")
-                else:
-                    st.button("🔒", help="In use by metrics", disabled=True, use_container_width=True, key=f"lck_v_{cat['id']}")
+def _render_category_editor_block(cat, usage_count):
+    """Vertical focused editor matching the Metric editor style."""
+    with st.container(border=True):
+        st.caption(f"Editing Category (Used by {usage_count} metrics)")
+        
+        # Action: Rename
+        upd_val = st.text_input("Category Name", value=cat['name'].title(), key=f"cat_nm_{cat['id']}")
+        
+        if st.button("💾 Save Changes", type="primary", use_container_width=True):
+            new_name = utils.normalize_name(upd_val)
+            models.update_category(cat['id'], new_name)
+            utils.finalize_action(f"Renamed to: {new_name.title()}")
+
+        # Action: Delete (Only if unused)
+        st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True)
+        if usage_count == 0:
+            if st.button("🗑️ Delete Category", type="secondary", use_container_width=True):
+                models.delete_category(cat['id'])
+                utils.finalize_action(f"Deleted: {cat['name'].title()}", icon="🗑️")
+        else:
+            st.button("🔒 Locked (In Use)", disabled=True, use_container_width=True, 
+                      help="Categories used by metrics cannot be deleted.")

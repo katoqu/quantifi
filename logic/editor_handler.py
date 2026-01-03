@@ -6,7 +6,6 @@ import datetime as dt
 
 def get_date_bounds(dfe, mid):
     """Calculates boundaries and ensures baseline state exists."""
-    # FIX: Explicit format for bounds calculation
     dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='ISO8601', utc=True)
     abs_min = dfe['recorded_at'].min().date()
     abs_max = dfe['recorded_at'].max().date()
@@ -33,7 +32,6 @@ def is_date_conflict(mid, state_key):
     if curr_start != prev_start or curr_end != prev_end:
         if has_unsaved_changes(state_key):
             return True
-        # Sync baseline if no edits exist to allow UI refresh
         st.session_state[prev_key] = (curr_start, curr_end)
     return False
 
@@ -68,47 +66,66 @@ def revert_date_range(mid):
         st.session_state[f"end_date_{mid}"] = prev_end
 
 def sync_editor_changes(state_key, editor_key, view_df_indices):
-    """Maps visible table edits back to the master session state dataframe."""
+    """
+    Separates table cues (emojis) from detailed audit logs.
+    """
     state = st.session_state[editor_key]
     df = st.session_state[state_key]
     
     for idx, changes in state.get("edited_rows", {}).items():
         actual_idx = view_df_indices[idx]
         for col, val in changes.items():
+            # Apply the update
             df.at[actual_idx, col] = val
+            
+            # 1. TABLE CUE: Short emoji for narrow mobile screens
             if col == "Select":
-                df.at[actual_idx, "Change Log"] = "🗑️ DELETED" if val else ""
-            elif "🗑️" not in str(df.at[actual_idx, "Change Log"]):
-                df.at[actual_idx, "Change Log"] = "📝 Edited"
+                df.at[actual_idx, "Change Log"] = "🔴" if val else ""
+            elif "🔴" not in str(df.at[actual_idx, "Change Log"]):
+                # Mark as edited without long text
+                df.at[actual_idx, "Change Log"] = "🟡"
 
 def get_change_summary(state_key, editor_key):
-    """Aggregates change types for the confirmation dialog."""
+    """
+    Aggregates change types using the new single-emoji markers.
+    """
     df = st.session_state[state_key]
     state = st.session_state[editor_key]
     return {
-        "del": len(df[df["Change Log"] == "🗑️ DELETED"]),
-        "upd": len(df[df["Change Log"].str.contains("📝", na=False)]),
+        # Identify rows by their specific emoji markers
+        "del": len(df[df["Change Log"] == "🔴"]),
+        "upd": len(df[df["Change Log"] == "🟡"]),
         "add": len(state.get("added_rows", []))
     }
 
 def execute_save(mid, state_key, editor_key):
-    """Commits all deletions, updates, and new rows to Supabase with validation."""
+    """
+    Commits all deletions, updates, and new rows to Supabase.
+    Updated to recognize single-emoji status markers.
+    """
     df = st.session_state[state_key]
     state = st.session_state[editor_key]
 
+    # Fetch metric metadata for range validation
     res = models._safe_execute(models.sb.table("metrics").select("*").eq("id", mid))
     metric = res.data[0] if res and res.data else {}
     is_range = metric.get("unit_type") == "integer_range"
     r_min = metric.get("range_start", 0)
     r_max = metric.get("range_end", 10)
     
-    for _, row in df[df["Change Log"] == "🗑️ DELETED"].iterrows():
+    # 1. PROCESS DELETIONS
+    # Logic now looks specifically for the red circle emoji
+    for _, row in df[df["Change Log"] == "🔴"].iterrows():
         if pd.notna(row.get("id")):
             models.delete_entry(row["id"])
 
-    for _, row in df[df["Change Log"].str.contains("📝", na=False)].iterrows():
+    # 2. PROCESS UPDATES
+    # Logic now looks specifically for the yellow circle emoji
+    for _, row in df[df["Change Log"] == "🟡"].iterrows():
         rid = row.get("id")
         val = float(row["value"])
+        
+        # Range Validation
         if is_range and not (r_min <= val <= r_max):
             st.error(f"Save failed: {val} is outside valid range ({r_min}-{r_max})")
             return
@@ -116,10 +133,10 @@ def execute_save(mid, state_key, editor_key):
         if pd.notna(rid):
             models.update_entry(rid, {
                 "value": val,
-                # FIX: Handle ISO8601 format during update
                 "recorded_at": pd.to_datetime(row["recorded_at"], format='ISO8601', utc=True).isoformat()
             })
 
+    # 3. PROCESS ADDITIONS (Unchanged, as they come from 'added_rows' state)
     for row in state.get("added_rows", []):
         if row.get("value") is not None:
             val = float(row["value"])
@@ -129,13 +146,11 @@ def execute_save(mid, state_key, editor_key):
 
             models.create_entry({
                 "value": val,
-                # FIX: Handle ISO8601 format during addition
                 "recorded_at": pd.to_datetime(row.get("recorded_at", dt.datetime.now()), format='ISO8601', utc=True).isoformat(),
                 "metric_id": mid
             })
 
+    # Reset state and provide feedback
+
     reset_editor_state(state_key, mid)
-
-    # Centralized finish logic
     utils.finalize_action("Changes pushed to database")
-
