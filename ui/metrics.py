@@ -166,17 +166,26 @@ def show_create_metric(cats):
             # LOCATION 2: Centralized toast and rerun
             utils.finalize_action(f"Created: {mn.strip().title()}")
 
-def select_metric(metrics, index=0):
+def select_metric(metrics, target_id=None): # Changed index to target_id
     if not metrics:
         return None
     
+    # 1. Sort the metrics first so the list matches the UI
     sorted_metrics = sorted(metrics, key=lambda x: x.get("name", "").lower())
     metric_options = [utils.format_metric_label(m) for m in sorted_metrics]
+    
+    # 2. Find the correct index based on the target_id (if provided)
+    default_index = 0
+    if target_id:
+        for i, m in enumerate(sorted_metrics):
+            if m['id'] == target_id:
+                default_index = i
+                break
     
     selected_label = st.selectbox(
         "Select Metric",
         options=metric_options,
-        index=index,
+        index=default_index,
     )
     
     for m in sorted_metrics:
