@@ -2,44 +2,22 @@ import streamlit as st
 import models
 import pandas as pd
 import auth
+from ui import visualize # Ensure your visualization module is imported
+
+import streamlit as st
+import models
+import pandas as pd
+import auth
+from ui import visualize
 
 def show_landing_page():
     """
-    Ultra-dense mobile dashboard. 
-    Forces columns to sit tight against each other with zero unnecessary gaps.
+    Simplified Mobile Dashboard with one-handed category navigation.
     """
-    # 1. Inject CSS for tight horizontal alignment
-    st.markdown("""
-        <style>
-        [data-testid="stHorizontalBlock"] {
-            flex-wrap: nowrap !important;
-            gap: 0.3rem !important;
-            justify-content: flex-start !important;
-            align-items: center !important;
-        }
-        [data-testid="column"] {
-            min-width: 0px !important;
-            flex-shrink: 1 !important;
-            width: auto !important;
-        }
-        [data-testid="stHorizontalBlock"] > div:first-child {
-            padding-left: 0px !important;
-            padding-right: 0px !important;
-            flex: 0 1 auto !important;
-        }
-        [data-testid="stHorizontalBlock"] > div:last-child {
-            padding-right: 4px !important;
-            padding-left: 2px !important;
-        }
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding: 0.3rem !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
     user = auth.get_current_user()
     user_display = user.email.split('@')[0].capitalize() if user else "User"
-    st.title(f"🚀 Welcome, {user_display}")
+    
+    st.markdown(f"### 🚀 Welcome, {user_display}")
     
     metrics_list = models.get_metrics() or []
     if not metrics_list:
@@ -49,85 +27,135 @@ def show_landing_page():
     cats = models.get_categories() or []
     cat_map = {c['id']: c['name'].title() for c in cats}
     
-    # 3. Sorting Logic: Fixed Timezone comparison
+    # 1. SETUP CATEGORY NAVIGATION (One-Handed Pills)
+    # Define options and ensure a persistent selection state
+    cat_options = ["All"] + sorted([c['name'].title() for c in cats])
+    
+    if "active_cat_filter" not in st.session_state:
+        st.session_state["active_cat_filter"] = "All"
+
+    # Use st.pills as the lightweight alternative
+    selected_cat = st.pills(
+        "📁 Filter Categories",
+        options=cat_options,
+        selection_mode="single",
+        default=st.session_state["active_cat_filter"],
+        key="cat_filter_pill",
+        label_visibility="collapsed"
+    )
+    
+    # Sync choice to session state
+    current_filter = selected_cat if selected_cat else "All"
+    st.session_state["active_cat_filter"] = current_filter
+
+    # 2. SORTING LOGIC (Recency-first)
     scored_metrics = []
-    # Create a timezone-aware floor for comparison
     ts_min = pd.Timestamp.min.tz_localize('UTC') 
 
     for m in metrics_list:
         entries = models.get_entries(metric_id=m['id'])
         if entries:
-            # Convert to datetime and ensure UTC awareness for the max calculation
-            timestamps = pd.to_datetime([e['recorded_at'] for e in entries], format='ISO8601', utc=True)
+            timestamps = pd.to_datetime([e['recorded_at'] for e in entries], format='mixed', utc=True)
             latest_ts = max(timestamps) 
         else:
             latest_ts = ts_min
-            
         scored_metrics.append((latest_ts, m, entries))
     
-    # Now both latest_ts and ts_min are UTC-aware, so sorting works
     scored_metrics.sort(key=lambda x: x[0], reverse=True)
 
-    for _, m, entries in scored_metrics:
-        _render_true_single_row(m, cat_map, entries)
+    # 3. APPLY CATEGORY FILTER
+    display_metrics = []
+    for latest_ts, m, entries in scored_metrics:
+        m_cat = cat_map.get(m.get('category_id'), "Uncat")
+        if current_filter == "All" or m_cat == current_filter:
+            display_metrics.append((latest_ts, m, entries))
 
-def _render_true_single_row(metric, cat_map, entries):
+    # 4. RENDER GRID
+    if not display_metrics:
+        st.info(f"No metrics found in the '{current_filter}' category.")
+        return
+
+    cols = st.columns(2)
+    for i, (_, m, entries) in enumerate(display_metrics):
+        with cols[i % 2]:
+            _render_action_card(m, cat_map, entries)
+
+@st.dialog("Advanced Analytics")
+def _show_advanced_viz_dialog(metric, entries):
+    """
+    Detailed analytics overlay with statistical trends.
+    """
+    st.subheader(f"📈 {metric['name'].title()} Trends")
+    
+    if not entries:
+        st.info("Record more data to see advanced trends.")
+        return
+
+    df = pd.DataFrame(entries)
+    df['recorded_at'] = pd.to_datetime(df['recorded_at'], format='mixed', utc=True)
+    df = df.sort_values("recorded_at")
+
+    # 1. Advanced Metrics: 7-Day Moving Average & Period Change
+    c1, c2 = st.columns(2)
+    
+    if len(df) >= 7:
+        ma7 = df['value'].rolling(window=7).mean().iloc[-1]
+        diff = df['value'].iloc[-1] - ma7
+        c1.metric("7D Avg", f"{ma7:.1f}", delta=f"{diff:.1f}", delta_color="inverse")
+    
+    if len(df) >= 2:
+        last_val = df['value'].iloc[-1]
+        prev_val = df['value'].iloc[-2]
+        pct_change = ((last_val - prev_val) / prev_val) * 100
+        c2.metric("Last Change", f"{last_val:.1f}", delta=f"{pct_change:.1f}%")
+
+    st.divider()
+
+    # 2. Reused Visualizations
+    visualize.show_visualizations(df, metric.get('unit_name', ''), metric['name'])
+    
+    # 3. Direct Navigation
+    if st.button("Go to Full History", use_container_width=True):
+        st.session_state["last_active_mid"] = metric['id']
+        st.query_params["metric_id"] = metric['id']
+        st.rerun()
+
+def _render_action_card(metric, cat_map, entries):
+    """
+    High-contrast card with dual actions: Log and Analyze.
+    """
     mid = metric['id']
     m_name = metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
+    m_unit = metric.get('unit_name', '')
     
-    count = len(entries)
-    last_date = "—"
-    latest_val = 0.0
-    avg_val = 0.0
+    latest_val = "—"
+    last_date = ""
 
-    if count > 0:
+    if entries:
         df = pd.DataFrame(entries)
-        # Ensure UTC and localize to local or generic format for display
-        df['recorded_at'] = pd.to_datetime(df['recorded_at'], format='ISO8601', utc=True)
-        last_date = df['recorded_at'].max().strftime('%d/%m')
-        latest_val = df["value"].iloc[-1]
-        avg_val = df["value"].mean()
+        df['recorded_at'] = pd.to_datetime(df['recorded_at'], format='mixed', utc=True)
+        latest_val = f"{df['value'].iloc[-1]:.1f}"
+        last_date = df['recorded_at'].max().strftime('%d %b')
 
     with st.container(border=True):
-        cols = st.columns([0.8, 3.5, 0.4])
+        # Header with brand accent color
+        st.markdown(f"""
+            <div style="margin-bottom: -5px;">
+                <span style="font-size: 0.6rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;">{cat_name}</span>
+                <h4 style="margin: 0; font-size: 1.0rem; line-height: 1.2;">{m_name}</h4>
+            </div>
+        """, unsafe_allow_html=True)
         
-        with cols[0]:
-            st.markdown(f"""
-                <div style="line-height: 1; min-width: 60px;">
-                    <b style="font-size: 0.75rem;">{m_name}</b><br>
-                    <span style="font-size: 0.5rem; opacity: 0.7;">📁 {cat_name}</span>
-                </div>
-            """, unsafe_allow_html=True)
-
-        with cols[1]:
-            st.markdown(f"""
-                <div style="display: flex; justify-content: space-between; align-items: center; 
-                            background: var(--secondary-background-color); border-radius: 6px; 
-                            padding: 4px; border: 1px solid var(--border-color); height: 36px; width: 100%;">
-                    <div style="text-align: center; flex: 1;">
-                        <div style="font-size: 0.4rem; opacity: 0.6;">Latest</div>
-                        <div style="font-size: 0.7rem; font-weight: bold;">{latest_val:.1f}</div>
-                    </div>
-                    <div style="width: 1px; height: 12px; background: var(--border-color);"></div>
-                    <div style="text-align: center; flex: 1;">
-                        <div style="font-size: 0.4rem; opacity: 0.6;">Avg</div>
-                        <div style="font-size: 0.7rem; font-weight: bold;">{avg_val:.1f}</div>
-                    </div>
-                    <div style="width: 1px; height: 12px; background: var(--border-color);"></div>
-                    <div style="text-align: center; flex: 1;">
-                        <div style="font-size: 0.4rem; opacity: 0.6;">Entries</div>
-                        <div style="font-size: 0.7rem; font-weight: bold;">{count}</div>
-                    </div>
-                    <div style="width: 1px; height: 12px; background: var(--border-color);"></div>
-                    <div style="text-align: center; flex: 1;">
-                        <div style="font-size: 0.4rem; opacity: 0.6;">Last entry</div>
-                        <div style="font-size: 0.65rem; font-weight: bold;">{last_date}</div>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
-        with cols[2]:
-            if st.button("➕", key=f"rec_{mid}", use_container_width=True):
+        st.metric(label=last_date if last_date else "No Data", value=f"{latest_val} {m_unit}")
+        
+        # Action Row: Primary Log and Secondary Analytics
+        btn_col, viz_col = st.columns([4, 1.2])
+        with btn_col:
+            if st.button("➕ Log", key=f"btn_{mid}", use_container_width=True, type="primary"):
+                st.session_state["last_active_mid"] = mid
                 st.query_params["metric_id"] = mid
                 st.rerun()
+        with viz_col:
+            if st.button("📊", key=f"viz_{mid}", use_container_width=True):
+                _show_advanced_viz_dialog(metric, entries)

@@ -42,12 +42,16 @@ def tracker_page():
         # Clear query params to prevent re-triggering on browser refresh
         st.query_params.clear()
 
-    # --- 5. RENDER NAVIGATION (Mobile Segmented Tabs) ---
+
+# --- 5. RENDER NAVIGATION (Modern Segmented Tabs) ---
     view_options = ["Overview", "Record Data"]
-    st.radio(
+    
+    # Use segmented_control for a high-quality mobile tab feel
+    st.segmented_control(
         "Navigation", 
-        view_options, 
-        horizontal=True, 
+        options=view_options, 
+        selection_mode="single",
+        default="Overview", # Sets the initial view
         label_visibility="collapsed",
         key="tracker_view_selector" 
     )

@@ -104,13 +104,15 @@ def _render_conflict_warning(mid, state_key):
 
 def show_data_management_suite(selected_metric):
     """
-    Mobile-optimized data management with integrated range enforcement.
-    Includes Null-safety for date comparisons.
+    Mobile-optimized data management.
+    Fakes a single lightweight header by using the label of the first date input.
     """
     # 1. Fetch fresh data and metadata
     dfe, m_unit, m_name = utils.collect_data(selected_metric)
     mid = selected_metric.get("id")
     state_key = f"data_{mid}"
+    st.session_state["last_active_mid"] = mid
+        
     saved_key = f"saved_data_{mid}"
     
     if dfe is None or dfe.empty:
@@ -139,23 +141,34 @@ def show_data_management_suite(selected_metric):
     # 4. FETCH BOUNDS WITH FALLBACKS
     abs_min, abs_max = editor_handler.get_date_bounds(dfe, mid)
 
-    # --- COMPACT FILTER ROW ---
-    st.subheader("📅 Filter Range")
-    with st.container(border=True):
-            f_col1, f_col2 = st.columns(2)
-        
-            default_start, default_end = st.session_state.get(f"prev_date_{mid}", (abs_min, abs_max))
-        
-            start_date = f_col1.date_input("Start", value=default_start, key=f"start_date_{mid}")
-            end_date = f_col2.date_input("End", value=default_end, key=f"end_date_{mid}")
-    # 5. NULL-SAFE COMPARISON
-    # This prevents the '<=' not supported between NoneType error
+    # --- FAKED LIGHTWEIGHT HEADER ---
+    # We use the label of the first column as the "header" for both fields.
+    # The second column gets a space " " as a label to keep the boxes aligned.
+    f_col1, f_col2 = st.columns(2)
+    
+    default_start, default_end = st.session_state.get(f"prev_date_{mid}", (abs_min, abs_max))
+
+    # Column 1 carries the actual descriptive label
+    start_date = f_col1.date_input(
+        "📅 Filter Date Range", 
+        value=default_start, 
+        key=f"start_date_{mid}"
+    )
+    
+    # Column 2 uses a space to stay vertically level with Column 1
+    end_date = f_col2.date_input(
+        " ", 
+        value=default_end, 
+        key=f"end_date_{mid}"
+    )
+
+    # 5. NULL-SAFE COMPARISON & RENDERING
     if start_date is not None and end_date is not None:
         if start_date <= end_date:
             # CONFLICT HANDLING
             if editor_handler.is_date_conflict(mid, state_key):
                 _render_conflict_warning(mid, state_key)
-                return 
+                return
 
             # RENDER TABLE
             master_draft = st.session_state[state_key]
