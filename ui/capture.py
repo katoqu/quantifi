@@ -25,17 +25,13 @@ def show_capture(selected_metric):
     mid = selected_metric.get("id")
     unit_name = selected_metric.get("unit_name", "")
     utype = selected_metric.get("unit_type", "float")
-    
-    # --- 1. SMART DEFAULT LOGIC (Stable) ---
-    entries = models.get_entries(metric_id=mid)
-    if entries:
-        last_entry = sorted(entries, key=lambda x: x['recorded_at'])[-1]
+
+    # --- 1. SMART DEFAULT VALUE ---    
+    last_entry = models.get_latest_entry_only(mid)
+    if last_entry:
         smart_default = last_entry['value']
     else:
         smart_default = float(selected_metric.get("range_start", 0.0))
-
-    if "use_time_sticky" not in st.session_state:
-        st.session_state["use_time_sticky"] = False
 
     # --- 2. THE OUTER "FAKE" BOX ---
     # We use a container with a border to act as the primary visual frame
@@ -89,4 +85,5 @@ def show_capture(selected_metric):
                     "value": val, 
                     "recorded_at": final_dt.isoformat()
                 })
+                st.cache_data.clear()    
                 utils.finalize_action(f"Saved: {val} {unit_name}")

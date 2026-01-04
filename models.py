@@ -77,6 +77,19 @@ def get_all_entries_bulk():
         return None  # Prevents showing '0 entries' flash
     return res.data
 
+@st.cache_data(ttl=30) # Short TTL for active recording
+def get_latest_entry_only(metric_id):
+    """Fetches ONLY the single most recent record for smart defaults."""
+    res = _safe_execute(
+        sb.table("entries")
+        .select("*")
+        .eq("metric_id", metric_id)
+        .order("recorded_at", desc=True)
+        .limit(1), 
+        "Failed to fetch latest entry"
+    )
+    return res.data[0] if res and res.data else None
+
 # --- WRITE OPERATIONS ---
 
 def create_category(name: str):

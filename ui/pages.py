@@ -13,17 +13,12 @@ def tracker_page():
     Main dashboard controller optimized for mobile. 
     Uses Session State as the single source of truth for 'Sticky' selection.
     """
-    # 1. Fetch metrics from the database
+# 1. ALWAYS FETCH METRICS (Lightweight)
     all_metrics = models.get_metrics()
-    all_entries = models.get_all_entries_bulk()
     
-    # 2. THE LOADING GUARD
-    # We use a container to keep the spinner clean on mobile
-    if all_metrics is None or all_entries is None:
-        with st.container():
-            st.spacer(height=100) # Optional vertical centering
-            st.spinner("🔒 Securely syncing data...")
-        st.stop() # CRITICAL: Stop execution here so we don't hit the 'Welcome' check
+    if all_metrics is None:
+        st.spinner("Syncing metrics...")
+        st.stop()
         
     # 3. EMPTY STATE: Only show if we explicitly got an empty list []
     if not all_metrics:
@@ -74,6 +69,11 @@ def tracker_page():
 
     # --- 6. ROUTING LOGIC ---
     if view_mode == "Overview":
+        # ONLY fetch bulk entries when looking at the dashboard
+        all_entries = models.get_all_entries_bulk()
+        if all_entries is None:
+            st.spinner("Loading trends...")
+            st.stop()
         landing_page.show_landing_page( all_metrics, all_entries)
         
     else:

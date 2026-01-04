@@ -10,7 +10,11 @@ def init_session_state():
         "show_password_reset": False, 
         "show_recovery_form": False,
         "show_debug_panel": False,
-        "auth_debug": []
+        "auth_debug": [],
+        "use_time_sticky": False,          # Fixes the 'no key' error
+        "tracker_view_selector": "Overview", # Ensures smooth tab switching
+        "last_active_mid": None,           # For 'sticky' metric selection
+        "active_cat_filter": "All"         # For landing page filtering
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
