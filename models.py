@@ -27,9 +27,10 @@ def get_categories():
 def get_metrics():
     """Fetches all metrics with merged unit metadata."""
     res = _safe_execute(sb.table("metrics").select("*"), "Failed to fetch metrics")
-    if res and not res.data:
-        get_metrics.clear()
-    return res.data if res else []
+    if res is None:
+        return None    
+    # If res.data is [], it means the user truly has 0 metrics.
+    return res.data
 
 def get_entries(metric_id=None):
     """Fetches data entries, optionally filtered by metric."""

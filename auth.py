@@ -24,7 +24,9 @@ def init_session_state():
                 st.session_state.user = res.user
                 # Clear cache on initial load if a user is found to ensure 
                 # their specific metrics are loaded, not the public/empty ones.
-                st.cache_data.clear() 
+                if "initial_load_done" not in st.session_state:
+                    st.cache_data.clear()
+                    st.session_state.initial_load_done = True 
         except Exception as e:
             st.session_state.auth_debug.append(f"Session init error: {str(e)}")
 

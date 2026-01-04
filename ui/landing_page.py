@@ -11,10 +11,15 @@ def show_landing_page():
     - Prevents 'Welcome' screen flash by fetching data early.
     - Uses High-Density Action Strips for mobile.
     """
-# 1. FETCH DATA EARLY (Required for stats/viz in the dialog)
-    metrics_list = models.get_metrics() or []
+    # 1. FETCH DATA EARLY (Required for stats/viz in the dialog)
+    metrics_list = models.get_metrics()
     cats = models.get_categories() or []
     cat_map = {c['id']: c['name'].title() for c in cats}
+
+    # If models.get_metrics() returns None, the auth is still warming up.
+    # We return early without rendering the "Welcome" warning.
+    if metrics_list is None:
+        return
 
     # 2. PROCESS NAVIGATION & DIALOGS IMMEDIATELY
     if "action" in st.query_params and "mid" in st.query_params:
@@ -40,15 +45,13 @@ def show_landing_page():
             st.query_params.clear()
             st.rerun() # Log action still needs rerun to switch pages/tabs
 
-    # 2. DATA FETCHING (Ensures list is present after rerun)
+    # 2. USER GREETING
     user = auth.get_current_user()
     user_display = user.email.split('@')[0].capitalize() if user else "User"
-    metrics_list = models.get_metrics() or []
-
-    # 3. RENDER HEADER
     st.markdown(f"### 🚀 Welcome, {user_display}")
     
-    if not metrics_list:
+    # Now we know metrics_list is a list. If it's empty, they are a new user.
+    if len(metrics_list) == 0:
         st.info("👋 Welcome! Go to Settings to create your first tracking target.")
         return
 

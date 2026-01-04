@@ -14,13 +14,19 @@ def tracker_page():
     Uses Session State as the single source of truth for 'Sticky' selection.
     """
     # 1. Fetch metrics from the database
-    all_metrics = models.get_metrics() or []
-    
-    if not all_metrics:
+    all_metrics = models.get_metrics()
+
+    # 2. LOADING GUARD: Stop here if data is None (Loading/Syncing)
+    if all_metrics is None:
+        st.info("🔄 Syncing with vault...") # Or just 'return' to stay silent
+        return 
+        
+    # 3. EMPTY STATE: Only show if we explicitly got an empty list []
+    if len(all_metrics) == 0:
         st.title("QuantifI")
         st.info("👋 Welcome! Go to Settings to create your first tracking target.")
         return
-
+    
     # 2. Apply the visual theme for the custom tabs (from utils.py)
     utils.apply_custom_tabs_css()
 
