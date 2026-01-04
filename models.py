@@ -72,6 +72,12 @@ def get_category_by_name(name: str):
     )
     return res.data[0] if res and res.data else None
 
+@st.cache_data(ttl=60)
+def get_all_entries_bulk():
+    """Fetches all entries for all metrics in one go."""
+    res = _safe_execute(sb.table("entries").select("*"), "Failed bulk fetch")
+    return res.data if res else []
+
 # --- WRITE OPERATIONS ---
 
 def create_category(name: str):

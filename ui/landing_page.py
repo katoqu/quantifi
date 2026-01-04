@@ -4,59 +4,47 @@ import pandas as pd
 import auth
 from ui import visualize
 
+import streamlit as st
+import models
+import pandas as pd
+import auth
+from ui import visualize
+
 def show_landing_page():
-    """
-    Refactored Dashboard: 
-    - Handles Deep Links first to ensure navigation works.
-    - Prevents 'Welcome' screen flash by fetching data early.
-    - Uses High-Density Action Strips for mobile.
-    """
-    # 1. FETCH DATA EARLY (Required for stats/viz in the dialog)
+    # 1. FETCH ALL DATA ONCE (High Efficiency)
     metrics_list = models.get_metrics()
     cats = models.get_categories() or []
-    cat_map = {c['id']: c['name'].title() for c in cats}
-
-    # If models.get_metrics() returns None, the auth is still warming up.
-    # We return early without rendering the "Welcome" warning.
+    
+    # NEW: Fetch all entries in one network request
+    all_entries = models.get_all_entries_bulk()
+    
     if metrics_list is None:
         return
 
-    # 2. PROCESS NAVIGATION & DIALOGS IMMEDIATELY
+    # 2. DIALOGS & DEEP LINKS
+    # (Kept identical to your original logic for viz/log actions)
     if "action" in st.query_params and "mid" in st.query_params:
-        action = st.query_params["action"]
-        target_mid = st.query_params["mid"]
-        
-        if action == "viz":
-            # Find the specific metric and its data for the dialog
-            target_metric = next((m for m in metrics_list if str(m['id']) == target_mid), None)
-            if target_metric:
-                entries = models.get_entries(metric_id=target_mid)
-                df = pd.DataFrame(entries) if entries else None
-                stats = visualize.get_metric_stats(df)
-                
-                # CLEAR PARAMS SILENTLY (Without rerun) to clean the URL
-                st.query_params.clear()
-                
-                # TRIGGER DIALOG IMMEDIATELY
-                _show_advanced_viz_dialog(target_metric, entries, stats)
-        
-        elif action == "log":
-            st.session_state["last_active_mid"] = target_mid
-            st.query_params.clear()
-            st.rerun() # Log action still needs rerun to switch pages/tabs
+        _handle_query_params(metrics_list, all_entries)
 
-    # 2. USER GREETING
+    # 3. USER GREETING
     user = auth.get_current_user()
     user_display = user.email.split('@')[0].capitalize() if user else "User"
     st.markdown(f"### 🚀 Welcome, {user_display}")
     
-    # Now we know metrics_list is a list. If it's empty, they are a new user.
     if len(metrics_list) == 0:
         st.info("👋 Welcome! Go to Settings to create your first tracking target.")
         return
 
-    # 4. CATEGORY NAVIGATION
+    # 4. RENDER FRAGMENTED GRID
+    # We pass the pre-fetched data into the fragment
+    render_metric_grid(metrics_list, cats, all_entries)
+
+@st.fragment
+def render_metric_grid(metrics_list, cats, all_entries):
+    """Handles pill selection and grid rendering instantly."""
+    cat_map = {c['id']: c['name'].title() for c in cats}
     cat_options = ["All"] + sorted([c['name'].title() for c in cats])
+    
     selected_cat = st.pills(
         "📁 Categories",
         options=cat_options,
@@ -66,27 +54,59 @@ def show_landing_page():
     )
     current_filter = selected_cat if selected_cat else "All"
 
-    # 5. DATA PREPARATION & SORTING
+    # Convert all entries to DataFrame once
+    all_df = pd.DataFrame(all_entries)
     scored_metrics = []
     ts_min = pd.Timestamp.min.tz_localize('UTC') 
 
     for m in metrics_list:
-        entries = models.get_entries(metric_id=m['id'])
-        df = pd.DataFrame(entries) if entries else None
-        stats = visualize.get_metric_stats(df)
-        latest_ts = pd.to_datetime(df['recorded_at'], format='mixed', utc=True).max() if df is not None else ts_min
-        scored_metrics.append((latest_ts, m, entries, stats))
+        # LOCAL FILTERING: No database call here anymore!
+        m_id = m['id']
+        m_entries_df = all_df[all_df['metric_id'] == m_id] if not all_df.empty else pd.DataFrame()
+        
+        stats = visualize.get_metric_stats(m_entries_df)
+        
+        # Calculate latest timestamp for sorting
+        latest_ts = ts_min
+        if not m_entries_df.empty:
+            latest_ts = pd.to_datetime(m_entries_df['recorded_at'], format='mixed', utc=True).max()
+        
+        scored_metrics.append((latest_ts, m, m_entries_df, stats))
     
+    # Sort by recent activity
     scored_metrics.sort(key=lambda x: x[0], reverse=True)
-    display_metrics = [x for x in scored_metrics if current_filter == "All" or cat_map.get(x[1].get('category_id')) == current_filter]
+    
+    # Filter by category
+    display_metrics = [
+        x for x in scored_metrics 
+        if current_filter == "All" or cat_map.get(x[1].get('category_id')) == current_filter
+    ]
 
     if not display_metrics:
         st.info(f"No metrics in '{current_filter}'.")
         return
 
-    # 6. RENDER THE GRID
-    for _, m, entries, stats in display_metrics:           
-        _render_action_card(m, cat_map, entries, stats)
+    for _, m, entries_df, stats in display_metrics:           
+        _render_action_card(m, cat_map, entries_df.to_dict('records'), stats)
+
+def _handle_query_params(metrics_list, all_entries):
+    """Helper to process viz/log requests from the pre-fetched data."""
+    action = st.query_params["action"]
+    target_mid = st.query_params["mid"]
+    all_df = pd.DataFrame(all_entries)
+    
+    if action == "viz":
+        target_metric = next((m for m in metrics_list if str(m['id']) == target_mid), None)
+        if target_metric:
+            m_df = all_df[all_df['metric_id'] == target_mid]
+            stats = visualize.get_metric_stats(m_df)
+            st.query_params.clear()
+            _show_advanced_viz_dialog(target_metric, m_df.to_dict('records'), stats)
+    
+    elif action == "log":
+        st.session_state["last_active_mid"] = target_mid
+        st.query_params.clear()
+        st.rerun()
 
 @st.dialog("Advanced Analytics")
 def _show_advanced_viz_dialog(metric, entries, stats):
