@@ -92,52 +92,43 @@ def _show_advanced_viz_dialog(metric, entries, stats):
 
 def _render_action_card(metric, cat_map, entries, stats):
     """
-    Optimized 2-column internal layout:
-    Left: Identity (Category + Name)
-    Right: Data & Actions (Latest Value + Buttons)
+    Polished Landing Page Card: Identity on Left, Value on Right.
+    Fixed: Pre-formatted strings to avoid ValueError and forced side-by-side.
     """
     mid = metric['id']
     m_name = metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
     
+    # 1. SAFE PRE-FORMATTING
+    val_display = f"{stats['latest']:.1f}" if stats else "—"
+    date_display = stats['last_date'] if stats else "No Data"
+    
     with st.container(border=True):
-        # Create the main internal split
-        col_id, col_data = st.columns([1.5, 1])
-        
-        with col_id:
-            # IDENTITY: Category and Name
-            st.markdown(f"""
-                <div style="margin-top: 5px;">
-                    <span style="font-size: 0.6rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;">{cat_name}</span>
-                    <h4 style="margin: 0; font-size: 0.95rem; line-height: 1.1; word-wrap: break-word;">
-                        {m_name}
-                    </h4>
+        # IDENTITY & VALUE ROW (Flexbox forces horizontal layout)
+        st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                <div style="flex: 2; padding-right: 8px;">
+                    <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase; display: block; letter-spacing: 0.5px;">{cat_name}</span>
+                    <h4 style="margin: 0; font-size: 1.0rem; line-height: 1.1; color: var(--text-color);">{m_name}</h4>
                 </div>
-            """, unsafe_allow_html=True)
-            
-        with col_data:
-            # DATA: Latest Value
-            if stats:
-                # We use a custom display here instead of render_stat_row 
-                # to fit the value tightly in this specific column
-                st.markdown(f"""
-                    <div style="text-align: right;">
-                        <span style="font-size: 0.7rem; opacity: 0.7;">{stats['last_date']}</span>
-                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: -5px;">
-                            {stats['latest']:.1f}
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown("<div style='text-align: right; opacity: 0.5;'>—</div>", unsafe_allow_html=True)
+                <div style="flex: 1; text-align: right; min-width: 60px;">
+                    <span style="font-size: 0.65rem; opacity: 0.6; display: block; margin-bottom: 2px;">{date_display}</span>
+                    <span style="font-size: 1.3rem; font-weight: 800; line-height: 1; color: var(--text-color);">{val_display}</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
-        # ACTION ROW: Standard buttons below the split
-        btn_col, viz_col = st.columns([3, 1])
-        with btn_col:
+        # ACTION BUTTONS (Bypass mobile stacking)
+        c1, c2 = st.columns([3, 1])
+        
+        # CSS Trick to prevent st.columns from stacking on narrow screens
+        st.markdown("""<style>div[data-testid="column"] { min-width: 0 !important; }</style>""", unsafe_allow_html=True)
+
+        with c1:
             if st.button("➕ Log", key=f"btn_{mid}", use_container_width=True, type="primary"):
                 st.session_state["last_active_mid"] = mid
                 st.query_params["metric_id"] = mid
                 st.rerun()
-        with viz_col:
+        with c2:
             if st.button("📊", key=f"viz_{mid}", use_container_width=True):
                 _show_advanced_viz_dialog(metric, entries, stats)

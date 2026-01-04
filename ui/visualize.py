@@ -34,22 +34,50 @@ def get_metric_stats(df):
     }
 
 def render_stat_row(stats, mode="compact"):
-    """UI Component: Renders horizontal stats, resolving redundancy."""
+    """
+    UI Component: Renders horizontal stats.
+    Fixed: Pre-formats strings to avoid f-string ValueError.
+    """
     if not stats:
         return
 
     if mode == "compact":
-        # Card View: Essential current state
         st.metric(label=stats['last_date'], value=f"{stats['latest']:.1f}")
     
     elif mode == "advanced":
-        # Dialog View: Trend-focused 2-column layout
-        c1, c2 = st.columns(2)
-        if stats['ma7'] is not None:
-            diff = stats['latest'] - stats['ma7']
-            c1.metric("7D Avg", f"{stats['ma7']:.1f}", delta=f"{diff:.1f}", delta_color="inverse")
-        if stats['change'] is not None:
-            c2.metric("Last Change", f"{stats['latest']:.1f}", delta=f"{stats['change']:.1f}")
+        # 1. PRE-FORMAT DISPLAY STRINGS
+        # We handle the 'None' case and formatting here to keep the HTML block clean
+        ma7_val = f"{stats['ma7']:.1f}" if stats['ma7'] is not None else "—"
+        latest_val = f"{stats['latest']:.1f}"
+        
+        # Calculate deltas for color coding
+        ma7_diff = stats['latest'] - stats['ma7'] if stats['ma7'] is not None else 0
+        ma7_color = "#28a745" if ma7_diff >= 0 else "#dc3545"
+        ma7_arrow = '↑' if ma7_diff >= 0 else '↓'
+        
+        change_delta = stats['change'] if stats['change'] is not None else 0
+        change_color = "#28a745" if change_delta >= 0 else "#dc3545"
+        change_arrow = '↑' if change_delta >= 0 else '↓'
+
+        # 2. RENDER THE POLISHED HTML
+        st.markdown(f"""
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <div style="flex: 1; padding: 12px; border-radius: 10px; background: var(--secondary-background-color); border: 1px solid var(--border-color); text-align: center;">
+                    <div style="font-size: 0.65rem; opacity: 0.8; text-transform: uppercase; margin-bottom: 4px;">7D Average</div>
+                    <div style="font-weight: bold; font-size: 1.1rem;">{ma7_val}</div>
+                    <div style="font-size: 0.8rem; color: {ma7_color}; font-weight: 600;">
+                        {ma7_arrow} {abs(ma7_diff):.1f}
+                    </div>
+                </div>
+                <div style="flex: 1; padding: 12px; border-radius: 10px; background: var(--secondary-background-color); border: 1px solid var(--border-color); text-align: center;">
+                    <div style="font-size: 0.65rem; opacity: 0.8; text-transform: uppercase; margin-bottom: 4px;">Last Change</div>
+                    <div style="font-weight: bold; font-size: 1.1rem;">{latest_val}</div>
+                    <div style="font-size: 0.8rem; color: {change_color}; font-weight: 600;">
+                        {change_arrow} {abs(change_delta):.1f}
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
 def show_visualizations(dfe, m_unit, m_name):
     """
