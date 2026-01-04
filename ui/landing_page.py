@@ -89,9 +89,6 @@ def _show_advanced_viz_dialog(metric, entries, stats):
         st.rerun()
 
 def _render_action_card(metric, cat_map, entries, stats):
-    """
-    Fixed Single-Row Card: Prevents mobile stacking using forced Flexbox CSS.
-    """
     mid = metric['id']
     m_name = metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
@@ -99,64 +96,56 @@ def _render_action_card(metric, cat_map, entries, stats):
     val_display = f"{stats['latest']:.1f}" if stats else "—"
     change = stats.get('change') if stats else 0
     trend_color = "#28a745" if (change or 0) >= 0 else "#dc3545"
-    
-    # GLOBAL MOBILE OVERRIDE: 
-    # This prevents the 4 columns from wrapping into a vertical list on phones.
+
+    # HYBRID CSS: Only forces horizontal alignment and small buttons
     st.markdown("""
         <style>
-            /* Force horizontal layout for all columns in the landing page */
+            /* Force columns to stay in a row on mobile */
             [data-testid="column"] {
-                flex: 1 1 0% !important;
-                min-width: 0 !important;
+                width: calc(25% - 1rem) !important;
+                flex: 1 1 auto !important;
+                min-width: 0px !important;
             }
-            /* Tighten the card wrapper */
+            /* Make buttons small and square */
+            div[data-testid="stButton"] > button {
+                padding: 0px !important;
+                height: 34px !important;
+                width: 34px !important;
+                min-width: 34px !important;
+            }
+            /* Reduce vertical padding inside the card */
             [data-testid="stVerticalBlockBorderWrapper"] > div {
                 padding: 0.4rem 0.6rem !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] {
-                margin-bottom: -15px !important;
-            }
-            /* Center button icons */
-            div[data-testid="stButton"] > button {
-                height: 36px !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                padding: 0px !important;
             }
         </style>
     """, unsafe_allow_html=True)
 
     with st.container(border=True):
-        # The 4-column strip
-        c1, c2, c3, c4 = st.columns([2.0, 1.2, 0.8, 0.8])
+        # We use 4 native columns
+        c1, c2, c3, c4 = st.columns([2.5, 1.2, 0.7, 0.7])
 
         with c1:
             st.markdown(f"""
-                <div style="line-height: 1.1;">
+                <div style="line-height: 1;">
                     <span style="font-size: 0.55rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;">{cat_name}</span><br>
-                    <div style="font-size: 0.85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        {m_name}
-                    </div>
+                    <div style="font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{m_name}</div>
                 </div>
             """, unsafe_allow_html=True)
 
         with c2:
             st.markdown(f"""
-                <div style="text-align: left; line-height: 1.1;">
-                    <span style="font-size: 0.6rem; opacity: 0.6;">Latest</span><br>
-                    <div style="font-size: 1.0rem; font-weight: 700; color: {trend_color};">
-                        {val_display}
-                    </div>
+                <div style="line-height: 1;">
+                    <span style="font-size: 0.55rem; opacity: 0.6; text-transform: uppercase;">Latest</span><br>
+                    <div style="font-size: 1rem; font-weight: 700; color: {trend_color};">{val_display}</div>
                 </div>
             """, unsafe_allow_html=True)
 
         with c3:
-            if st.button("➕", key=f"btn_log_{mid}", use_container_width=True):
+            if st.button("➕", key=f"log_{mid}", use_container_width=True):
                 st.session_state["last_active_mid"] = mid
                 st.query_params["metric_id"] = mid
                 st.rerun()
 
         with c4:
-            if st.button("📊", key=f"btn_viz_{mid}", use_container_width=True):
+            if st.button("📊", key=f"viz_{mid}", use_container_width=True):
                 _show_advanced_viz_dialog(metric, entries, stats)
