@@ -32,6 +32,10 @@ def tracker_page():
     if "last_active_mid" not in st.session_state:
         st.session_state["last_active_mid"] = None
 
+    # ADD THIS: Initialize category filter here
+    if "active_cat_filter" not in st.session_state:
+        st.session_state["active_cat_filter"] = "All"
+
     # --- 4. HANDLE DEEP LINK TRIGGER (e.g., from Dashboard "➕" button) ---
     requested_mid = st.query_params.get("metric_id")
     if requested_mid:
@@ -51,7 +55,6 @@ def tracker_page():
         "Navigation", 
         options=view_options, 
         selection_mode="single",
-        default="Overview", # Sets the initial view
         label_visibility="collapsed",
         key="tracker_view_selector" 
     )
