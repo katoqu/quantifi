@@ -125,7 +125,15 @@ def show_visualizations(dfe, m_unit, m_name):
         height=300,
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        showlegend=False
+        showlegend=False,
+        dragmode=False
     )
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, use_container_width=True, 
+                    config={
+                        'displayModeBar': False, 
+                        'scrollZoom': False,  # Prevents chart from hijacking scroll
+                        'doubleClick': 'reset',
+                        'showAxisDragHandles': False,
+                        'modeBarButtonsToRemove': ['pan2d', 'zoom2d'] # Removes zoom/pan tools
+                    })

@@ -60,10 +60,8 @@ def show_landing_page():
         st.info(f"No metrics in '{current_filter}'.")
         return
 
-    cols = st.columns(2)
     for i, (_, m, entries, stats) in enumerate(display_metrics):
-        with cols[i % 2]:
-            _render_action_card(m, cat_map, entries, stats)
+        _render_action_card(m, cat_map, entries, stats)
 
 @st.dialog("Advanced Analytics")
 def _show_advanced_viz_dialog(metric, entries, stats):
@@ -91,6 +89,9 @@ def _show_advanced_viz_dialog(metric, entries, stats):
         st.rerun()
 
 def _render_action_card(metric, cat_map, entries, stats):
+    """
+    Fixed Single-Row Card: Prevents mobile stacking using forced Flexbox CSS.
+    """
     mid = metric['id']
     m_name = metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
@@ -99,52 +100,48 @@ def _render_action_card(metric, cat_map, entries, stats):
     change = stats.get('change') if stats else 0
     trend_color = "#28a745" if (change or 0) >= 0 else "#dc3545"
     
-    # CSS Injection (Updated for better alignment and centering)
+    # GLOBAL MOBILE OVERRIDE: 
+    # This prevents the 4 columns from wrapping into a vertical list on phones.
     st.markdown("""
         <style>
+            /* Force horizontal layout for all columns in the landing page */
+            [data-testid="column"] {
+                flex: 1 1 0% !important;
+                min-width: 0 !important;
+            }
+            /* Tighten the card wrapper */
             [data-testid="stVerticalBlockBorderWrapper"] > div {
-                padding-top: 0.35rem !important;
-                padding-bottom: 0.35rem !important;
+                padding: 0.4rem 0.6rem !important;
             }
             [data-testid="stVerticalBlockBorderWrapper"] {
-                margin-bottom: -14px !important;
+                margin-bottom: -15px !important;
             }
+            /* Center button icons */
             div[data-testid="stButton"] > button {
+                height: 36px !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
                 padding: 0px !important;
-                height: 36px !important;
-                line-height: 1 !important;
-            }
-            [data-testid="column"] {
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                min-width: 0 !important;
             }
         </style>
     """, unsafe_allow_html=True)
 
     with st.container(border=True):
-        # Adjusted ratios to close the gap: [2.0 for name, 1.4 for value]
-        c1, c2, c3, c4 = st.columns([2.0, 1.4, 0.8, 0.8])
+        # The 4-column strip
+        c1, c2, c3, c4 = st.columns([2.0, 1.2, 0.8, 0.8])
 
         with c1:
             st.markdown(f"""
-                <div style="line-height: 1.1; padding-left: 2px;">
-                    <span style="font-size: 0.55rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;">
-                        {cat_name}
-                    </span><br>
-                    <div style="font-size: 0.85rem; font-weight: 500; margin-top: 1px; 
-                                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <div style="line-height: 1.1;">
+                    <span style="font-size: 0.55rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;">{cat_name}</span><br>
+                    <div style="font-size: 0.85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                         {m_name}
                     </div>
                 </div>
             """, unsafe_allow_html=True)
 
         with c2:
-            # Changed to text-align: left to pull it closer to column 1
             st.markdown(f"""
                 <div style="text-align: left; line-height: 1.1;">
                     <span style="font-size: 0.6rem; opacity: 0.6;">Latest</span><br>
@@ -155,11 +152,11 @@ def _render_action_card(metric, cat_map, entries, stats):
             """, unsafe_allow_html=True)
 
         with c3:
-            if st.button("➕", key=f"btn_{mid}", use_container_width=True):
+            if st.button("➕", key=f"btn_log_{mid}", use_container_width=True):
                 st.session_state["last_active_mid"] = mid
                 st.query_params["metric_id"] = mid
                 st.rerun()
 
         with c4:
-            if st.button("📊", key=f"viz_{mid}", use_container_width=True):
+            if st.button("📊", key=f"btn_viz_{mid}", use_container_width=True):
                 _show_advanced_viz_dialog(metric, entries, stats)
