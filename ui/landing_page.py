@@ -91,34 +91,32 @@ def _show_advanced_viz_dialog(metric, entries, stats):
 
 def _render_action_card(metric, cat_map, entries, stats):
     """
-    Native Compact Card: Uses vertical stacking for mobile reliability.
+    Compact Native Card: Reclaims space by using a nested 
+    identity-header and horizontal action-row.
     """
     mid = metric['id']
     m_name = metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
     val_display = f"{stats['latest']:.1f}" if stats else "—"
     
-    # 1. Start with a native container for the card look
     with st.container(border=True):
-        # 2. Header: Category and Name
-        st.caption(cat_name.upper())
-        st.markdown(f"**{m_name}**")
+        # Header: Uses the full width for the name to avoid left-side gaps
+        st.markdown(f"**{m_name}** <span style='font-size:0.7rem; opacity:0.6; margin-left:8px;'>{cat_name.upper()}</span>", unsafe_allow_html=True)
         
-        # 3. Action Row: Metric on left, Buttons on right
-        col_val, col_btns = st.columns([1, 1], vertical_alignment="center")
+        # Data & Buttons: These sit side-by-side to use the remaining width
+        col_data, col_btns = st.columns([1, 1.2], vertical_alignment="center")
         
-        with col_val:
-            st.metric(label="Latest", value=val_display) 
+        with col_data:
+            # We use a simple markdown display instead of st.metric to save space
+            st.markdown(f"<span style='font-size:0.8rem; opacity:0.7;'>Latest</span><br><b style='font-size:1.3rem;'>{val_display}</b>", unsafe_allow_html=True)
             
         with col_btns:
-            # Sub-columns to keep small buttons side-by-side
+            # Compact buttons side-by-side
             b1, b2 = st.columns(2)
-            
-            # Use st.button to keep logic within the Fragment
-            if b1.button("➕", key=f"log_{mid}", use_container_width=True):
+            if b1.button("➕", key=f"log_{mid}", use_container_width=True, help="Record"):
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Record Data"
                 st.rerun()
 
-            if b2.button("📊", key=f"viz_{mid}", use_container_width=True):
+            if b2.button("📊", key=f"viz_{mid}", use_container_width=True, help="Trends"):
                 _show_advanced_viz_dialog(metric, entries, stats)
