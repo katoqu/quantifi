@@ -19,11 +19,10 @@ def _confirm_save_dialog(mid, editor_key, state_key):
     
     st.markdown("### 📋 Review Edits")
     
-    # 1. Summary Metrics
-    m_col1, m_col2, m_col3 = st.columns(3)
-    m_col1.metric("New", summary['add'])
-    m_col2.metric("Edit", summary['upd'])
-    m_col3.metric("Del", summary['del'], delta_color="inverse")
+    # Optimized for Mobile: Vertical summary instead of 3 columns
+    st.write(f"✅ **New:** {summary['add']}")
+    st.write(f"📝 **Edited:** {summary['upd']}")
+    st.write(f"🗑️ **Deleted:** {summary['del']}")
     
     st.divider()
     

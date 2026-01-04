@@ -18,29 +18,17 @@ def show_tracker_suite(selected_metric):
         st.info("No data entries found. Add your first entry above.")
 
 def show_capture(selected_metric):
-    """
-    Visual Hack: Wraps a borderless form and a toggle in a single container 
-    to make them look like one unified recording suite.
-    """
     mid = selected_metric.get("id")
     unit_name = selected_metric.get("unit_name", "")
     utype = selected_metric.get("unit_type", "float")
-
-    # --- 1. SMART DEFAULT VALUE ---    
+    
+    # Lightweight fetch for smart defaults
     last_entry = models.get_latest_entry_only(mid)
-    if last_entry:
-        smart_default = last_entry['value']
-    else:
-        smart_default = float(selected_metric.get("range_start", 0.0))
+    smart_default = last_entry['value'] if last_entry else float(selected_metric.get("range_start", 0.0))
 
-    # --- 2. THE OUTER "FAKE" BOX ---
-    # We use a container with a border to act as the primary visual frame
     with st.container(border=True):
-        
-        # Identity Row: Small hint of what we are recording
         st.markdown(f"**Recording:** {selected_metric['name'].title()}")
 
-        # --- 3. THE TOGGLE (Outside the form, but inside the border) ---
         use_time = st.checkbox(
             "🕒 Include specific time?", 
             value=st.session_state["use_time_sticky"], 
@@ -50,31 +38,26 @@ def show_capture(selected_metric):
             )
         )
         
-#        st.markdown("<div style='margin-bottom: -55px;'></div>", unsafe_allow_html=True)
-
-        # --- 4. THE BORDERLESS FORM ---
-        # Setting border=False makes the form invisible, 
-        # so it blends into the container above.
         with st.form("capture_entry_submit", border=False):
-            col_date, col_val = st.columns([1, 1])
+            # --- SINGLE COLUMN LAYOUT ---
+            # Stacking inputs vertically for better mobile tap targets
+            date_input = st.date_input("📅 Date", value=dt.date.today())
             
-            with col_date:
-                date_input = st.date_input("📅 Date", value=dt.date.today())
-                time_input = dt.time(12, 0)
-                if use_time:
-                    time_input = st.time_input("⏰ Time", value=dt.datetime.now().time())
+            time_input = dt.time(12, 0)
+            if use_time:
+                time_input = st.time_input("⏰ Time", value=dt.datetime.now().time())
             
-            with col_val:
-                if utype == "integer_range":
-                    rs = int(selected_metric.get("range_start", 0))
-                    re = int(selected_metric.get("range_end", 10))
-                    options = list(range(rs, re + 1))
-                    default_index = options.index(int(smart_default)) if int(smart_default) in options else 0
-                    val = st.selectbox(f"Value ({unit_name})", options=options, index=default_index)
-                elif utype == "integer":
-                    val = st.number_input(f"Value ({unit_name})", value=int(smart_default), step=1, format="%d")
-                else:
-                    val = st.number_input(f"Value ({unit_name})", value=float(smart_default), format="%.1f", step=1.0)
+            # Value Input
+            if utype == "integer_range":
+                rs = int(selected_metric.get("range_start", 0))
+                re = int(selected_metric.get("range_end", 10))
+                options = list(range(rs, re + 1))
+                default_index = options.index(int(smart_default)) if int(smart_default) in options else 0
+                val = st.selectbox(f"Value ({unit_name})", options=options, index=default_index)
+            elif utype == "integer":
+                val = st.number_input(f"Value ({unit_name})", value=int(smart_default), step=1, format="%d")
+            else:
+                val = st.number_input(f"Value ({unit_name})", value=float(smart_default), format="%.1f", step=1.0)
 
             submitted = st.form_submit_button("Add Entry", use_container_width=True, type="primary")
             
@@ -85,5 +68,6 @@ def show_capture(selected_metric):
                     "value": val, 
                     "recorded_at": final_dt.isoformat()
                 })
-                st.cache_data.clear()    
+                # Refresh cache to show new entry in Overview
+                st.cache_data.clear() 
                 utils.finalize_action(f"Saved: {val} {unit_name}")
