@@ -91,35 +91,53 @@ def _show_advanced_viz_dialog(metric, entries, stats):
 
 def _render_action_card(metric, cat_map, entries, stats):
     """
-    Ultra-Compact Native Row: Fits Name and Buttons in one line.
+    Ultra-Compact Pill-Action Row: Uses segmented control to force 
+    a single-line layout and native performance.
     """
     mid = metric['id']
     m_name = metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
 
+    # Force horizontal layout for columns
+    st.markdown("""
+        <style>
+            div[data-testid="stHorizontalBlock"] {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+            }
+            div[data-testid="column"] { min-width: 0px !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
     with st.container(border=True):
-        # Identity (70%) | Buttons (30%)
-        col_info, col_btns = st.columns([7, 3], vertical_alignment="center")
+        # 75/25 split ensures the name has plenty of room
+        col_info, col_actions = st.columns([7, 3], vertical_alignment="center")
 
         with col_info:
-            # Inline display of Category and Name to save vertical space
             st.markdown(
-                f"<div style='line-height:1.2;'>"
-                f"<span style='font-size:0.65rem; color:#FF4B4B; font-weight:700; text-transform:uppercase;'>{cat_name}</span><br>"
-                f"<b style='font-size:0.95rem;'>{m_name}</b>"
+                f"<div style='line-height:1.1;'>"
+                f"<span style='font-size:0.6rem; color:#FF4B4B; font-weight:700;'>{cat_name.upper()}</span><br>"
+                f"<span style='font-size:0.9rem; font-weight:600;'>{m_name}</span>"
                 f"</div>", 
                 unsafe_allow_html=True
             )
 
-        with col_btns:
-            # Nested columns to keep the buttons tiny and side-by-side
-            b1, b2 = st.columns(2)
-            
-            # Native buttons trigger instant state changes in the fragment
-            if b1.button("➕", key=f"log_{mid}", use_container_width=True):
+        with col_actions:
+            # Using segmented_control for a compact, single-row action menu
+            choice = st.segmented_control(
+                label=f"Actions for {mid}",
+                options=["➕", "📊"],
+                key=f"actions_{mid}",
+                label_visibility="collapsed",
+                selection_mode="single"
+            )
+
+            # Trigger logic immediately upon selection
+            if choice == "➕":
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Record Data"
                 st.rerun()
-
-            if b2.button("📊", key=f"viz_{mid}", use_container_width=True):
+            elif choice == "📊":
                 _show_advanced_viz_dialog(metric, entries, stats)
