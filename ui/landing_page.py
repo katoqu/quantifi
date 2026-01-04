@@ -97,55 +97,67 @@ def _render_action_card(metric, cat_map, entries, stats):
     change = stats.get('change') if stats else 0
     trend_color = "#28a745" if (change or 0) >= 0 else "#dc3545"
 
-    # HYBRID CSS: Only forces horizontal alignment and small buttons
-    st.markdown("""
+    # We use a URL trick: Clicking the link adds 'log_id' or 'viz_id' to the URL
+    # Streamlit will detect this change and we can trigger the logic.
+    log_link = f"?log_id={mid}"
+    viz_link = f"?viz_id={mid}"
+
+    st.markdown(f"""
         <style>
-            /* Force columns to stay in a row on mobile */
-            [data-testid="column"] {
-                width: calc(25% - 1rem) !important;
-                flex: 1 1 auto !important;
-                min-width: 0px !important;
-            }
-            /* Make buttons small and square */
-            div[data-testid="stButton"] > button {
-                padding: 0px !important;
-                height: 34px !important;
-                width: 34px !important;
-                min-width: 34px !important;
-            }
-            /* Reduce vertical padding inside the card */
-            [data-testid="stVerticalBlockBorderWrapper"] > div {
-                padding: 0.4rem 0.6rem !important;
-            }
+            .action-row {{
+                display: flex;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px;
+                border: 1px solid rgba(49, 51, 63, 0.2);
+                border-radius: 10px;
+                margin-bottom: 8px;
+                background: white;
+            }}
+            .info-col {{ flex: 2; min-width: 0; line-height: 1.2; }}
+            .val-col {{ flex: 1; min-width: 60px; padding: 0 10px; line-height: 1.2; }}
+            .btn-col {{ display: flex; gap: 8px; }}
+            .icon-btn {{
+                text-decoration: none;
+                font-size: 1.2rem;
+                width: 36px;
+                height: 36px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: #f0f2f6;
+                border-radius: 8px;
+                color: black !important;
+            }}
         </style>
+        
+        <div class="action-row">
+            <div class="info-col">
+                <span style="font-size: 0.6rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;">{cat_name}</span>
+                <div style="font-size: 0.9rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{m_name}</div>
+            </div>
+            <div class="val-col">
+                <span style="font-size: 0.6rem; opacity: 0.6; text-transform: uppercase;">Latest</span>
+                <div style="font-size: 1.1rem; font-weight: 700; color: {trend_color};">{val_display}</div>
+            </div>
+            <div class="btn-col">
+                <a href="{log_link}" target="_self" class="icon-btn">➕</a>
+                <a href="{viz_link}" target="_self" class="icon-btn">📊</a>
+            </div>
+        </div>
     """, unsafe_allow_html=True)
 
-    with st.container(border=True):
-        # We use 4 native columns
-        c1, c2, c3, c4 = st.columns([2.5, 1.2, 0.7, 0.7])
-
-        with c1:
-            st.markdown(f"""
-                <div style="line-height: 1;">
-                    <span style="font-size: 0.55rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;">{cat_name}</span><br>
-                    <div style="font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{m_name}</div>
-                </div>
-            """, unsafe_allow_html=True)
-
-        with c2:
-            st.markdown(f"""
-                <div style="line-height: 1;">
-                    <span style="font-size: 0.55rem; opacity: 0.6; text-transform: uppercase;">Latest</span><br>
-                    <div style="font-size: 1rem; font-weight: 700; color: {trend_color};">{val_display}</div>
-                </div>
-            """, unsafe_allow_html=True)
-
-        with c3:
-            if st.button("➕", key=f"log_{mid}", use_container_width=True):
-                st.session_state["last_active_mid"] = mid
-                st.query_params["metric_id"] = mid
-                st.rerun()
-
-        with c4:
-            if st.button("📊", key=f"viz_{mid}", use_container_width=True):
-                _show_advanced_viz_dialog(metric, entries, stats)
+    # --- CLICK LOGIC ---
+    # We check the URL parameters to see if a "button" was clicked
+    params = st.query_params
+    if params.get("log_id") == str(mid):
+        st.session_state["last_active_mid"] = mid
+        st.query_params.clear() # Clear param so it doesn't trigger again on refresh
+        st.rerun()
+        
+    if params.get("viz_id") == str(mid):
+        # Trigger your visualization dialog
+        _show_advanced_viz_dialog(metric, entries, stats)
+        st.query_params.clear()
