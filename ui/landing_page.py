@@ -91,44 +91,75 @@ def _show_advanced_viz_dialog(metric, entries, stats):
         st.rerun()
 
 def _render_action_card(metric, cat_map, entries, stats):
-    """
-    Polished Landing Page Card: Identity on Left, Value on Right.
-    Fixed: Pre-formatted strings to avoid ValueError and forced side-by-side.
-    """
     mid = metric['id']
     m_name = metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
     
-    # 1. SAFE PRE-FORMATTING
     val_display = f"{stats['latest']:.1f}" if stats else "—"
-    date_display = stats['last_date'] if stats else "No Data"
+    change = stats.get('change') if stats else 0
+    trend_color = "#28a745" if (change or 0) >= 0 else "#dc3545"
     
-    with st.container(border=True):
-        # IDENTITY & VALUE ROW (Flexbox forces horizontal layout)
-        st.markdown(f"""
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
-                <div style="flex: 2; padding-right: 8px;">
-                    <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase; display: block; letter-spacing: 0.5px;">{cat_name}</span>
-                    <h4 style="margin: 0; font-size: 1.0rem; line-height: 1.1; color: var(--text-color);">{m_name}</h4>
-                </div>
-                <div style="flex: 1; text-align: right; min-width: 60px;">
-                    <span style="font-size: 0.65rem; opacity: 0.6; display: block; margin-bottom: 2px;">{date_display}</span>
-                    <span style="font-size: 1.3rem; font-weight: 800; line-height: 1; color: var(--text-color);">{val_display}</span>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+    # CSS Injection (Updated for better alignment and centering)
+    st.markdown("""
+        <style>
+            [data-testid="stVerticalBlockBorderWrapper"] > div {
+                padding-top: 0.35rem !important;
+                padding-bottom: 0.35rem !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] {
+                margin-bottom: -14px !important;
+            }
+            div[data-testid="stButton"] > button {
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                padding: 0px !important;
+                height: 36px !important;
+                line-height: 1 !important;
+            }
+            [data-testid="column"] {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                min-width: 0 !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
-        # ACTION BUTTONS (Bypass mobile stacking)
-        c1, c2 = st.columns([3, 1])
-        
-        # CSS Trick to prevent st.columns from stacking on narrow screens
-        st.markdown("""<style>div[data-testid="column"] { min-width: 0 !important; }</style>""", unsafe_allow_html=True)
+    with st.container(border=True):
+        # Adjusted ratios to close the gap: [2.0 for name, 1.4 for value]
+        c1, c2, c3, c4 = st.columns([2.0, 1.4, 0.8, 0.8])
 
         with c1:
-            if st.button("➕ Log", key=f"btn_{mid}", use_container_width=True, type="primary"):
+            st.markdown(f"""
+                <div style="line-height: 1.1; padding-left: 2px;">
+                    <span style="font-size: 0.55rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;">
+                        {cat_name}
+                    </span><br>
+                    <div style="font-size: 0.85rem; font-weight: 500; margin-top: 1px; 
+                                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        {m_name}
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with c2:
+            # Changed to text-align: left to pull it closer to column 1
+            st.markdown(f"""
+                <div style="text-align: left; line-height: 1.1;">
+                    <span style="font-size: 0.6rem; opacity: 0.6;">Latest</span><br>
+                    <div style="font-size: 1.0rem; font-weight: 700; color: {trend_color};">
+                        {val_display}
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with c3:
+            if st.button("➕", key=f"btn_{mid}", use_container_width=True):
                 st.session_state["last_active_mid"] = mid
                 st.query_params["metric_id"] = mid
                 st.rerun()
-        with c2:
+
+        with c4:
             if st.button("📊", key=f"viz_{mid}", use_container_width=True):
                 _show_advanced_viz_dialog(metric, entries, stats)
