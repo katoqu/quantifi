@@ -111,33 +111,70 @@ def _render_action_card(metric, cat_map, entries, stats):
         </style>
     """, unsafe_allow_html=True)
 
+def _render_action_card(metric, cat_map, entries, stats):
+    """
+    Final Refined Row: Enforces strict horizontal alignment across 
+    Identity, Value, and Pill actions.
+    """
+    mid = metric['id']
+    m_name = metric['name'].title()
+    cat_name = cat_map.get(metric.get('category_id'), "Uncat")
+    val_display = f"{stats['latest']:.1f}" if stats else "—"
+    trend_color = "#28a745" if (stats.get('change') or 0) >= 0 else "#dc3545"
+
+    # CSS to align widget heights and remove hidden label gaps
+    st.markdown("""
+        <style>
+            div[data-testid="stHorizontalBlock"] {
+                display: flex !important;
+                flex-direction: row !important;
+                align-items: center !important; /* Force center alignment for all columns */
+                gap: 0.4rem !important;
+            }
+            /* Remove the empty space reserved for widget labels */
+            div[data-testid="stPills"] { margin-top: 0px !important; }
+            div[data-testid="stPills"] [data-testid="stMarkdownContainer"] p { display: none; }
+            
+            /* Tighten column width constraints */
+            div[data-testid="column"] { min-width: 0px !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
     with st.container(border=True):
-        # 75/25 split ensures the name has plenty of room
-        col_info, col_actions = st.columns([7, 3], vertical_alignment="center")
+        # We explicitly set vertical_alignment="center" here
+        col_id, col_val, col_act = st.columns([4.5, 2.5, 3], vertical_alignment="center")
 
-        with col_info:
-            st.markdown(
-                f"<div style='line-height:1.1;'>"
-                f"<span style='font-size:0.6rem; color:#FF4B4B; font-weight:700;'>{cat_name.upper()}</span><br>"
-                f"<span style='font-size:0.9rem; font-weight:600;'>{m_name}</span>"
-                f"</div>", 
-                unsafe_allow_html=True
-            )
+        with col_id:
+            # Identity block with fixed line-height for vertical centering
+            st.markdown(f"""
+                <div style='line-height: 1.2; display: flex; flex-direction: column; justify-content: center;'>
+                    <span style='font-size: 0.6rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;'>{cat_name}</span>
+                    <b style='font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>{m_name}</b>
+                </div>
+            """, unsafe_allow_html=True)
 
-        with col_actions:
-            # Using segmented_control for a compact, single-row action menu
-            choice = st.segmented_control(
-                label=f"Actions for {mid}",
+        with col_val:
+            # Value block using flex to match the height of the column
+            st.markdown(f"""
+                <div style='line-height: 1.0; display: flex; flex-direction: column; justify-content: center; border-left: 1px solid rgba(128,128,128,0.2); padding-left: 8px;'>
+                    <span style='font-size: 0.55rem; opacity: 0.7; font-weight: 600;'>LATEST</span>
+                    <b style='font-size: 1.05rem; color: {trend_color};'>{val_display}</b>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with col_act:
+            # Native pills now sit perfectly centered thanks to the column CSS
+            choice = st.pills(
+                label=f"Actions_{mid}",
                 options=["➕", "📊"],
-                key=f"actions_{mid}",
+                key=f"pills_{mid}",
                 label_visibility="collapsed",
                 selection_mode="single"
             )
 
-            # Trigger logic immediately upon selection
             if choice == "➕":
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Record Data"
-                st.rerun()
+                st.rerun() # Instant fragment-scoped transition
             elif choice == "📊":
                 _show_advanced_viz_dialog(metric, entries, stats)
