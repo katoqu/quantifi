@@ -113,8 +113,8 @@ def _render_action_card(metric, cat_map, entries, stats):
 
 def _render_action_card(metric, cat_map, entries, stats):
     """
-    Final Refined Row: Enforces strict horizontal alignment across 
-    Identity, Value, and Pill actions.
+    Locked Single-Row Card: Uses hard flex constraints to prevent 
+    mobile stacking while ensuring vertical alignment.
     """
     mid = metric['id']
     m_name = metric['name'].title()
@@ -122,50 +122,57 @@ def _render_action_card(metric, cat_map, entries, stats):
     val_display = f"{stats['latest']:.1f}" if stats else "—"
     trend_color = "#28a745" if (stats.get('change') or 0) >= 0 else "#dc3545"
 
-    # CSS to align widget heights and remove hidden label gaps
+    # CRITICAL CSS: Forces the 'stHorizontalBlock' to never wrap
     st.markdown("""
         <style>
+            /* Force horizontal layout even on small mobile screens */
             div[data-testid="stHorizontalBlock"] {
                 display: flex !important;
                 flex-direction: row !important;
-                align-items: center !important; /* Force center alignment for all columns */
-                gap: 0.4rem !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+                gap: 0.3rem !important; /* Tight spacing for mobile */
             }
-            /* Remove the empty space reserved for widget labels */
-            div[data-testid="stPills"] { margin-top: 0px !important; }
-            div[data-testid="stPills"] [data-testid="stMarkdownContainer"] p { display: none; }
             
-            /* Tighten column width constraints */
-            div[data-testid="column"] { min-width: 0px !important; }
+            /* Remove the 16px minimum width that forces stacking */
+            div[data-testid="column"] {
+                min-width: 0px !important;
+                flex: 1 1 auto !important;
+            }
+
+            /* Tighten the pill container specifically */
+            div[data-testid="stPills"] {
+                margin-top: 0px !important;
+                width: fit-content !important;
+            }
         </style>
     """, unsafe_allow_html=True)
 
     with st.container(border=True):
-        # We explicitly set vertical_alignment="center" here
-        col_id, col_val, col_act = st.columns([4.5, 2.5, 3], vertical_alignment="center")
+        # We use strict percentage-based columns
+        # 40% Name | 25% Value | 35% Actions
+        col_id, col_val, col_act = st.columns([4, 2.5, 3.5], vertical_alignment="center")
 
         with col_id:
-            # Identity block with fixed line-height for vertical centering
             st.markdown(f"""
-                <div style='line-height: 1.2; display: flex; flex-direction: column; justify-content: center;'>
-                    <span style='font-size: 0.6rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;'>{cat_name}</span>
+                <div style='line-height: 1.1; overflow: hidden;'>
+                    <span style='font-size: 0.6rem; color: #FF4B4B; font-weight: 700; text-transform: uppercase;'>{cat_name}</span><br>
                     <b style='font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>{m_name}</b>
                 </div>
             """, unsafe_allow_html=True)
 
         with col_val:
-            # Value block using flex to match the height of the column
             st.markdown(f"""
-                <div style='line-height: 1.0; display: flex; flex-direction: column; justify-content: center; border-left: 1px solid rgba(128,128,128,0.2); padding-left: 8px;'>
-                    <span style='font-size: 0.55rem; opacity: 0.7; font-weight: 600;'>LATEST</span>
+                <div style='line-height: 1.0; border-left: 1.5px solid rgba(128,128,128,0.2); padding-left: 8px;'>
+                    <span style='font-size: 0.55rem; opacity: 0.7; font-weight: 600;'>LATEST</span><br>
                     <b style='font-size: 1.05rem; color: {trend_color};'>{val_display}</b>
                 </div>
             """, unsafe_allow_html=True)
 
         with col_act:
-            # Native pills now sit perfectly centered thanks to the column CSS
+            # Piling the actions into a segmented control/pills for a locked-row look
             choice = st.pills(
-                label=f"Actions_{mid}",
+                label=f"actions_{mid}",
                 options=["➕", "📊"],
                 key=f"pills_{mid}",
                 label_visibility="collapsed",
@@ -175,6 +182,6 @@ def _render_action_card(metric, cat_map, entries, stats):
             if choice == "➕":
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Record Data"
-                st.rerun() # Instant fragment-scoped transition
+                st.rerun() # Instant fragment rerun
             elif choice == "📊":
                 _show_advanced_viz_dialog(metric, entries, stats)
