@@ -25,12 +25,10 @@ def get_categories():
 
 @st.cache_data(ttl=60)
 def get_metrics():
-    """Fetches all metrics with merged unit metadata."""
     res = _safe_execute(sb.table("metrics").select("*"), "Failed to fetch metrics")
     if res is None:
-        return None    
-    # If res.data is [], it means the user truly has 0 metrics.
-    return res.data
+        return None  # This triggers the 'Syncing' spinner in pages.py
+    return res.data   # This returns [] if the user has no metrics
 
 def get_entries(metric_id=None):
     """Fetches data entries, optionally filtered by metric."""
@@ -72,11 +70,12 @@ def get_category_by_name(name: str):
     )
     return res.data[0] if res and res.data else None
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=120)
 def get_all_entries_bulk():
-    """Fetches all entries for all metrics in one go."""
-    res = _safe_execute(sb.table("entries").select("*"), "Failed bulk fetch")
-    return res.data if res else []
+    res = _safe_execute(sb.table("entries").select("*"), "Bulk fetch failed")
+    if res is None:
+        return None  # Prevents showing '0 entries' flash
+    return res.data
 
 # --- WRITE OPERATIONS ---
 

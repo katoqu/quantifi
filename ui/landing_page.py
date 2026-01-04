@@ -10,17 +10,9 @@ import pandas as pd
 import auth
 from ui import visualize
 
-def show_landing_page():
-    # 1. FETCH ALL DATA ONCE (High Efficiency)
-    metrics_list = models.get_metrics()
+def show_landing_page(metrics_list, all_entries):
     cats = models.get_categories() or []
-    
-    # NEW: Fetch all entries in one network request
-    all_entries = models.get_all_entries_bulk()
-    
-    if metrics_list is None:
-        return
-
+        
     # 2. DIALOGS & DEEP LINKS
     # (Kept identical to your original logic for viz/log actions)
     if "action" in st.query_params and "mid" in st.query_params:
@@ -31,10 +23,6 @@ def show_landing_page():
     user_display = user.email.split('@')[0].capitalize() if user else "User"
     st.markdown(f"### 🚀 Welcome, {user_display}")
     
-    if len(metrics_list) == 0:
-        st.info("👋 Welcome! Go to Settings to create your first tracking target.")
-        return
-
     # 4. RENDER FRAGMENTED GRID
     # We pass the pre-fetched data into the fragment
     render_metric_grid(metrics_list, cats, all_entries)

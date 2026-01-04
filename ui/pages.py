@@ -15,18 +15,22 @@ def tracker_page():
     """
     # 1. Fetch metrics from the database
     all_metrics = models.get_metrics()
-
-    # 2. LOADING GUARD: Stop here if data is None (Loading/Syncing)
-    if all_metrics is None:
-        st.info("🔄 Syncing with vault...") # Or just 'return' to stay silent
-        return 
+    all_entries = models.get_all_entries_bulk()
+    
+    # 2. THE LOADING GUARD
+    # We use a container to keep the spinner clean on mobile
+    if all_metrics is None or all_entries is None:
+        with st.container():
+            st.spacer(height=100) # Optional vertical centering
+            st.spinner("🔒 Securely syncing data...")
+        st.stop() # CRITICAL: Stop execution here so we don't hit the 'Welcome' check
         
     # 3. EMPTY STATE: Only show if we explicitly got an empty list []
-    if len(all_metrics) == 0:
+    if not all_metrics:
         st.title("QuantifI")
         st.info("👋 Welcome! Go to Settings to create your first tracking target.")
         return
-    
+
     # 2. Apply the visual theme for the custom tabs (from utils.py)
     utils.apply_custom_tabs_css()
 
@@ -70,7 +74,7 @@ def tracker_page():
 
     # --- 6. ROUTING LOGIC ---
     if view_mode == "Overview":
-        landing_page.show_landing_page()
+        landing_page.show_landing_page( all_metrics, all_entries)
         
     else:
         # --- RECORD DATA VIEW ---

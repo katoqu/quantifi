@@ -3,23 +3,29 @@ import plotly.graph_objects as go
 import pandas as pd
 
 def get_metric_stats(df):
-    """Pure logic: Returns calculated stats from a dataframe with robust date handling."""
+    """
+    Pure logic: Returns calculated stats from a dataframe.
+    Optimized for bulk data by checking types before conversion.
+    """
     if df is None or df.empty:
         return None
 
-    # Force datetime conversion to avoid 'str' attribute errors
-    df['recorded_at'] = pd.to_datetime(df['recorded_at'], format='mixed', utc=True)
+    # Performance Fix: Only convert to datetime if it's not already converted
+    if not pd.api.types.is_datetime64_any_dtype(df['recorded_at']):
+        df['recorded_at'] = pd.to_datetime(df['recorded_at'], format='mixed', utc=True)
+    
+    # Ensure data is sorted for rolling calculations
     df = df.sort_values("recorded_at")
 
-    latest_val = df["value"].iloc[-1]
+    latest_val = float(df["value"].iloc[-1])
     
-    # Calculate 7D Average
+    # Calculate 7D Average (optimized for speed)
     ma7 = df['value'].rolling(window=7).mean().iloc[-1] if len(df) >= 7 else None
     
     # Calculate Period Change
     change = None
     if len(df) >= 2:
-        prev_val = df['value'].iloc[-2]
+        prev_val = float(df['value'].iloc[-2])
         change = latest_val - prev_val
 
     last_ts = df['recorded_at'].iloc[-1]
@@ -28,7 +34,7 @@ def get_metric_stats(df):
         "latest": latest_val,
         "ma7": ma7,
         "change": change,
-        "avg": df["value"].mean(),
+        "avg": float(df["value"].mean()),
         "count": len(df),
         "last_date": last_ts.strftime('%d %b') 
     }
@@ -86,6 +92,10 @@ def show_visualizations(dfe, m_unit, m_name):
     if dfe is None or dfe.empty:
         st.info("No data available.")
         return
+
+    # Check date column before sorting
+    if not pd.api.types.is_datetime64_any_dtype(dfe['recorded_at']):
+        dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='mixed', utc=True)
 
     # Ensure sorting and calculate average
     dfe = dfe.sort_values("recorded_at")
