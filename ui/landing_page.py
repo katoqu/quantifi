@@ -22,6 +22,10 @@ def show_landing_page(metrics_list, all_entries):
 
 @st.fragment
 def render_metric_grid(metrics_list, cats, all_entries):
+    #Initialize the session state for the pills if it doesn't exist
+    if "cat_filter" not in st.session_state:
+        st.session_state["cat_filter"] = "All"
+
     cat_map = {c['id']: c['name'].title() for c in cats}
     cat_options = ["All"] + sorted([c['name'].title() for c in cats])
     
@@ -47,7 +51,7 @@ def render_metric_grid(metrics_list, cats, all_entries):
 
             /* 3. TIGHTEN TEXT: Reduce vertical space between lines */
             .metric-identity {
-                line-height: 1.0 !important;
+                line-height: 1.2 !important;
                 min-width: 0;
             }
 
@@ -60,7 +64,7 @@ def render_metric_grid(metrics_list, cats, all_entries):
             }
 
             div[data-testid="stPills"] { 
-                margin-top: 8px !important; 
+                margin-top: 4px !important; 
                 display: flex;
                 justify-content: flex-end;
             }
@@ -95,18 +99,19 @@ def _render_action_card(metric, cat_map, entries, stats):
         
         with col_main:
             st.markdown(f"""
-                <div class="action-card-grid">
-                    <div style="line-height: 1.2; min-width: 0;">
-                        <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700;">{cat_name.upper()}</span><br>
-                        <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}</div>
-                    </div>
-                    <div class="value-box">
-                        <span style="font-size: 0.55rem; opacity: 0.7; font-weight: 600;">LATEST</span><br>
-                        <b style="font-size: 1.1rem; color: {trend_color};">{val_display}</b>
-                    </div>
-                    <div></div> </div>
-            """, unsafe_allow_html=True)
-
+                        <div class="action-card-grid">
+                            <div class="metric-identity">
+                                <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700;">{cat_name.upper()}</span><br>
+                                <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}</div>
+                            </div>
+                            <div class="value-box">
+                                <span style="font-size: 0.55rem; opacity: 0.7; font-weight: 600;">LATEST</span><br>
+                                <b style="font-size: 1.1rem; color: {trend_color};">{val_display}</b>
+                            </div>
+                            <div></div> 
+                        </div>
+                        <div style="height: 15px;"></div> 
+                    """, unsafe_allow_html=True)
             choice = st.pills(f"act_{mid}", options=["➕", "📊"], key=f"p_{mid}", label_visibility="collapsed")
             
             if choice == "➕":

@@ -149,14 +149,14 @@ def show_data_management_suite(selected_metric):
 
     # Column 1 carries the actual descriptive label
     start_date = f_col1.date_input(
-        "📅 Filter Date Range", 
+        "📅 Filter Date Range: From", 
         value=default_start, 
         key=f"start_date_{mid}"
     )
     
     # Column 2 uses a space to stay vertically level with Column 1
     end_date = f_col2.date_input(
-        " ", 
+        "To", 
         value=default_end, 
         key=f"end_date_{mid}"
     )
