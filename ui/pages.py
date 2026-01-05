@@ -8,8 +8,8 @@ def tracker_page():
     Main dashboard controller optimized for mobile. 
     Uses Session State as the single source of truth for 'Sticky' selection.
     """
-    # Fix: Ensure the tab selector doesn't hold an invalid value like "Edit Data"
-    valid_tabs = ["Overview", "Record Data"]
+    # Fix: Ensure the tab selector doesn't hold an invalid value
+    valid_tabs = ["Overview", "Record Data", "Edit Data"]
     if st.session_state.get("tracker_view_selector") not in valid_tabs:
         st.session_state["tracker_view_selector"] = "Overview"
 
@@ -53,7 +53,7 @@ def tracker_page():
 
 
 # --- 5. RENDER NAVIGATION (Modern Segmented Tabs) ---
-    view_options = ["Overview", "Record Data"]
+    view_options = ["Overview", "Record Data", "Edit Data"]
     
     # Use segmented_control for a high-quality mobile tab feel
     st.segmented_control(
@@ -76,9 +76,8 @@ def tracker_page():
             st.stop()
         landing_page.show_landing_page( all_metrics, all_entries)
         
-    else:
+    elif view_mode == "Record Data":
         # --- RECORD DATA VIEW ---
-        # Get the ID from the sticky session state
         active_id = st.session_state.get("last_active_mid")
         
         # Pass the sticky ID to the selector to auto-focus the right metric
@@ -89,6 +88,14 @@ def tracker_page():
             st.session_state["last_active_mid"] = selected_metric['id']
             # Show the capture suite (Capture + Visualization)
             capture.show_tracker_suite(selected_metric)
+
+    elif view_mode == "Edit Data":
+        # --- EDIT DATA VIEW ---
+        active_id = st.session_state.get("last_active_mid")
+        selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
+        if selected_metric:
+            st.session_state["last_active_mid"] = selected_metric['id']
+            data_editor.show_data_management_suite(selected_metric)
 
 def editor_page():
     """Dedicated page for historical data management and editing."""

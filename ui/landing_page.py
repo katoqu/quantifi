@@ -133,14 +133,11 @@ def _show_advanced_viz_dialog(metric, entries, stats):
     visualize.show_visualizations(df, metric.get('unit_name', ''), metric['name'])
     
     if st.button("Edit History", use_container_width=True):
-        # 1. Set the sticky ID
+        # 1. Set the metric to edit
         st.session_state["last_active_mid"] = metric['id']
         
-        # 2. Get the "Edit Data" page object from our stored list
-        # index 1 corresponds to the second page in our app.py list
-        if "nav_pages" in st.session_state:
-            edit_page_obj = st.session_state["nav_pages"][1] 
-            st.switch_page(edit_page_obj)
-        else:
-            # Fallback if state isn't ready
-            st.error("Navigation not initialized. Please refresh.")
+        # 2. Change the tab selector value
+        st.session_state["tracker_view_selector"] = "Edit Data"
+        
+        # 3. Rerun the page to reflect the new tab
+        st.rerun()

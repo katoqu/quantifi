@@ -21,7 +21,6 @@ with st.sidebar:
 # Define your pages as a list
 my_pages = [
     st.Page(pages.tracker_page, title="Tracker", icon="📊", default=True),
-    st.Page(pages.editor_page, title="Edit Data", icon="✏️"),
     st.Page(pages.configure_page, title="Configure", icon="⚙️"),
 ]
 
