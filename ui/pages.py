@@ -9,7 +9,7 @@ def tracker_page():
     Uses Session State as the single source of truth for 'Sticky' selection.
     """
     # Fix: Ensure the tab selector doesn't hold an invalid value
-    valid_tabs = ["Overview", "Record Data", "Edit Data"]
+    valid_tabs = ["Overview", "Record Data", "Edit Data", "Analytics"]
     if st.session_state.get("tracker_view_selector") not in valid_tabs:
         st.session_state["tracker_view_selector"] = "Overview"
 
@@ -53,7 +53,7 @@ def tracker_page():
 
 
 # --- 5. RENDER NAVIGATION (Modern Segmented Tabs) ---
-    view_options = ["Overview", "Record Data", "Edit Data"]
+    view_options = ["Overview", "Record Data", "Edit Data", "Analytics"]
     
     # Use segmented_control for a high-quality mobile tab feel
     st.segmented_control(
@@ -96,6 +96,15 @@ def tracker_page():
         if selected_metric:
             st.session_state["last_active_mid"] = selected_metric['id']
             data_editor.show_data_management_suite(selected_metric)
+
+    # Add the Analytics View Route
+    elif view_mode == "Analytics":
+        active_id = st.session_state.get("last_active_mid")
+        selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
+        if selected_metric:
+            st.session_state["last_active_mid"] = selected_metric['id']
+            # We call the function previously used for the dialog, but as a page view
+            landing_page.show_advanced_analytics_view(selected_metric)
 
 def editor_page():
     """Dedicated page for historical data management and editing."""

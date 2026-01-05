@@ -119,25 +119,24 @@ def _render_action_card(metric, cat_map, entries, stats):
                 st.session_state["tracker_view_selector"] = "Record Data"
                 st.rerun()
             elif choice == "📊":
-                _show_advanced_viz_dialog(metric, entries, stats)
+                st.session_state["last_active_mid"] = mid
+                st.session_state["tracker_view_selector"] = "Analytics"
+                st.rerun()
 
-@st.dialog("Advanced Analytics")
-def _show_advanced_viz_dialog(metric, entries, stats):
+def show_advanced_analytics_view(metric):
     st.subheader(f"📈 {metric['name'].title()} Trends")
-    if not stats:
+    
+    # 1. Fetch entries specifically for this metric using the function in models.py
+    entries = models.get_entries(metric_id=metric['id']) #
+    
+    if not entries:
         st.info("Record more data to see advanced trends.")
         return
+
+    # 2. Calculate stats and render visualizations
+    df = pd.DataFrame(entries)
+    stats = visualize.get_metric_stats(df)
     visualize.render_stat_row(stats, mode="advanced")
     st.divider()
-    df = pd.DataFrame(entries)
-    visualize.show_visualizations(df, metric.get('unit_name', ''), metric['name'])
     
-    if st.button("Edit History", use_container_width=True):
-        # 1. Set the metric to edit
-        st.session_state["last_active_mid"] = metric['id']
-        
-        # 2. Change the tab selector value
-        st.session_state["tracker_view_selector"] = "Edit Data"
-        
-        # 3. Rerun the page to reflect the new tab
-        st.rerun()
+    visualize.show_visualizations(df, metric.get('unit_name', ''), metric['name'])
