@@ -3,17 +3,12 @@ import models
 import utils
 from ui import manage_lookups, capture, metrics, data_editor, importer, landing_page
 
-import streamlit as st
-import models
-from utils import apply_custom_tabs_css 
-from ui import landing_page, metrics, capture
-
 def tracker_page():
     """
     Main dashboard controller optimized for mobile. 
     Uses Session State as the single source of truth for 'Sticky' selection.
     """
-# 1. ALWAYS FETCH METRICS (Lightweight)
+    # 1. ALWAYS FETCH METRICS (Lightweight)
     all_metrics = models.get_metrics()
     
     if all_metrics is None:
@@ -115,39 +110,50 @@ def editor_page():
 
 def configure_page():
     """
-    Refactored Settings: Distinguishes between Metric management 
-    and Category organization using a task-oriented tab structure.
+    Refactored Settings: Uses segmented control for a 'sticky' state
+    that survives script reruns during imports.
     """
     st.title("Settings & Maintenance")
     
+    # 1. Initialize session state for the tab if it doesn't exist
+    if "config_tab_selection" not in st.session_state:
+        st.session_state["config_tab_selection"] = "📊 Edit Metric"
+
     cats = models.get_categories() or []
     metrics_list = models.get_metrics() or []
     last_ts = models.get_last_backup_timestamp()
 
-    # Semantic separation: Metrics vs Categories vs System
-    tab_metrics, tab_new_metric, tab_cats, tab_system = st.tabs([
+    # 2. Use segmented_control instead of st.tabs for persistence
+    tab_options = [
         "📊 Edit Metric", 
         "✨ New Metric",
         "📁 Categories", 
         "⚙️ Export & Import"
-    ])
+    ]
+    
+    selected_tab = st.segmented_control(
+        "Settings Menu",
+        options=tab_options,
+        selection_mode="single",
+        label_visibility="collapsed",
+        key="config_tab_selection" # This makes it 'sticky'
+    )
+    
+    st.divider()
 
-    with tab_metrics:
-        # Focus: Modifying existing tracking targets
+    # 3. Content Routing based on selection
+    if selected_tab == "📊 Edit Metric":
         if metrics_list:
             metrics.show_edit_metrics(metrics_list, cats)
         else:
             st.info("No metrics found yet.")
 
-    with tab_new_metric:
-        # Focus: Pure creation flow (clears the screen of existing data)
+    elif selected_tab == "✨ New Metric":
         metrics.show_create_metric(cats)
 
-    with tab_cats:
-        # Focus: Organizational groups (Mirrors your current compact logic)
+    elif selected_tab == "📁 Categories":
         manage_lookups.show_manage_lookups()
 
-    with tab_system:
-        # Focus: Backend and data lifecycle
+    elif selected_tab == "⚙️ Export & Import":
         st.caption(f"🛡️ Last local backup: **{last_ts}**")
         importer.show_data_lifecycle_management()

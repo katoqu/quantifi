@@ -38,6 +38,17 @@ def get_entries(metric_id=None):
     res = _safe_execute(query, "Failed to fetch entries")
     return res.data if res else []
 
+def get_metric_by_name(name: str):
+    """
+    Finds a metric by name for the current user (case-insensitive).
+    Required by the importer to prevent duplicate metric creation.
+    """
+    res = _safe_execute(
+        sb.table("metrics").select("*").eq("name", name.lower().strip()),
+        "Failed to find metric by name"
+    )
+    return res.data[0] if res and res.data else None
+
 def get_metric_value_bounds(metric_id: str):
     """
     Returns the min and max values currently recorded for a metric.
@@ -128,9 +139,15 @@ def delete_category(cat_id: str):
 # --- DATA EXPORT & LIFECYCLE ---
 
 def get_flat_export_data():
-    """Fetches flattened dataset for CSV export with ISO8601 safety."""
+    """
+    MODIFIED: Fetches flattened dataset including metric metadata 
+    (Type, Min, Max) for a complete round-trip backup.
+    """
+    # 1. Update query to include metadata columns from the metrics table
     query = _safe_execute(
-        sb.table("entries").select("recorded_at, value, metrics(name, unit_name, categories(name))"),
+        sb.table("entries").select(
+            "recorded_at, value, metrics(name, unit_name, unit_type, range_start, range_end, categories(name))"
+        ),
         "Failed to fetch export data"
     )
     if not query: return []
@@ -140,12 +157,16 @@ def get_flat_export_data():
         import pandas as pd
         ts = pd.to_datetime(entry["recorded_at"], format='ISO8601', utc=True)
         
+        # 2. Append the new metadata keys matching the new importer expectations
         rows.append({
             "Date": ts.strftime('%Y-%m-%d %H:%M:%S'),
             "Metric": entry["metrics"]["name"],
             "Value": entry["value"],
             "Unit": entry["metrics"]["unit_name"],
-            "Category": entry["metrics"]["categories"]["name"] if entry["metrics"]["categories"] else "None"
+            "Category": entry["metrics"]["categories"]["name"] if entry["metrics"]["categories"] else "None",
+            "Type": entry["metrics"]["unit_type"],
+            "Min": entry["metrics"]["range_start"],
+            "Max": entry["metrics"]["range_end"]
         })
     return rows
 

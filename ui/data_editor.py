@@ -194,8 +194,6 @@ def show_data_management_suite(selected_metric):
                 (pd.to_datetime(master_draft['recorded_at']).dt.date <= end_date)) |
                 (master_draft["Change Log"] != "") # This keeps edited rows visible regardless of filter
             )
-#            d_mask = (pd.to_datetime(master_draft['recorded_at']).dt.date >= start_date) & \
-#                     (pd.to_datetime(master_draft['recorded_at']).dt.date <= end_date)
             table_view_df = master_draft.loc[d_mask].sort_values("recorded_at", ascending=False)
             _render_editable_table(table_view_df, m_unit, mid, state_key, selected_metric)
             
