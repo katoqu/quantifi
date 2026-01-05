@@ -8,6 +8,11 @@ def tracker_page():
     Main dashboard controller optimized for mobile. 
     Uses Session State as the single source of truth for 'Sticky' selection.
     """
+    # Fix: Ensure the tab selector doesn't hold an invalid value like "Edit Data"
+    valid_tabs = ["Overview", "Record Data"]
+    if st.session_state.get("tracker_view_selector") not in valid_tabs:
+        st.session_state["tracker_view_selector"] = "Overview"
+
     # 1. ALWAYS FETCH METRICS (Lightweight)
     all_metrics = models.get_metrics()
     

@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import auth
 import models
-from ui import visualize
+from ui import visualize, pages
 
 def show_landing_page(metrics_list, all_entries):
     cats = models.get_categories() or []
@@ -133,6 +133,14 @@ def _show_advanced_viz_dialog(metric, entries, stats):
     visualize.show_visualizations(df, metric.get('unit_name', ''), metric['name'])
     
     if st.button("Edit History", use_container_width=True):
+        # 1. Set the sticky ID
         st.session_state["last_active_mid"] = metric['id']
-        st.session_state["tracker_view_selector"] = "Edit Data"
-        st.rerun()
+        
+        # 2. Get the "Edit Data" page object from our stored list
+        # index 1 corresponds to the second page in our app.py list
+        if "nav_pages" in st.session_state:
+            edit_page_obj = st.session_state["nav_pages"][1] 
+            st.switch_page(edit_page_obj)
+        else:
+            # Fallback if state isn't ready
+            st.error("Navigation not initialized. Please refresh.")

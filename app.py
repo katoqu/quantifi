@@ -18,12 +18,18 @@ with st.sidebar:
         auth.sign_out()
 
 # 4. Navigation Definition
-# Streamlit will automatically handle the selection based on the URL
-pg = st.navigation([
+# Define your pages as a list
+my_pages = [
     st.Page(pages.tracker_page, title="Tracker", icon="📊", default=True),
     st.Page(pages.editor_page, title="Edit Data", icon="✏️"),
     st.Page(pages.configure_page, title="Configure", icon="⚙️"),
-])
+]
+
+# Store them in session state so they can be accessed anywhere
+st.session_state["nav_pages"] = my_pages
+
+# Pass the list to navigation
+pg = st.navigation(my_pages)
 
 # 5. Execution
 try:
