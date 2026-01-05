@@ -28,28 +28,43 @@ def _confirm_save_dialog(mid, editor_key, state_key):
     
     # 2. Detailed Card-based Change Log
     changes = master_draft[master_draft["Change Log"] != ""]
-    
     if not changes.empty:
         for _, row in changes.iterrows():
             with st.container(border=True):
                 if row["Change Log"] == "🔴":
                     st.markdown("**🔴 DELETING ENTRY**")
+                    # Display original values so the user knows exactly what is being removed
+                    st.write(f"**Value:** {row['value']}")
+                    st.caption(f"📅 {pd.to_datetime(row['recorded_at']).strftime('%d %b, %H:%M')}")
                 else:
-                    # Logic to find the 'From' value
-                    from_val = "???"
+                    # 1. RETRIEVE BASELINE DATA
+                    from_val, from_ts = None, None
                     if baseline_df is not None and pd.notna(row.get('id')):
-                        # Locate the original value by ID
                         orig_row = baseline_df[baseline_df['id'] == row['id']]
                         if not orig_row.empty:
                             from_val = orig_row.iloc[0]['value']
+                            from_ts = pd.to_datetime(orig_row.iloc[0]['recorded_at'])
                     
-                    st.markdown(f"**🟡 UPDATED VALUE**")
-                    st.write(f"**{from_val}** ➡️ **{row['value']}**") # High-contrast comparison
-                
-                st.caption(f"📅 {row['recorded_at'].strftime('%d %b, %H:%M')}")
+                    # 2. CAPTURE NEW DATA
+                    new_val = row['value']
+                    new_ts = pd.to_datetime(row['recorded_at'])
+                    
+                    st.markdown(f"**🟡 UPDATED ENTRY**")
+                    
+                    # 3. ONLY SHOW VALUE CHANGE IF MODIFIED
+                    if from_val is not None and from_val != new_val:
+                        st.write(f"**Value:** {from_val} ➡️ **{new_val}**")
+                    elif from_val is None:
+                        st.write(f"**Value:** {new_val} (New)")
+                    
+                    # 4. ONLY SHOW DATE CHANGE IF MODIFIED
+                    if from_ts is not None and from_ts != new_ts:
+                        st.write(f"**Date:** {from_ts.strftime('%d %b, %H:%M')} ➡️ **{new_ts.strftime('%d %b, %H:%M')}**")
+                    else:
+                        # If date didn't change, just show it as a static caption for context
+                        st.caption(f"📅 {new_ts.strftime('%d %b, %H:%M')}")
     else:
         st.info("No changes to review.")
-
     if st.button("Confirm & Save", type="primary", use_container_width=True):
         editor_handler.execute_save(mid, state_key, editor_key)
         utils.finalize_action("Changes saved!")
@@ -58,17 +73,20 @@ def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
     """
     Renders the table with the 'Status' emoji visible but narrow.
     """
+    # 'drop=True' prevents the old index from becoming a new data column.
+    ui_view_df = view_df.reset_index(drop=True)
+
     editor_key = f"editor_{mid}"
     utype = selected_metric.get("unit_type", "float")
     step = 1 if (utype in ["integer", "integer_range"]) else 0.1
 
     st.data_editor(
-        view_df,
+        ui_view_df,
         # 'Change Log' is visible as 'Status' but kept narrow
         column_order=["Select", "recorded_at", "value", "Change Log"],
         column_config={
-            "Select": st.column_config.CheckboxColumn("🗑️", width="small"),
-            "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM, HH:mm", width="medium"),
+            "Select": st.column_config.CheckboxColumn("🗑️", width="40"),
+            "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM, HH:mm", width="small"),
             "value": st.column_config.NumberColumn(f"{m_unit}", step=step, width="small"),
             "Change Log": st.column_config.TextColumn("Status", width="small", disabled=True),
         },
