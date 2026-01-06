@@ -1,6 +1,7 @@
 import streamlit as st
 import models
 import utils
+from st_keyup import st_keyup
 
 @st.dialog("Confirm Metric Update")
 def _confirm_metric_update_dialog(m, new_payload):
@@ -180,31 +181,60 @@ def show_create_metric(cats):
             else:
                 st.warning("Please enter a name for the metric.")
 
+def on_metric_selected():
+    """Syncs the internal widget state to the global sticky state."""
+    if "metric_pill_selector" in st.session_state:
+        st.session_state["last_active_mid"] = st.session_state["metric_pill_selector"]
+        st.session_state["metric_search"] = ""
+
 def select_metric(metrics, target_id=None):
     if not metrics:
         return None
     
-    # Sort alphabetically to make the 'search' results predictable
     sorted_metrics = sorted(metrics, key=lambda x: x.get("name", "").lower())
-    metric_options = [utils.format_metric_label(m) for m in sorted_metrics]
     
-    default_index = 0
-    if target_id:
-        for i, m in enumerate(sorted_metrics):
-            if m['id'] == target_id:
-                default_index = i
-                break
+    # 1. IDENTIFY ACTIVE METRIC FOR THE HEADER
+    active_id = st.session_state.get("last_active_mid")
+    selected_obj = next((m for m in sorted_metrics if str(m['id']) == str(active_id)), None)
+    if not selected_obj:
+        selected_obj = sorted_metrics[0]
+
+    # 2. COLLAPSIBLE SELECTOR BOX
+    # The label acts as a status indicator: "Current: Steps (km)"
+    header_label = f"🎯 Tracking: {utils.format_metric_label(selected_obj)}"
     
-    # Standard selectbox provides the best mobile type-ahead experience
-    selected_label = st.selectbox(
-        "🔍 Search or Select Metric", # Explicit search cue
-        options=metric_options,
-        index=default_index,
-        key="global_metric_selector",
-        help="Type to filter metrics by name."
-    )
-    
-    for m in sorted_metrics:
-        if utils.format_metric_label(m) == selected_label:
-            return m
-    return None
+    with st.expander(header_label, expanded=False):
+        # 3. INSTANT SEARCH (st_keyup)
+        search_query = st_keyup(
+            "Filter metrics...",
+            key="metric_search",
+            value=st.session_state.get("metric_search", ""),
+            placeholder="Type to find another...",
+            label_visibility="collapsed"
+        ).lower().strip()
+
+        # 4. FILTERING LOGIC
+        filtered_metrics = [
+            m for m in sorted_metrics 
+            if search_query in m.get("name", "").lower() or 
+               search_query in m.get("unit_name", "").lower()
+        ] if search_query else sorted_metrics
+
+        # 5. RESULT PILLS
+        pill_options = {m['id']: utils.format_metric_label(m) for m in filtered_metrics}
+        
+        if pill_options:
+            st.segmented_control(
+                "Change Metric",
+                options=list(pill_options.keys()),
+                format_func=lambda x: pill_options.get(x),
+                key="metric_pill_selector",
+                selection_mode="single",
+                label_visibility="collapsed",
+                on_change=on_metric_selected,
+                default=target_id if target_id in pill_options else list(pill_options.keys())[0]
+            )
+        else:
+            st.caption("No matching metrics found.")
+
+    return selected_obj

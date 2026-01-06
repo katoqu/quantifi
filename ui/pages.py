@@ -32,12 +32,12 @@ def tracker_page():
     # --- 3. STATE INITIALIZATION ---
     if "tracker_view_selector" not in st.session_state:
         st.session_state["tracker_view_selector"] = "Overview"
-    
-    # Initialize the sticky metric ID if it doesn't exist
+    if "metric_search" not in st.session_state:
+        st.session_state["metric_search"] = ""
     if "last_active_mid" not in st.session_state:
         st.session_state["last_active_mid"] = None
-
-    # ADD THIS: Initialize category filter here
+    if "use_time_sticky" not in st.session_state:
+        st.session_state["use_time_sticky"] = False
     if "active_cat_filter" not in st.session_state:
         st.session_state["active_cat_filter"] = "All"
 
