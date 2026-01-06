@@ -55,66 +55,86 @@ def to_datetz(date_obj):
 
 def apply_custom_tabs_css():
     """
-    Mobile-optimized CSS to transform st.radio into large segmented tabs.
-    Optimized for reachability and tactile feedback.
+    Merged Modern Layout: Combines tactile segmented tabs with 
+    theme-aware layering to separate navigation from content.
     """
     st.markdown("""
         <style>
-        /* 1. Main Container - Full width and centered for mobile reach */
+        /* 1. LAYER 1: NAVIGATION CONTAINER (Header Surface) */
+        /* Updated to target st.segmented_control and your existing radio logic */
+        div[data-testid="stSegmentedControl"], 
         div[data-testid="stRadio"] > div[role="radiogroup"] {
-            display: flex;
-            flex-direction: row;
-            background-color: var(--secondary-background-color);
-            padding: 5px;
-            border-radius: 14px;
-            border: 1px solid var(--border-color);
-            width: 100%;
-            max-width: 500px;
-            margin: 0 auto 20px auto;
+            display: flex !important;
+            flex-direction: row !important;
+            background-color: var(--secondary-background-color) !important;
+            padding: 8px !important;
+            border-radius: 16px !important;
+            border: 1px solid var(--border-color) !important;
+            width: 100% !important;
+            max-width: 500px !important;
+            margin: 0 auto 12px auto !important;
         }
 
-        /* 2. Hide the default Streamlit radio circles */
-        div[data-testid="stRadio"] label div:first-child:not([data-testid="stMarkdownContainer"]) {
-            display: none !important;
-        }
-
-        /* 3. Base Tab Style - Large hit area for thumbs */
-        div[data-testid="stRadio"] label {
-            flex: 1;
-            text-align: center;
+        /* 2. TAB BUTTON STYLING (Tactile & High Contrast) */
+        /* Targets your existing radio labels and new segmented buttons */
+        div[data-testid="stRadio"] label,
+        div[data-testid="stSegmentedControl"] button {
+            flex: 1 !important;
+            text-align: center !important;
             background-color: transparent !important;
-            padding: 14px 10px !important; /* Increased padding for easier tapping */
-            border-radius: 10px !important;
+            padding: 12px 8px !important;
+            border-radius: 12px !important;
             margin: 2px !important;
-            cursor: pointer !important;
             border: none !important;
-            transition: all 0.15s ease-in-out;
+            transition: all 0.15s ease-in-out !important;
             color: var(--text-color) !important;
-            opacity: 0.8;
+            opacity: 0.7;
         }
 
-        /* 4. Tactile Feedback - Shrinks slightly when pressed */
-        div[data-testid="stRadio"] label:active {
-            transform: scale(0.96);
-        }
-
-        /* 5. Active Tab State - High contrast for visibility */
-        div[data-testid="stRadio"] label:has(input:checked) {
+        /* Active State - Matches your existing branding red */
+        div[data-testid="stRadio"] label:has(input:checked),
+        div[data-testid="stSegmentedControl"] button[aria-selected="true"] {
             background-color: var(--background-color) !important;
-            box-shadow: 0px 3px 8px rgba(0,0,0,0.15) !important;
-            opacity: 1;
-        }
-        
-        div[data-testid="stRadio"] label:has(input:checked) p {
-            color: #FF4B4B !important; /* Streamlit branding red */
+            box-shadow: 0px 3px 8px rgba(0,0,0,0.12) !important;
+            opacity: 1 !important;
+            color: #FF4B4B !important; 
             font-weight: 800 !important;
         }
 
-        /* 6. Text Legibility - 16px prevents iOS auto-zoom on input focus */
-        div[data-testid="stRadio"] label p {
-            margin: 0px !important;
+        /* 3. LAYER 2: METRIC SELECTOR (Secondary Card) */
+        /* Styles the st.expander used in metrics.py to look like a separate card */
+        details[data-testid="stExpander"] {
+            border: 1px solid var(--border-color) !important;
+            border-radius: 12px !important;
+            background-color: var(--background-color) !important;
+            margin-bottom: 15px !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+        }
+        
+        summary {
+            padding: 10px !important;
+            font-size: 0.95rem !important;
+            color: var(--primary-color) !important;
+            font-weight: 600 !important;
+        }
+
+        /* 4. COMPACT CONTENT TIGHTENING */
+        /* Reduces vertical gaps and shrinks massive titles */
+        [data-testid="stVerticalBlock"] {
+            gap: 0.5rem !important;
+        }
+
+        h3, [data-testid="stMarkdownContainer"] b {
+            font-size: 1rem !important;
+            margin-bottom: 4px !important;
+            display: inline-block;
+        }
+
+        /* Prevent auto-zoom on mobile focus */
+        div[data-testid="stRadio"] label p, 
+        div[data-testid="stSegmentedControl"] button p {
             font-size: 16px !important;
-            letter-spacing: 0.5px;
+            margin: 0 !important;
         }
         </style>
     """, unsafe_allow_html=True)

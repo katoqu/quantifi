@@ -72,11 +72,13 @@ def tracker_page():
     if view_mode != "Overview":
         active_id = st.session_state.get("last_active_mid")
         # Call the selector here so it appears at the top
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
         selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
         
         if selected_metric:
             st.session_state["last_active_mid"] = selected_metric['id']
 
+    # 3. THE DIVIDER
     st.divider()
 
     # 4. ROUTING LOGIC (Simplified)
