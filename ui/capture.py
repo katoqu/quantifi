@@ -9,22 +9,25 @@ def show_tracker_suite(selected_metric):
     """Refactored: Uses metric object directly for units and metadata."""
     dfe, m_unit, m_name = utils.collect_data(selected_metric)
     
+    if dfe is None or dfe.empty:
+        st.info("No data recorded for this metric yet. Add your first enrty below.")    
+
     show_capture(selected_metric)
     st.divider()
     
     if dfe is not None and not dfe.empty:
         visualize.show_visualizations(dfe, m_unit, m_name)
-    else:
-        st.info("No data entries found. Add your first entry above.")
 
 def show_capture(selected_metric):
     mid = selected_metric.get("id")
     unit_name = selected_metric.get("unit_name", "")
     utype = selected_metric.get("unit_type", "float")
     
-    # Lightweight fetch for smart defaults
+    # FIX: Ensure smart_default is never None
     last_entry = models.get_latest_entry_only(mid)
-    smart_default = last_entry['value'] if last_entry else float(selected_metric.get("range_start", 0.0))
+    # If no last entry, use range_start; if range_start is missing, use 0.0
+    fallback = selected_metric.get("range_start", 0.0)
+    smart_default = last_entry['value'] if last_entry else float(fallback if fallback is not None else 0.0)
 
     with st.container(border=True):
         st.markdown(f"**Recording:** {selected_metric['name'].title()}")

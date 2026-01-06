@@ -126,9 +126,13 @@ def show_advanced_analytics_view(metric):
     
     # 1. Fetch entries specifically for this metric using the function in models.py
     entries = models.get_entries(metric_id=metric['id']) #
-    
+
     if not entries:
+        # REPLACE st.info with a Button + Trigger
         st.info("Record more data to see advanced trends.")
+        if st.button("➕ Record First Entry", type="primary", use_container_width=True):
+            st.session_state["nav_to_record_trigger"] = True
+            st.rerun()
         return
 
     # 2. Calculate stats and render visualizations

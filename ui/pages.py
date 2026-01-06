@@ -8,6 +8,10 @@ def tracker_page():
     Main dashboard controller optimized for mobile. 
     Uses Session State as the single source of truth for 'Sticky' selection.
     """
+    if st.session_state.get("nav_to_record_trigger"):
+        st.session_state["tracker_view_selector"] = "Record"
+        st.session_state["nav_to_record_trigger"] = False # Reset trigger
+
     # Fix: Ensure the tab selector doesn't hold an invalid value
     valid_tabs = ["Overview", "Record", "Analytics", "Edit"]
     if st.session_state.get("tracker_view_selector") not in valid_tabs:

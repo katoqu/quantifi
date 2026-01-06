@@ -8,7 +8,11 @@ def get_metric_stats(df):
     Optimized for bulk data by checking types before conversion.
     """
     if df is None or df.empty:
-        return None
+        # Return a dictionary with defaults instead of None
+        return {
+            "latest": 0.0, "ma7": None, "change": 0.0,
+            "avg": 0.0, "count": 0, "last_date": "No Data"
+        }
 
     # Performance Fix: Only convert to datetime if it's not already converted
     if not pd.api.types.is_datetime64_any_dtype(df['recorded_at']):
@@ -90,7 +94,7 @@ def show_visualizations(dfe, m_unit, m_name):
     Renders the chart with an Average Baseline.
     """
     if dfe is None or dfe.empty:
-        st.info("No data available.")
+        st.info("No data recorded for this metric yet.")
         return
 
     # Check date column before sorting

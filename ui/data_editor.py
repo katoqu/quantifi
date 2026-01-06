@@ -3,6 +3,7 @@ import pandas as pd
 import utils
 from datetime import timedelta
 from ui import visualize
+from ui.capture import show_capture
 from logic import editor_handler
 
 @st.dialog("Confirm Changes")
@@ -134,6 +135,11 @@ def show_data_management_suite(selected_metric):
     
     if dfe is None or dfe.empty:
         st.info("No data recorded for this metric yet.")
+        # NEW: Mobile-friendly call to action
+        if st.button("➕ Add First Entry", type="primary", use_container_width=True):
+                st.session_state["last_active_mid"] = mid  # Ensure the right metric is selected
+                st.session_state["nav_to_record_trigger"] = True # Set a trigger instead of direct modification
+                st.rerun()        
         return
 
     # 2. DETECT RANGE CHANGES
