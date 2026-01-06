@@ -202,7 +202,7 @@ def select_metric(metrics, target_id=None):
         selected_obj = sorted_metrics[0]
 
     # 2. COLLAPSIBLE SELECTOR BOX
-    header_label = f"🎯 Tracking: {utils.format_metric_label(selected_obj)}"
+    header_label = f"🎯 {utils.format_metric_label(selected_obj)}"
     
     with st.expander(header_label, expanded=False):
 

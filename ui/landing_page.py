@@ -9,8 +9,6 @@ def show_landing_page(metrics_list, all_entries):
     user = auth.get_current_user()
     user_display = user.email.split('@')[0].capitalize() if user else "User"
     
-    st.markdown(f"### 🚀 Welcome, {user_display}")
-
     if not metrics_list:
         st.info("No metrics found. Let's start tracking!")
         if st.button("✨ Create Your First Metric", use_container_width=True, type="primary"):
@@ -124,7 +122,7 @@ def _render_action_card(metric, cat_map, entries, stats):
                 st.rerun()
 
 def show_advanced_analytics_view(metric):
-    st.subheader(f"📈 {metric['name'].title()} Trends")
+    st.markdown(f"#### {metric['name'].title()} Trends")
     
     # 1. Fetch entries specifically for this metric using the function in models.py
     entries = models.get_entries(metric_id=metric['id']) #

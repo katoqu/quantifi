@@ -65,47 +65,37 @@ def tracker_page():
     )
     
     view_mode = st.session_state["tracker_view_selector"]
+
+    # 2. SELECTOR-AT-TOP CHANGE:
+    # If we are not on the 'Overview' page, show the metric selector immediately.
+    selected_metric = None
+    if view_mode != "Overview":
+        active_id = st.session_state.get("last_active_mid")
+        # Call the selector here so it appears at the top
+        selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
+        
+        if selected_metric:
+            st.session_state["last_active_mid"] = selected_metric['id']
+
     st.divider()
 
-    # --- 6. ROUTING LOGIC ---
+    # 4. ROUTING LOGIC (Simplified)
     if view_mode == "Overview":
-        # ONLY fetch bulk entries when looking at the dashboard
         all_entries = models.get_all_entries_bulk()
-        if all_entries is None:
-            st.spinner("Loading trends...")
-            st.stop()
-        landing_page.show_landing_page( all_metrics, all_entries)
+        landing_page.show_landing_page(all_metrics, all_entries) #
         
-    elif view_mode == "Record":
-        # --- RECORD DATA VIEW ---
-        active_id = st.session_state.get("last_active_mid")
+    elif view_mode == "Record" and selected_metric:
+        # No longer need to call metrics.select_metric here
+        capture.show_tracker_suite(selected_metric)
+
+    elif view_mode == "Analytics" and selected_metric:
+        # No longer need to call metrics.select_metric here
+        landing_page.show_advanced_analytics_view(selected_metric)
+
+    elif view_mode == "Edit" and selected_metric:
+        # No longer need to call metrics.select_metric here
+        data_editor.show_data_management_suite(selected_metric)
         
-        # Pass the sticky ID to the selector to auto-focus the right metric
-        selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
-        
-        if selected_metric:
-            # Update the sticky state if the user manually changes selection in the dropdown
-            st.session_state["last_active_mid"] = selected_metric['id']
-            # Show the capture suite (Capture + Visualization)
-            capture.show_tracker_suite(selected_metric)
-
-    elif view_mode == "Edit":
-        # --- EDIT DATA VIEW ---
-        active_id = st.session_state.get("last_active_mid")
-        selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
-        if selected_metric:
-            st.session_state["last_active_mid"] = selected_metric['id']
-            data_editor.show_data_management_suite(selected_metric)
-
-    # Add the Analytics View Route
-    elif view_mode == "Analytics":
-        active_id = st.session_state.get("last_active_mid")
-        selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
-        if selected_metric:
-            st.session_state["last_active_mid"] = selected_metric['id']
-            # We call the function previously used for the dialog, but as a page view
-            landing_page.show_advanced_analytics_view(selected_metric)
-
 def editor_page():
     """Dedicated page for historical data management and editing."""
     st.title("Edit")
