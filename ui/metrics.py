@@ -183,7 +183,8 @@ def show_create_metric(cats):
 
 def on_metric_selected():
     """Syncs the internal widget state to the global sticky state."""
-    if "metric_pill_selector" in st.session_state:
+    # Only update if the user has actually clicked a pill
+    if st.session_state.get("metric_pill_selector"):
         st.session_state["last_active_mid"] = st.session_state["metric_pill_selector"]
         st.session_state["metric_search"] = ""
 
@@ -196,18 +197,23 @@ def select_metric(metrics, target_id=None):
     # 1. IDENTIFY ACTIVE METRIC FOR THE HEADER
     active_id = st.session_state.get("last_active_mid")
     selected_obj = next((m for m in sorted_metrics if str(m['id']) == str(active_id)), None)
+    # Fallback to the first metric only if absolutely nothing is active
     if not selected_obj:
         selected_obj = sorted_metrics[0]
 
     # 2. COLLAPSIBLE SELECTOR BOX
-    # The label acts as a status indicator: "Current: Steps (km)"
     header_label = f"🎯 Tracking: {utils.format_metric_label(selected_obj)}"
     
     with st.expander(header_label, expanded=False):
+
+        # 3. DYNAMIC KEY FOR INSTANT SEARCH
+        # By adding active_id to the key, the widget resets whenever a new metric is picked.
+        search_box_key = f"search_input_{active_id}"
+
         # 3. INSTANT SEARCH (st_keyup)
         search_query = st_keyup(
             "Filter metrics...",
-            key="metric_search",
+            key=search_box_key,
             value=st.session_state.get("metric_search", ""),
             placeholder="Type to find another...",
             label_visibility="collapsed"
@@ -232,7 +238,7 @@ def select_metric(metrics, target_id=None):
                 selection_mode="single",
                 label_visibility="collapsed",
                 on_change=on_metric_selected,
-                default=target_id if target_id in pill_options else list(pill_options.keys())[0]
+                default=None 
             )
         else:
             st.caption("No matching metrics found.")

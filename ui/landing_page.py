@@ -116,7 +116,7 @@ def _render_action_card(metric, cat_map, entries, stats):
             
             if choice == "➕":
                 st.session_state["last_active_mid"] = mid
-                st.session_state["tracker_view_selector"] = "Record Data"
+                st.session_state["tracker_view_selector"] = "Record"
                 st.rerun()
             elif choice == "📊":
                 st.session_state["last_active_mid"] = mid

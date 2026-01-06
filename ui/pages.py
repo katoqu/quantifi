@@ -9,7 +9,7 @@ def tracker_page():
     Uses Session State as the single source of truth for 'Sticky' selection.
     """
     # Fix: Ensure the tab selector doesn't hold an invalid value
-    valid_tabs = ["Overview", "Record Data", "Edit Data", "Analytics"]
+    valid_tabs = ["Overview", "Record", "Analytics", "Edit"]
     if st.session_state.get("tracker_view_selector") not in valid_tabs:
         st.session_state["tracker_view_selector"] = "Overview"
 
@@ -45,7 +45,7 @@ def tracker_page():
     requested_mid = st.query_params.get("metric_id")
     if requested_mid:
         # Switch view to recording mode
-        st.session_state["tracker_view_selector"] = "Record Data"
+        st.session_state["tracker_view_selector"] = "Record"
         # Set this as the sticky active metric
         st.session_state["last_active_mid"] = requested_mid
         # Clear query params to prevent re-triggering on browser refresh
@@ -53,7 +53,7 @@ def tracker_page():
 
 
 # --- 5. RENDER NAVIGATION (Modern Segmented Tabs) ---
-    view_options = ["Overview", "Record Data", "Edit Data", "Analytics"]
+    view_options = ["Overview", "Record", "Analytics", "Edit"]
     
     # Use segmented_control for a high-quality mobile tab feel
     st.segmented_control(
@@ -76,7 +76,7 @@ def tracker_page():
             st.stop()
         landing_page.show_landing_page( all_metrics, all_entries)
         
-    elif view_mode == "Record Data":
+    elif view_mode == "Record":
         # --- RECORD DATA VIEW ---
         active_id = st.session_state.get("last_active_mid")
         
@@ -89,7 +89,7 @@ def tracker_page():
             # Show the capture suite (Capture + Visualization)
             capture.show_tracker_suite(selected_metric)
 
-    elif view_mode == "Edit Data":
+    elif view_mode == "Edit":
         # --- EDIT DATA VIEW ---
         active_id = st.session_state.get("last_active_mid")
         selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
@@ -108,7 +108,7 @@ def tracker_page():
 
 def editor_page():
     """Dedicated page for historical data management and editing."""
-    st.title("Edit Data")
+    st.title("Edit")
     
     # 1. Fetch metrics
     metrics_list = models.get_metrics() or []
