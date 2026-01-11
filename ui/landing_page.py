@@ -117,7 +117,7 @@ def _render_action_card(metric, cat_map, entries, stats):
                         </div>
                         <div style="height: 15px;"></div> 
                     """, unsafe_allow_html=True)
-            choice = st.pills(f"act_{mid}", options=["➕", "📊"], key=f"p_{mid}", label_visibility="collapsed")
+            choice = st.pills(f"act_{mid}", options=["➕", "📊", "⚙️"], key=f"p_{mid}", label_visibility="collapsed")
             
             if choice == "➕":
                 st.session_state["last_active_mid"] = mid
@@ -127,6 +127,21 @@ def _render_action_card(metric, cat_map, entries, stats):
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Analytics"
                 st.rerun()
+            elif choice == "⚙️":
+                # 1. Set the metric focus and tab selection
+                st.session_state["last_active_mid"] = mid
+                st.session_state["config_tab_selection"] = "📊 Edit Metric"
+                
+                # 2. Find the "Configure" page object from the navigation list
+                nav_pages = st.session_state.get("nav_pages", [])
+                config_page = next((p for p in nav_pages if p.title == "Configure"), None)
+                
+                if config_page:
+                    st.switch_page(config_page)
+                    st.rerun()
+                else:
+                    # Fallback if page object isn't found
+                    st.error("Configure page not found in navigation.")
 
 def show_advanced_analytics_view(metric):
     st.markdown(f"#### {metric['name'].title()} Trends")
