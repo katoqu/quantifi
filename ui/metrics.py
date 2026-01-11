@@ -48,7 +48,7 @@ def _confirm_metric_update_dialog(m, new_payload):
 
 def show_edit_metrics(metrics_list, cats):
     """Focused Mobile Editor: Only shows the 'Active' metric for editing."""
-    st.subheader("Edit Metric Details")
+    st.subheader("Edit Metric")
     
     # 1. Reuse the selector to pick which metric to edit (Sticky Logic)
     active_id = st.session_state.get("last_active_mid")
