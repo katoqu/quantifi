@@ -134,16 +134,16 @@ def apply_mobile_table_css():
 
 # utils.py
 
-def render_back_button(target_page_title="Tracker", target_tab="Overview", breadcrumb=""):
+# utils.py
+
+def render_back_button(target_page_title="Tracker", target_tab="Overview"):
     """
-    Renders a native Streamlit pill as a back button.
-    The logic is handled in the page controller to avoid state conflicts.
+    Renders a simple native Streamlit pill as a 'Back to Start' button.
     """
-    label = f"〈 Back / {breadcrumb}" if breadcrumb else "〈 Back"
+    label = "〈 Back to Start" # Simplified label
     
-    # We just render the pill. The page controller will detect the selection.
     st.pills(
-        "Back Navigation",
+        "Navigation",
         options=[label],
         key=f"pnav_{target_page_title}_{target_tab}",
         label_visibility="collapsed",
