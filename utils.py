@@ -54,97 +54,35 @@ def to_datetz(date_obj):
     return dt.datetime.combine(date_obj, dt.time(12, 0))
 
 def apply_custom_tabs_css():
-    """
-    Modern Native Mobile Layout:
-    1. Pins the navigation header (Tabs, Back, Divider) to the top.
-    2. Tightens all vertical gaps for a high-density 'app' feel.
-    3. Styles the Back button as a clean, native-style text link.
-    """
     st.markdown("""
         <style>
-        /* --- 1. THE NAVIGATION TABS (Segmented Control) --- */
-        div[data-testid="stSegmentedControl"] {
-            display: flex !important;
-            background-color: var(--secondary-background-color) !important;
-            padding: 8px !important;
-            border-radius: 16px !important;
-            border: 1px solid var(--border-color) !important;
-            margin: 0 auto 12px auto !important;
-            width: 100% !important;
-            max-width: 500px !important;
-        }
-
-        div[data-testid="stSegmentedControl"] button {
-            flex: 1 !important;
-            background-color: transparent !important;
-            border-radius: 12px !important;
-            border: none !important;
-            color: var(--text-color) !important;
-            opacity: 0.7;
-            transition: all 0.15s ease-in-out !important;
-        }
-
-        div[data-testid="stSegmentedControl"] button[aria-selected="true"] {
-            background-color: var(--background-color) !important;
-            box-shadow: 0px 3px 8px rgba(0,0,0,0.12) !important;
-            opacity: 1 !important;
-            color: #FF4B4B !important; 
-            font-weight: 800 !important;
-        }
-
-        /* --- 2. THE STICKY NAVIGATION HEADER (Tabs + Back + Divider) --- */
-        /* Targets the container wrapper to pin it to the top during scroll */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(button[key^="back_btn_"]) {
+        /* --- 1. THE STICKY HEADER CONTAINER --- */
+        /* Targets the container wrapping the segmented control and pills */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPills"]) {
             position: sticky !important;
-            top: 2.85rem !important; /* Offset for Streamlit top bar */
+            top: 2.85rem !important;
             z-index: 1000 !important;
             background-color: var(--background-color) !important;
             margin-top: -1.5rem !important;
-            padding-bottom: 0px !important;
+            padding-bottom: 5px !important;
             border-bottom: 1px solid var(--border-color) !important;
         }
 
-        /* Forces the Tabs, Back Button, and Divider to sit with 0px gap */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(button[key^="back_btn_"]) [data-testid="stVerticalBlock"] {
+        /* 2. REMOVE INTERNAL GAP between segmented control and pills */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPills"]) [data-testid="stVerticalBlock"] {
             gap: 0rem !important;
         }
 
-        /* --- 3. THE NATIVE BACK BUTTON LINK --- */
-        div[data-testid="stColumn"]:has(button[key^="back_btn_"]) {
-            margin-top: -22px !important;    /* Pulls button up closer to tabs */
-            margin-bottom: -22px !important; /* Pulls divider up closer to button */
+        /* 3. TIGHTEN PILL MARGINS */
+        div[data-testid="stPills"] {
+            margin-top: -10px !important;
+            margin-bottom: -10px !important;
         }
 
-        div[data-testid="stColumn"] button[kind="secondary"][key^="back_btn_"] {
-            border: none !important;
-            background-color: transparent !important;
-            color: #FF4B4B !important; 
-            font-weight: 500 !important;
-            font-size: 0.9rem !important;
-            padding: 0 !important;
-            min-height: 0 !important;   
-            height: 26px !important;    
-            box-shadow: none !important;
-            text-align: left !important;
-        }
-
-        /* --- 4. THE DIVIDER (Pinned tightly under the Back Button) --- */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(button[key^="back_btn_"]) hr {
-            margin-top: 0px !important;
-            margin-bottom: 8px !important;
-            border-top: 1px solid var(--border-color) !important;
-        }
-
-        /* --- 5. COMPACT CONTENT TIGHTENING --- */
-        h3 {
-            font-size: 1.1rem !important;
+        /* 4. PIN DIVIDER TO PILL */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPills"]) hr {
             margin-top: 5px !important;
             margin-bottom: 5px !important;
-        }
-        
-        /* Prevent auto-zoom on mobile focus */
-        div[data-testid="stSegmentedControl"] button p {
-            font-size: 16px !important;
         }
         </style>            
     """, unsafe_allow_html=True)
@@ -196,36 +134,18 @@ def apply_mobile_table_css():
 
 # utils.py
 
-def nav_callback(page_title, tab_name):
-    """Callback to safely update state before page switch."""
-    if page_title == "Tracker":
-        st.session_state["tracker_view_selector"] = tab_name
-    elif page_title == "Configure":
-        st.session_state["config_tab_selection"] = tab_name
-
 def render_back_button(target_page_title="Tracker", target_tab="Overview", breadcrumb=""):
     """
-    Renders a mobile-native 'Back' link with a callback to avoid 
-    SessionState mutation errors.
+    Renders a native Streamlit pill as a back button.
+    The logic is handled in the page controller to avoid state conflicts.
     """
-    with st.container():
-        col_back, _ = st.columns([2, 1]) 
-        with col_back:
-            btn_key = f"back_btn_{target_page_title}_{target_tab}"
-            label = f"〈 Back / {breadcrumb}" if breadcrumb else "〈 Back"
-            
-            # Use on_click and args to handle the state update safely
-            if st.button(
-                label, 
-                type="secondary", 
-                key=btn_key, 
-                on_click=nav_callback, 
-                args=(target_page_title, target_tab)
-            ):
-                # Now we only handle the page switch here
-                nav_pages = st.session_state.get("nav_pages", [])
-                target_page = next((p for p in nav_pages if p.title == target_page_title), None)
-                
-                if target_page:
-                    st.switch_page(target_page)
-                    # No st.rerun() needed here as switch_page handles it
+    label = f"〈 Back / {breadcrumb}" if breadcrumb else "〈 Back"
+    
+    # We just render the pill. The page controller will detect the selection.
+    st.pills(
+        "Back Navigation",
+        options=[label],
+        key=f"pnav_{target_page_title}_{target_tab}",
+        label_visibility="collapsed",
+        selection_mode="single"
+    )

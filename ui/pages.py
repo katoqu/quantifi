@@ -6,61 +6,56 @@ from ui import manage_lookups, capture, metrics, data_editor, importer, landing_
 def tracker_page():
     """
     Main dashboard controller optimized for mobile. 
-    Uses Session State as the single source of truth for 'Sticky' selection.
+    Uses 'Pre-render Logic' to handle back-navigation safely with st.pills.
     """
-    if st.session_state.get("nav_to_record_trigger"):
-        st.session_state["tracker_view_selector"] = "Record"
-        st.session_state["nav_to_record_trigger"] = False # Reset trigger
-
-    # Fix: Ensure the tab selector doesn't hold an invalid value
-    valid_tabs = ["Overview", "Record", "Analytics", "Edit"]
-    if st.session_state.get("tracker_view_selector") not in valid_tabs:
+    # --- 1. PRE-RENDER NAVIGATION LOGIC (CRITICAL FIX) ---
+    # We check if the back-pill was clicked before any other widgets are rendered.
+    # This prevents the 'modification after instantiation' error.
+    back_pill_key = "pnav_Tracker_Overview"
+    if st.session_state.get(back_pill_key) is not None:
+        # Reset the pill state so it doesn't trigger on every rerun
+        st.session_state[back_pill_key] = None
+        # Safely update the shared state for the segmented control
         st.session_state["tracker_view_selector"] = "Overview"
 
-    # 1. ALWAYS FETCH METRICS (Lightweight)
+    # Handle deep link triggers from other parts of the app
+    if st.session_state.get("nav_to_record_trigger"):
+        st.session_state["tracker_view_selector"] = "Record"
+        st.session_state["nav_to_record_trigger"] = False 
+
+    # --- 2. DATA LOADING ---
     all_metrics = models.get_metrics(include_archived=False)
     
     if all_metrics is None:
         st.spinner("Syncing metrics...")
         st.stop()
         
-    # 3. EMPTY STATE: Only show if we explicitly got an empty list []
     if not all_metrics:
         st.title("QuantifI")
         st.info("No active metrics. Restore archived metrics in Settings or create a new one.")
         return
 
-    # 2. Apply the visual theme for the custom tabs (from utils.py)
-    utils.apply_custom_tabs_css()
-
     # --- 3. STATE INITIALIZATION ---
     if "tracker_view_selector" not in st.session_state:
         st.session_state["tracker_view_selector"] = "Overview"
-    if "metric_search" not in st.session_state:
-        st.session_state["metric_search"] = ""
     if "last_active_mid" not in st.session_state:
         st.session_state["last_active_mid"] = None
-    if "use_time_sticky" not in st.session_state:
-        st.session_state["use_time_sticky"] = False
-    if "active_cat_filter" not in st.session_state:
-        st.session_state["active_cat_filter"] = "All"
 
-    # --- 4. HANDLE DEEP LINK TRIGGER (e.g., from Dashboard "➕" button) ---
+    # Apply Sticky and Pill CSS from utils
+    utils.apply_custom_tabs_css()
+
+    # Handle deep links via query parameters
     requested_mid = st.query_params.get("metric_id")
     if requested_mid:
-        # Switch view to recording mode
         st.session_state["tracker_view_selector"] = "Record"
-        # Set this as the sticky active metric
         st.session_state["last_active_mid"] = requested_mid
-        # Clear query params to prevent re-triggering on browser refresh
         st.query_params.clear()
 
-
-    # --- 5. RENDER NAVIGATION (Modern Segmented Tabs) ---
+    # --- 4. STICKY NAVIGATION HEADER ---
     view_options = ["Overview", "Record", "Analytics", "Edit"]
     
-    # WRAP IN CONTAINER FOR STICKY CSS TO TARGET
     with st.container():
+        # Main Tab Selector
         st.segmented_control(
             "Navigation", 
             options=view_options, 
@@ -70,9 +65,8 @@ def tracker_page():
         )
         
         view_mode = st.session_state["tracker_view_selector"]
-        selected_metric = None
 
-        # NEW: Show Back Button on all sub-views except Overview
+        # Back Button Pill (visible on all sub-views)
         if view_mode != "Overview":
             utils.render_back_button(
                 target_page_title="Tracker", 
@@ -81,16 +75,16 @@ def tracker_page():
             )
 #        st.divider()    
 
-    # 4. ROUTING LOGIC (Simplified)
+    # --- 5. METRIC SELECTION (Only for sub-views) ---
+    selected_metric = None
     if view_mode != "Overview":
         active_id = st.session_state.get("last_active_mid")
         selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
         
         if selected_metric:
-            # Update the sticky ID so it stays focused across tabs
             st.session_state["last_active_mid"] = selected_metric['id']
 
-    # --- 4. ROUTING LOGIC ---
+    # --- 6. CONTENT ROUTING ---
     if view_mode == "Overview":
         all_entries = models.get_all_entries_bulk()
         landing_page.show_landing_page(all_metrics, all_entries)
@@ -129,14 +123,32 @@ def editor_page():
 
 def configure_page():
     """Refactored Settings with Sticky Header and Breadcrumbs."""
+    
+    # --- 1. PRE-RENDER NAVIGATION LOGIC (CRITICAL FIX) ---
+    # The back button in settings points to Tracker/Overview.
+    # We must catch the pill click and update state BEFORE the segmented control is built.
+    back_pill_key = "pnav_Tracker_Overview"
+    if st.session_state.get(back_pill_key) is not None:
+        # Reset the pill selection
+        st.session_state[back_pill_key] = None
+        # Safely update the shared state for the Tracker page
+        st.session_state["tracker_view_selector"] = "Overview"
+        # Since we are on the 'Configure' page, we must manually switch back to 'Tracker'
+        nav_pages = st.session_state.get("nav_pages", [])
+        target_page = next((p for p in nav_pages if p.title == "Tracker"), None)
+        if target_page:
+            st.switch_page(target_page)
+
     st.title("Settings & Maintenance")
     
-    # 1. Initialize session state
+    # 2. Initialize local session state for settings tabs
     if "config_tab_selection" not in st.session_state:
         st.session_state["config_tab_selection"] = "📊 Edit Metric"
 
-    # 2. STICKY HEADER CONTAINER
-    # Wrapping everything in one container allows the CSS to pin it as a single block
+    # Apply CSS for stickiness and pills
+    utils.apply_custom_tabs_css()
+
+    # --- 3. STICKY HEADER CONTAINER ---
     with st.container():
         tab_options = ["📊 Edit Metric", "✨ New Metric", "📁 Categories", "⚙️ Export & Import"]
         
@@ -151,14 +163,15 @@ def configure_page():
         # Determine breadcrumb text (e.g., 'Edit Metric' from '📊 Edit Metric')
         bc_text = selected_tab.split(" ", 1)[-1] if selected_tab else "Settings"
         
+        # The key generated here (pnav_Tracker_Overview) matches the check at the top
         utils.render_back_button(
             target_page_title="Tracker", 
             target_tab="Overview", 
             breadcrumb=bc_text
         )
-        #st.divider()
+#        st.divider()
 
-    # 3. Data Loading & Content Routing
+    # --- 4. DATA LOADING & CONTENT ROUTING ---
     cats = models.get_categories() or []
     metrics_list = models.get_metrics(include_archived=True) or []
     
