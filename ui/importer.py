@@ -99,9 +99,9 @@ def _handle_import_logic(uploaded_file, wipe_first):
                 time.sleep(1)
 
             log.write("🏗️ **Syncing Schema...**")
-            schema_cols = ['Metric', 'Description', 'Unit', 'Category', 'Type', 'Min', 'Max']
+            schema_cols = ['Metric', 'Description', 'Unit', 'Category', 'Type', 'Min', 'Max', 'Archived']
             # Fill missing metadata with defaults
-            for col in ['Description', 'Unit', 'Category', 'Min', 'Max']:
+            for col in ['Description', 'Unit', 'Category', 'Min', 'Max', 'Archived']:
                 if col not in df_import.columns: df_import[col] = None
             
             unique_metrics = df_import[schema_cols].drop_duplicates()
@@ -167,6 +167,7 @@ def _render_template_downloader():
             template_rows.append({
                 "Metric": m['name'],
                 "Description": m.get('description', ''),
+                "Archived": m.get('is_archived', False),
                 "Value": 0.0,
                 "Date": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "Unit": m.get('unit_name', ''),

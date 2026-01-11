@@ -169,6 +169,7 @@ def get_flat_export_data():
             "Date": ts.strftime('%Y-%m-%d %H:%M:%S'),
             "Metric": entry["metrics"]["name"],
             "Description": entry["metrics"].get("description", ""),
+            "Archived": entry["metrics"].get("is_archived", False),
             "Value": entry["value"],
             "Unit": entry["metrics"]["unit_name"],
             "Category": entry["metrics"]["categories"]["name"] if entry["metrics"]["categories"] else "None",

@@ -21,6 +21,7 @@ create table metrics (
   unit_type text default 'float', -- Options: float, integer, integer_range
   range_start integer,
   range_end integer,
+  is_archived boolean default false,
   category_id uuid references categories(id) on delete set null,
   user_id uuid not null references auth.users default auth.uid(),
   created_at timestamptz default now(),
@@ -46,6 +47,7 @@ create unique index categories_name_user_idx on categories (lower(name), user_id
 create index entries_metric_id_idx on entries (metric_id);
 create index entries_recorded_at_idx on entries (recorded_at);
 create index metrics_category_id_idx on metrics (category_id);
+create index idx_active_metrics on metrics (user_id) where is_archived = false;
 
 -- 4. SECURITY (RLS)
 alter table categories enable row level security;
