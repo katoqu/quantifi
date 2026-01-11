@@ -24,11 +24,13 @@ def get_categories():
     return res.data if res else []
 
 @st.cache_data(ttl=60)
-def get_metrics():
-    res = _safe_execute(sb.table("metrics").select("*"), "Failed to fetch metrics")
-    if res is None:
-        return None  # This triggers the 'Syncing' spinner in pages.py
-    return res.data   # This returns [] if the user has no metrics
+def get_metrics(include_archived=False):
+    """Fetches metrics, filtering archived ones by default for speed."""
+    query = sb.table("metrics").select("*")
+    if not include_archived:
+        query = query.eq("is_archived", False)
+    res = _safe_execute(query, "Failed to fetch metrics")
+    return res.data if res else []
 
 def get_entries(metric_id=None):
     """Fetches data entries, optionally filtered by metric."""
@@ -83,7 +85,12 @@ def get_category_by_name(name: str):
 
 @st.cache_data(ttl=120)
 def get_all_entries_bulk():
-    res = _safe_execute(sb.table("entries").select("*"), "Bulk fetch failed")
+    res = _safe_execute(
+        sb.table("entries")
+        .select("*, metrics!inner(is_archived)")
+        .eq("metrics.is_archived", False), 
+        "Bulk fetch failed"
+    )
     if res is None:
         return None  # Prevents showing '0 entries' flash
     return res.data
@@ -176,6 +183,14 @@ def wipe_user_data():
     _safe_execute(sb.table("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000"), "Error wiping entries")
     _safe_execute(sb.table("metrics").delete().neq("id", "00000000-0000-0000-0000-000000000000"), "Error wiping metrics")
     _safe_execute(sb.table("categories").delete().neq("id", "00000000-0000-0000-0000-000000000000"), "Error wiping categories")
+
+
+def archive_metric(metric_id: str):
+    """Soft-deletes a metric by setting the archive flag."""
+    return _safe_execute(
+        sb.table("metrics").update({"is_archived": True}).eq("id", metric_id),
+        "Failed to archive metric"
+    )
 
 # --- LOCAL BACKUP HELPERS (Restored) ---
 

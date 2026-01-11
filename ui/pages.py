@@ -18,7 +18,7 @@ def tracker_page():
         st.session_state["tracker_view_selector"] = "Overview"
 
     # 1. ALWAYS FETCH METRICS (Lightweight)
-    all_metrics = models.get_metrics()
+    all_metrics = models.get_metrics(include_archived=False)
     
     if all_metrics is None:
         st.spinner("Syncing metrics...")
@@ -27,7 +27,7 @@ def tracker_page():
     # 3. EMPTY STATE: Only show if we explicitly got an empty list []
     if not all_metrics:
         st.title("QuantifI")
-        st.info("👋 Welcome! Go to Settings to create your first tracking target.")
+        st.info("No active metrics. Restore archived metrics in Settings or create a new one.")
         return
 
     # 2. Apply the visual theme for the custom tabs (from utils.py)
@@ -137,7 +137,7 @@ def configure_page():
         st.session_state["config_tab_selection"] = "📊 Edit Metric"
 
     cats = models.get_categories() or []
-    metrics_list = models.get_metrics() or []
+    metrics_list = models.get_metrics(include_archived=True) or []
     last_ts = models.get_last_backup_timestamp()
 
     # 2. Use segmented_control instead of st.tabs for persistence
@@ -159,7 +159,7 @@ def configure_page():
     st.divider()
 
     # 3. Content Routing based on selection
-    if selected_tab == "📊 Edit Metric":
+    if selected_tab == "📊 Edit Metric":    
         if metrics_list:
             metrics.show_edit_metrics(metrics_list, cats)
         else:

@@ -69,6 +69,9 @@ def show_edit_metrics(metrics_list, cats):
 def _render_metric_editor_block(m, opt_ids, cat_options):
     """Vertical-first editor block with integrated safety checks."""
     with st.container(border=True):
+        if m.get('is_archived'):
+            st.warning("⚠️ This metric is currently **Archived** and hidden from the dashboard.")
+        
         new_name = st.text_input("Metric Name", value=m['name'], key=f"ed_nm_{m['id']}")
         new_desc = st.text_area("Description", value=m.get('description', ''), key=f"ed_desc_{m['id']}")
         
@@ -112,19 +115,41 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
         if range_error:
             st.error(error_msg)
 
-        if st.button("💾 Save Changes", key=f"upd_sv_{m['id']}", type="primary", use_container_width=True, disabled=range_error):
-            target_cat_id = utils.ensure_category_id(new_cat_id, inline_cat_name)
-            
-            payload = {
-                "name": utils.normalize_name(new_name),
-                "description": new_desc.strip() if new_desc else None,
-                "unit_name": utils.normalize_name(new_unit),
-                "category_id": target_cat_id
-            }
-            if m.get("unit_type") == "integer_range":
-                payload["range_start"], payload["range_end"] = new_start, new_end
+        # Action row: safe or archive
+        st.divider()
+        col_save, col_arch = st.columns([2, 1])
 
-            _confirm_metric_update_dialog(m, payload)
+        with col_save:
+            if st.button("💾 Save Changes", key=f"upd_sv_{m['id']}", type="primary", use_container_width=True, disabled=range_error):
+                target_cat_id = utils.ensure_category_id(new_cat_id, inline_cat_name)
+                
+                payload = {
+                    "name": utils.normalize_name(new_name),
+                    "description": new_desc.strip() if new_desc else None, #
+                    "unit_name": utils.normalize_name(new_unit),
+                    "category_id": target_cat_id
+                }
+                if m.get("unit_type") == "integer_range":
+                    payload["range_start"], payload["range_end"] = new_start, new_end
+
+                # Triggers the dialog to show full Current vs Proposed changes
+                _confirm_metric_update_dialog(m, payload)
+
+        with col_arch:
+            is_archived = m.get('is_archived', False)
+            
+            if not is_archived:
+                # Show Archive button if metric is active
+                if st.button("📦 Archive", key=f"arch_{m['id']}", help="Hide from dashboard", use_container_width=True):
+                    models.archive_metric(m['id'])
+                    utils.finalize_action(f"Archived: {m['name'].title()}", icon="📦")
+            else:
+                # Show Restore button if metric is already archived
+                if st.button("♻️ Restore", key=f"rest_{m['id']}", help="Show on dashboard again", use_container_width=True):
+                    # You'll need this simple function in models.py: 
+                    # sb.table("metrics").update({"is_archived": False}).eq("id", m['id'])
+                    models.update_metric(m['id'], {"is_archived": False})
+                    utils.finalize_action(f"Restored: {m['name'].title()}", icon="✅")
 
 def show_create_metric(cats):
     """
@@ -217,11 +242,13 @@ def select_metric(metrics, target_id=None):
     sorted_metrics = sorted(metrics, key=lambda x: x.get("name", "").lower())
     
     # 1. IDENTIFY ACTIVE METRIC FOR THE HEADER
-    active_id = st.session_state.get("last_active_mid")
+    active_id = target_id or st.session_state.get("last_active_mid")
     selected_obj = next((m for m in sorted_metrics if str(m['id']) == str(active_id)), None)
-    # Fallback to the first metric only if absolutely nothing is active
+    
+    # FALLBACK: If the sticky metric is archived/missing, pick the first available one
     if not selected_obj:
         selected_obj = sorted_metrics[0]
+        st.session_state["last_active_mid"] = selected_obj['id']
 
     # 2. COLLAPSIBLE SELECTOR BOX
     header_label = f"🎯 {utils.format_metric_label(selected_obj)}"
