@@ -23,7 +23,7 @@ def show_capture(selected_metric):
     unit_name = selected_metric.get("unit_name", "")
     utype = selected_metric.get("unit_type", "float")
     
-    # FIX: Ensure smart_default is never None
+    # Ensure smart_default is never None
     last_entry = models.get_latest_entry_only(mid)
     # If no last entry, use range_start; if range_start is missing, use 0.0
     fallback = selected_metric.get("range_start", 0.0)
@@ -32,23 +32,17 @@ def show_capture(selected_metric):
     with st.container(border=True):
         st.markdown(f"**Recording:** {selected_metric['name'].title()}")
 
-        use_time = st.checkbox(
-            "🕒 Include specific time?", 
-            value=st.session_state["use_time_sticky"], 
-            key="use_time_toggle",
-            on_change=lambda: st.session_state.update(
-                {"use_time_sticky": st.session_state["use_time_toggle"]}
-            )
-        )
-        
         with st.form("capture_entry_submit", border=False):
             # --- SINGLE COLUMN LAYOUT ---
             # Stacking inputs vertically for better mobile tap targets
             date_input = st.date_input("📅 Date", value=dt.date.today())
             
-            time_input = dt.time(12, 0)
-            if use_time:
-                time_input = st.time_input("⏰ Time", value=dt.datetime.now().time())
+            # Default to current time with 60-second (1 minute) step precision
+            time_input = st.time_input(
+                "⏰ Time", 
+                value=dt.datetime.now().time(),
+                step=60
+            )
             
             # Value Input
             if utype == "integer_range":

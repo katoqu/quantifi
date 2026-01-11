@@ -87,7 +87,7 @@ def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
         column_order=["Select", "recorded_at", "value", "Change Log"],
         column_config={
             "Select": st.column_config.CheckboxColumn("🗑️", width="40"),
-            "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM, HH:mm", width="small"),
+            "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM, HH:mm", width="150"),
             "value": st.column_config.NumberColumn(f"{m_unit}", step=step, width="small"),
             "Change Log": st.column_config.TextColumn("Status", width="small", disabled=True),
         },
