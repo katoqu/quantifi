@@ -32,6 +32,9 @@ def show_capture(selected_metric):
     with st.container(border=True):
         st.markdown(f"**Recording:** {selected_metric['name'].title()}")
 
+        if selected_metric.get("description"):
+            st.caption(selected_metric["description"])
+
         with st.form("capture_entry_submit", border=False):
             # --- SINGLE COLUMN LAYOUT ---
             # Stacking inputs vertically for better mobile tap targets

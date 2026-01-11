@@ -55,11 +55,11 @@ def run_hard_reset():
             INSERT INTO categories (name, user_id) VALUES 
                 ('body', target_id), ('fitness', target_id), ('health', target_id);
 
-            INSERT INTO metrics (name, unit_name, unit_type, range_start, range_end, category_id, user_id) VALUES 
-                ('weight', 'kg', 'float', NULL, NULL, (SELECT id FROM categories WHERE name='body' AND user_id=target_id), target_id),
-                ('floor press', 'kg', 'float', NULL, NULL, (SELECT id FROM categories WHERE name='fitness' AND user_id=target_id), target_id),
-                ('sleep', 'quality', 'integer_range', 0, 10, (SELECT id FROM categories WHERE name='health' AND user_id=target_id), target_id),
-                ('yoga', 'minutes', 'integer', NULL, NULL, (SELECT id FROM categories WHERE name='fitness' AND user_id=target_id), target_id);
+            INSERT INTO metrics (name, description,unit_name, unit_type, range_start, range_end, category_id, user_id) VALUES 
+                ('weight', 'Daily body mass tracking', 'kg', 'float', NULL, NULL, (SELECT id FROM categories WHERE name='body' AND user_id=target_id), target_id),
+                ('floor press', 'Strength progress for chest press, 'kg', 'float', NULL, NULL, (SELECT id FROM categories WHERE name='fitness' AND user_id=target_id), target_id),
+                ('sleep', 'Subjective restfulness score. 0 means no rest, 10 best sleep ever.', 'quality', 'integer_range', 0, 10, (SELECT id FROM categories WHERE name='health' AND user_id=target_id), target_id),
+                ('yoga', 'Duration of daily yoga practice', 'minutes', 'integer', NULL, NULL, (SELECT id FROM categories WHERE name='fitness' AND user_id=target_id), target_id);
 
             INSERT INTO entries (metric_id, user_id, value, recorded_at)
             SELECT m.id, target_id, 
@@ -94,7 +94,8 @@ def seed_user(user_id, email):
     cat_res = sb_admin.table("categories").insert([{"name": "health", "user_id": user_id}]).execute()
     cat_id = cat_res.data[0]['id']
     sb_admin.table("metrics").insert({
-        "name": "sleep", "unit_name": "quality", "unit_type": "integer_range", 
+        "name": "sleep", "description": "Subjective restfulness score. 0 means no rest, 10 best sleep ever.",
+        "unit_name": "quality", "unit_type": "integer_range", 
         "range_start": 0, "range_end": 10, "category_id": cat_id, "user_id": user_id
     }).execute()
     print(f"🌱 Seeded basic metrics for {email}")

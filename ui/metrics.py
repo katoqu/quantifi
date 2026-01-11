@@ -12,6 +12,13 @@ def _confirm_metric_update_dialog(m, new_payload):
     with col1:
         st.caption("Current")
         st.write(f"**Name:** {m['name'].title()}")
+        st.write("**Description:**")
+        curr_desc = m.get('description')
+        if curr_desc:
+            st.caption(curr_desc)
+        else:
+            st.caption("No description provided.")
+
         st.write(f"**Unit:** {m.get('unit_name', 'None')}")
         if m.get("unit_type") == "integer_range":
             st.write(f"**Range:** {m.get('range_start')} - {m.get('range_end')}")
@@ -19,9 +26,18 @@ def _confirm_metric_update_dialog(m, new_payload):
     with col2:
         st.caption("Proposed")
         st.write(f"**Name:** {new_payload['name'].title()}")
+        st.write("**Description:**")
+        prop_desc = new_payload.get('description')
+        if prop_desc:
+            st.caption(prop_desc)
+        else:
+            st.caption("No description provided.")
+
         st.write(f"**Unit:** {new_payload.get('unit_name', 'None')}")
         if m.get("unit_type") == "integer_range":
             st.write(f"**Range:** {new_payload.get('range_start')} - {new_payload.get('range_end')}")
+        prop_desc = new_payload.get('description', 'None')
+        st.write(f"**Desc:** {prop_desc[:30]}..." if prop_desc and len(prop_desc) > 30 else f"**Desc:** {prop_desc}")
 
     st.warning("Updating these settings will change how historical data is labeled.")
 
@@ -54,6 +70,7 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
     """Vertical-first editor block with integrated safety checks."""
     with st.container(border=True):
         new_name = st.text_input("Metric Name", value=m['name'], key=f"ed_nm_{m['id']}")
+        new_desc = st.text_area("Description", value=m.get('description', ''), key=f"ed_desc_{m['id']}")
         
         col_unit, col_cat = st.columns(2)
         new_unit = col_unit.text_input("Unit", value=m.get('unit_name', ''), key=f"ed_un_{m['id']}")
@@ -100,6 +117,7 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
             
             payload = {
                 "name": utils.normalize_name(new_name),
+                "description": new_desc.strip() if new_desc else None,
                 "unit_name": utils.normalize_name(new_unit),
                 "category_id": target_cat_id
             }
@@ -118,7 +136,10 @@ def show_create_metric(cats):
     with st.container(border=True):
         # 1. Basic Metadata
         mn = st.text_input("Metric Name", placeholder="e.g., Daily Steps", key="create_mn")
-        
+
+        # 1.5 Add Description Field
+        desc = st.text_area("Description (Optional)", placeholder="What does this metric track?", key="create_desc")
+
         col_unit, col_type = st.columns(2)
         unit_name = col_unit.text_input("Unit", placeholder="e.g., km", key="create_unit")
         unit_type = col_type.selectbox(
@@ -165,6 +186,7 @@ def show_create_metric(cats):
                 
                 payload = {
                     "name": utils.normalize_name(mn), 
+                    "description": desc.strip() if desc else None,
                     "unit_name": utils.normalize_name(unit_name) if unit_name else None,
                     "unit_type": unit_type, 
                     "category_id": final_cat_id

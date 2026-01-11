@@ -89,6 +89,7 @@ def render_metric_grid(metrics_list, cats, all_entries):
 def _render_action_card(metric, cat_map, entries, stats):
     mid, m_name = metric['id'], metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
+    description = metric.get("description", "")
     val_display = f"{stats['latest']:.1f}" if stats else "—"
     trend_color = "#28a745" if (stats.get('change') or 0) >= 0 else "#dc3545"
 
@@ -96,11 +97,17 @@ def _render_action_card(metric, cat_map, entries, stats):
         col_main = st.columns([1])[0] 
         
         with col_main:
+            help_icon = (
+                f'<span title="{description}" style="cursor: help; font-size: 0.8rem; opacity: 0.5; margin-left: 4px;">ⓘ</span>'
+                if description else ""
+            )
             st.markdown(f"""
                         <div class="action-card-grid">
                             <div class="metric-identity">
                                 <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700;">{cat_name.upper()}</span><br>
-                                <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}</div>
+                                <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">
+                                    {m_name} {help_icon}
+                                </div>
                             </div>
                             <div class="value-box">
                                 <span style="font-size: 0.55rem; opacity: 0.7; font-weight: 600;">LATEST</span><br>

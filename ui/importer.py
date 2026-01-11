@@ -99,9 +99,9 @@ def _handle_import_logic(uploaded_file, wipe_first):
                 time.sleep(1)
 
             log.write("🏗️ **Syncing Schema...**")
-            schema_cols = ['Metric', 'Unit', 'Category', 'Type', 'Min', 'Max']
+            schema_cols = ['Metric', 'Description', 'Unit', 'Category', 'Type', 'Min', 'Max']
             # Fill missing metadata with defaults
-            for col in ['Unit', 'Category', 'Min', 'Max']:
+            for col in ['Description', 'Unit', 'Category', 'Min', 'Max']:
                 if col not in df_import.columns: df_import[col] = None
             
             unique_metrics = df_import[schema_cols].drop_duplicates()
@@ -111,6 +111,7 @@ def _handle_import_logic(uploaded_file, wipe_first):
                 if not models.get_metric_by_name(met_name):
                     payload = {
                         "name": met_name,
+                        "description": str(row['Description']) if pd.notna(row['Description']) else None,
                         "unit_name": str(row['Unit']).lower() if pd.notna(row['Unit']) else None,
                         "category_id": utils.ensure_category_id("NEW_CAT", str(row['Category'])) if pd.notna(row['Category']) else None,
                         "unit_type": str(row['Type']).strip().lower(),
@@ -165,6 +166,7 @@ def _render_template_downloader():
             # or just use None for a blank template.
             template_rows.append({
                 "Metric": m['name'],
+                "Description": m.get('description', ''),
                 "Value": 0.0,
                 "Date": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "Unit": m.get('unit_name', ''),

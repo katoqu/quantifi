@@ -146,7 +146,7 @@ def get_flat_export_data():
     # 1. Update query to include metadata columns from the metrics table
     query = _safe_execute(
         sb.table("entries").select(
-            "recorded_at, value, metrics(name, unit_name, unit_type, range_start, range_end, categories(name))"
+            "recorded_at, value, metrics(name, description, unit_name, unit_type, range_start, range_end, categories(name))"
         ),
         "Failed to fetch export data"
     )
@@ -161,6 +161,7 @@ def get_flat_export_data():
         rows.append({
             "Date": ts.strftime('%Y-%m-%d %H:%M:%S'),
             "Metric": entry["metrics"]["name"],
+            "Description": entry["metrics"].get("description", ""),
             "Value": entry["value"],
             "Unit": entry["metrics"]["unit_name"],
             "Category": entry["metrics"]["categories"]["name"] if entry["metrics"]["categories"] else "None",

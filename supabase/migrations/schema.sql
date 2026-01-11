@@ -16,6 +16,7 @@ create table categories (
 create table metrics (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  description text,
   unit_name text,
   unit_type text default 'float', -- Options: float, integer, integer_range
   range_start integer,
