@@ -3,6 +3,8 @@ import streamlit as st
 import json
 import os
 from datetime import datetime
+import pandas as pd
+
 
 # --- HELPER ERROR WRAPPER ---
 def _safe_execute(query_func, error_message="Database operation failed"):
@@ -153,7 +155,7 @@ def get_flat_export_data():
     # 1. Update query to include metadata columns from the metrics table
     query = _safe_execute(
         sb.table("entries").select(
-            "recorded_at, value, metrics(name, description, unit_name, unit_type, range_start, range_end, categories(name))"
+            "recorded_at, value, metrics(name, description, unit_name, unit_type, range_start, range_end, is_archived, categories(name))"
         ),
         "Failed to fetch export data"
     )
@@ -161,21 +163,23 @@ def get_flat_export_data():
     
     rows = []
     for entry in query.data:
-        import pandas as pd
         ts = pd.to_datetime(entry["recorded_at"], format='ISO8601', utc=True)
         
+        m_meta = entry.get("metrics", {})
+
         # 2. Append the new metadata keys matching the new importer expectations
         rows.append({
             "Date": ts.strftime('%Y-%m-%d %H:%M:%S'),
-            "Metric": entry["metrics"]["name"],
-            "Description": entry["metrics"].get("description", ""),
-            "Archived": entry["metrics"].get("is_archived", False),
+            "Metric": m_meta.get("name", "Unknown"),
+            "Description": m_meta.get("description", ""),
+            # FIX: Pull the actual boolean value from the database
+            "Archived": m_meta.get("is_archived", False), 
             "Value": entry["value"],
-            "Unit": entry["metrics"]["unit_name"],
-            "Category": entry["metrics"]["categories"]["name"] if entry["metrics"]["categories"] else "None",
-            "Type": entry["metrics"]["unit_type"],
-            "Min": entry["metrics"]["range_start"],
-            "Max": entry["metrics"]["range_end"]
+            "Unit": m_meta.get("unit_name", ""),
+            "Category": m_meta.get("categories", {}).get("name") if m_meta.get("categories") else "None",
+            "Type": m_meta.get("unit_type", "float"),
+            "Min": m_meta.get("range_start"),
+            "Max": m_meta.get("range_end")
         })
     return rows
 

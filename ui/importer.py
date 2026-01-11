@@ -4,6 +4,8 @@ import pandas as pd
 import models
 import utils
 import time
+import auth
+from datetime import datetime
 
 def show_data_lifecycle_management():
     st.header("Backup & Recovery")
@@ -18,8 +20,14 @@ def show_data_lifecycle_management():
                 # Standardize Date format
                 df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d %H:%M:%S')
                 csv = df.to_csv(index=False).encode('utf-8')
+                user = auth.get_current_user()
+                username = user.email.split('@')[0] if user else "user"
+                datestr = datetime.now().strftime('%Y-%m-%d')
+
+                fname = f"quantifi_backup_{username}_{datestr}.csv"
                 models.save_backup_timestamp()
-                st.download_button("📥 Download CSV", data=csv, file_name="quantifi_backup.csv", mime="text/csv", use_container_width=True)
+                st.download_button("📥 Download CSV", data=csv, file_name= fname,
+                                    mime="text/csv", use_container_width=True)
             else:
                 st.info("No data found to export.")
 
@@ -45,7 +53,7 @@ def _handle_import_logic(uploaded_file, wipe_first):
         ALLOWED_TYPES = ['float', 'integer', 'integer_range'] # Added strict whitelist
         
         # Check for mandatory columns
-        required_cols = ['Metric', 'Value', 'Date', 'Type']
+        required_cols = ['Metric', 'Value', 'Date', 'Type', 'Archived']
         missing = [c for c in required_cols if c not in df_import.columns]
         if missing:
             errors.append(f"Missing mandatory columns: {', '.join(missing)}")
@@ -112,6 +120,7 @@ def _handle_import_logic(uploaded_file, wipe_first):
                     payload = {
                         "name": met_name,
                         "description": str(row['Description']) if pd.notna(row['Description']) else None,
+                        "is_archived": bool(row['Archived']) if pd.notna(row['Archived']) else False,
                         "unit_name": str(row['Unit']).lower() if pd.notna(row['Unit']) else None,
                         "category_id": utils.ensure_category_id("NEW_CAT", str(row['Category'])) if pd.notna(row['Category']) else None,
                         "unit_type": str(row['Type']).strip().lower(),
