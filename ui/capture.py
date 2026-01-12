@@ -2,30 +2,35 @@ import streamlit as st
 import models
 import utils
 import datetime as dt
-import time
 from ui import visualize
 
+@st.fragment
 def show_tracker_suite(selected_metric):
-    """Refactored: Uses metric object directly for units and metadata."""
+    """
+    Isolated Fragment: Operations inside this function won't 
+    trigger a full app rerun, eliminating mobile 'hiccups'.
+    """
+    # 1. Local Data Fetch (Only within fragment scope)
     dfe, m_unit, m_name = utils.collect_data(selected_metric)
     
-    if dfe is None or dfe.empty:
-        st.info("No data recorded for this metric yet. Add your first enrty below.")    
-
+    # 2. Capture Form
     show_capture(selected_metric)
+    
     st.divider()
     
+    # 3. Inline Visualization Update
     if dfe is not None and not dfe.empty:
         visualize.show_visualizations(dfe, m_unit, m_name)
+    else:
+        st.info("No data recorded for this metric yet. Add your first entry above.")
 
 def show_capture(selected_metric):
     mid = selected_metric.get("id")
     unit_name = selected_metric.get("unit_name", "")
     utype = selected_metric.get("unit_type", "float")
     
-    # Ensure smart_default is never None
+    # Fetch smart default once per fragment execution
     last_entry = models.get_latest_entry_only(mid)
-    # If no last entry, use range_start; if range_start is missing, use 0.0
     fallback = selected_metric.get("range_start", 0.0)
     smart_default = last_entry['value'] if last_entry else float(fallback if fallback is not None else 0.0)
 
@@ -35,19 +40,17 @@ def show_capture(selected_metric):
         if selected_metric.get("description"):
             st.caption(selected_metric["description"])
 
+        # Note: st.form is kept to bundle the inputs
         with st.form("capture_entry_submit", border=False):
-            # --- SINGLE COLUMN LAYOUT ---
-            # Stacking inputs vertically for better mobile tap targets
             date_input = st.date_input("📅 Date", value=dt.date.today())
             
-            # Default to current time with 60-second (1 minute) step precision
             time_input = st.time_input(
                 "⏰ Time", 
                 value=dt.datetime.now().time(),
                 step=60
             )
             
-            # Value Input
+            # Value Input Logic
             if utype == "integer_range":
                 rs = int(selected_metric.get("range_start", 0))
                 re = int(selected_metric.get("range_end", 10))
@@ -68,6 +71,10 @@ def show_capture(selected_metric):
                     "value": val, 
                     "recorded_at": final_dt.isoformat()
                 })
-                # Refresh cache to show new entry in Overview
+                
+                # REPLACEMENT FOR st.rerun():
+                # We clear the specific cache and show a toast. 
+                # The fragment will naturally re-run its internal code
+                # to show the new data in the chart above.
                 st.cache_data.clear() 
-                utils.finalize_action(f"Saved: {val} {unit_name}")
+                st.toast(f"✅ Saved: {val} {unit_name}")

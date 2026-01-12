@@ -1,9 +1,15 @@
 import streamlit as st
 import auth
 from ui import pages
+import utils
 
 # 1. Initialize State
 auth.init_session_state()
+
+# Inject CSS here so it is loaded once and never re-parsed during reruns
+utils.apply_custom_tabs_css()
+utils.apply_mobile_table_css()
+utils.apply_landing_grid_css()
 
 # 2. Authentication Check
 if not auth.is_authenticated():

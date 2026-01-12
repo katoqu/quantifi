@@ -87,23 +87,15 @@ def apply_custom_tabs_css():
         </style>            
     """, unsafe_allow_html=True)
 
-
-def finalize_action(message, icon="✅", delay=0.8):
+def finalize_action(message, icon="✅"):
     """
-    Mobile-optimized feedback: replaces heavy dialogs with a toast 
-    and a controlled delay before refreshing the UI.
+    Refined for performance: Clears cache and shows a toast.
+    The natural Streamlit rerun triggered by the button click 
+    will handle the UI refresh without 'double-hopping'.
     """
-    # Clear cache first so the rerun reflects the newest data
     st.cache_data.clear()
-    
-    # Show a non-blocking toast
     st.toast(f"{icon} {message}")
-    
-    # A slightly longer delay (0.8s) is often better for mobile processors 
-    # to ensure the toast is fully rendered before the rerun triggers.
-    time.sleep(delay)
-    
-    st.rerun()
+    # Removed time.sleep() and st.rerun() to prevent redundant mobile refreshes.
 
 def apply_mobile_table_css():
     """
@@ -132,10 +124,6 @@ def apply_mobile_table_css():
         </style>
     """, unsafe_allow_html=True)
 
-# utils.py
-
-# utils.py
-
 def render_back_button(target_page_title="Tracker", target_tab="Overview"):
     """
     Renders a simple native Streamlit pill as a 'Back to Start' button.
@@ -149,3 +137,44 @@ def render_back_button(target_page_title="Tracker", target_tab="Overview"):
         label_visibility="collapsed",
         selection_mode="single"
     )
+
+# In utils.py
+def apply_landing_grid_css():
+    # REFINED CSS: Added vertical spacing for pills and grid padding
+    st.markdown("""
+    <style>
+            /* 1. SHRINK THE CONTAINER BOX: Targets the inner padding of the border */
+            [data-testid="stVerticalBlockBorderWrapper"] > div {
+                padding: 4px 10px !important; 
+            }
+
+            /* 2. THE 50/50 GRID: Split the flex space equally, lock buttons to 100px */
+            .action-card-grid {
+                display: grid !important;
+                grid-template-columns: 2fr 1fr 100px !important; 
+                align-items: center !important;
+                width: 100%;
+                gap: 0px !important;
+            }
+
+            /* 3. TIGHTEN TEXT: Reduce vertical space between lines */
+            .metric-identity {
+                line-height: 1.2 !important;
+                min-width: 0;
+            }
+
+            .value-box {
+                justify-self: start; 
+                border-left: 1px solid rgba(128,128,128,0.2); 
+                padding-left: 10px;
+                line-height: 1.0;
+                text-align: left;
+            }
+
+            div[data-testid="stPills"] { 
+                margin-top: 4px !important; 
+                display: flex;
+                justify-content: flex-end;
+            }
+        </style>
+    """, unsafe_allow_html=True)

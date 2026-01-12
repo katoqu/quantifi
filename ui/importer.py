@@ -7,6 +7,7 @@ import time
 import auth
 from datetime import datetime
 
+@st.fragment
 def show_data_lifecycle_management():
     st.header("Backup & Recovery")
     col_exp, col_imp = st.columns(2)

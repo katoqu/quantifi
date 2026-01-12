@@ -66,6 +66,7 @@ def show_edit_metrics(metrics_list, cats):
     opt_ids = list(cat_options.keys())
     _render_metric_editor_block(selected_metric, opt_ids, cat_options)
 
+@st.fragment
 def _render_metric_editor_block(m, opt_ids, cat_options):
     """Vertical-first editor block with integrated safety checks."""
     with st.container(border=True):

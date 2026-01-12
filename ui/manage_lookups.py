@@ -50,6 +50,7 @@ def show_manage_lookups():
         
         _render_category_editor_block(target_cat, usage_count)
 
+@st.fragment
 def _render_category_editor_block(cat, usage_count):
     """Vertical focused editor matching the Metric editor style."""
     with st.container(border=True):

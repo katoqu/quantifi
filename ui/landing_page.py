@@ -30,45 +30,6 @@ def render_metric_grid(metrics_list, cats, all_entries):
     st.pills("Filter", options=cat_options, key="cat_filter", label_visibility="collapsed")
     current_filter = st.session_state.get("cat_filter", "All")
 
-    # REFINED CSS: Added vertical spacing for pills and grid padding
-    st.markdown("""
-    <style>
-            /* 1. SHRINK THE CONTAINER BOX: Targets the inner padding of the border */
-            [data-testid="stVerticalBlockBorderWrapper"] > div {
-                padding: 4px 10px !important; 
-            }
-
-            /* 2. THE 50/50 GRID: Split the flex space equally, lock buttons to 100px */
-            .action-card-grid {
-                display: grid !important;
-                grid-template-columns: 2fr 1fr 100px !important; 
-                align-items: center !important;
-                width: 100%;
-                gap: 0px !important;
-            }
-
-            /* 3. TIGHTEN TEXT: Reduce vertical space between lines */
-            .metric-identity {
-                line-height: 1.2 !important;
-                min-width: 0;
-            }
-
-            .value-box {
-                justify-self: start; 
-                border-left: 1px solid rgba(128,128,128,0.2); 
-                padding-left: 10px;
-                line-height: 1.0;
-                text-align: left;
-            }
-
-            div[data-testid="stPills"] { 
-                margin-top: 4px !important; 
-                display: flex;
-                justify-content: flex-end;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
     all_df = pd.DataFrame(all_entries)
     scored_metrics = []
     for m in metrics_list:
