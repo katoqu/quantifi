@@ -3,6 +3,7 @@ import pandas as pd
 import models
 import utils
 import datetime as dt
+import time
 
 def get_date_bounds(dfe, mid):
     """Calculates boundaries and ensures baseline state exists."""
@@ -153,4 +154,6 @@ def execute_save(mid, state_key, editor_key):
     # Reset state and provide feedback
 
     reset_editor_state(state_key, mid)
-    utils.finalize_action("Changes pushed to database")
+    st.toast("✅ Saved!") # Shortened as requested
+    time.sleep(1.5) 
+    st.rerun()

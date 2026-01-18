@@ -68,7 +68,6 @@ def _confirm_save_dialog(mid, editor_key, state_key):
         st.info("No changes to review.")
     if st.button("Confirm & Save", type="primary", use_container_width=True):
         editor_handler.execute_save(mid, state_key, editor_key)
-        utils.finalize_action("Changes saved!")
 
 def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
     """
