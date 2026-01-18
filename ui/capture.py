@@ -6,18 +6,15 @@ from ui import visualize
 
 @st.fragment
 def show_tracker_suite(selected_metric):
-    """
-    Isolated Fragment: Operations inside this function won't 
-    trigger a full app rerun, eliminating mobile 'hiccups'.
-    """
-    # 1. Local Data Fetch (Only within fragment scope)
-    dfe, m_unit, m_name = utils.collect_data(selected_metric)
-    
-    # 2. Capture Form
+
+    # 1. Capture Form
     show_capture(selected_metric)
     
     st.divider()
-    
+
+    # 2. Local Data Fetch (Only within fragment scope)
+    dfe, m_unit, m_name = utils.collect_data(selected_metric)
+
     # 3. Inline Visualization Update
     if dfe is not None and not dfe.empty:
         visualize.show_visualizations(dfe, m_unit, m_name)
@@ -78,3 +75,5 @@ def show_capture(selected_metric):
                 # to show the new data in the chart above.
                 st.cache_data.clear() 
                 st.toast(f"✅ Saved: {val} {unit_name}")
+
+                st.rerun(scope="fragment")
