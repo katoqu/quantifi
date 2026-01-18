@@ -55,19 +55,16 @@ def _render_action_card(metric, cat_map, entries, stats):
     trend_color = "#28a745" if (stats.get('change') or 0) >= 0 else "#dc3545"
 
     with st.container(border=True):
-        col_main = st.columns([1])[0] 
+        # Create two columns: one for the text/stats, one for the info popover
+        col_text, col_info = st.columns([0.85, 0.15])
         
-        with col_main:
-            help_icon = (
-                f'<span title="{description}" style="cursor: help; font-size: 0.8rem; opacity: 0.5; margin-left: 4px;">ⓘ</span>'
-                if description else ""
-            )
+        with col_text:
             st.markdown(f"""
                         <div class="action-card-grid">
                             <div class="metric-identity">
                                 <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700;">{cat_name.upper()}</span><br>
                                 <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">
-                                    {m_name} {help_icon}
+                                    {m_name}
                                 </div>
                             </div>
                             <div class="value-box">
@@ -76,19 +73,28 @@ def _render_action_card(metric, cat_map, entries, stats):
                             </div>
                             <div></div> 
                         </div>
-                        <div style="height: 15px;"></div> 
                     """, unsafe_allow_html=True)
-            choice = st.pills(f"act_{mid}", options=["➕", "📊", "⚙️"], key=f"p_{mid}", label_visibility="collapsed")
+        
+        with col_info:
+            if description:
+                # Use a popover which works perfectly on mobile taps
+                with st.popover("ⓘ", help="View description", use_container_width=False):
+                    st.caption("Description")
+                    st.write(description)
             
-            if choice == "➕":
+        # Add the spacing and pills below
+        st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
+        choice = st.pills(f"act_{mid}", options=["➕", "📊", "⚙️"], key=f"p_{mid}", label_visibility="collapsed")            
+            
+        if choice == "➕":
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Record"
                 st.rerun()
-            elif choice == "📊":
+        elif choice == "📊":
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Analytics"
                 st.rerun()
-            elif choice == "⚙️":
+        elif choice == "⚙️":
                 # 1. Set the metric focus and tab selection
                 st.session_state["last_active_mid"] = mid
                 st.session_state["config_tab_selection"] = "📊 Edit Metric"
