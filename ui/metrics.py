@@ -2,49 +2,86 @@ import streamlit as st
 import models
 import utils
 from st_keyup import st_keyup
+import time
 
 @st.dialog("Confirm Metric Update")
 def _confirm_metric_update_dialog(m, new_payload):
-    """Summarizes changes and uses the centralized finalize_action for feedback."""
+    """Summarizes only the changed values for the user to review."""
     st.markdown("### Review Changes")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.caption("Current")
-        st.write(f"**Name:** {m['name'].title()}")
-        st.write("**Description:**")
-        curr_desc = m.get('description')
-        if curr_desc:
-            st.caption(curr_desc)
-        else:
-            st.caption("No description provided.")
+    # Identify what actually changed
+    changes = []
+    
+    # 1. Name check
+    if m['name'].lower() != new_payload['name'].lower():
+        changes.append({
+            "label": "Name",
+            "old": m['name'].title(),
+            "new": new_payload['name'].title()
+        })
+        
+    # 2. Description check (handle None vs empty string)
+    old_desc = (m.get('description') or "").strip()
+    new_desc = (new_payload.get('description') or "").strip()
+    if old_desc != new_desc:
+        changes.append({
+            "label": "Description",
+            "old": old_desc if old_desc else "(Empty)",
+            "new": new_desc if new_desc else "(Empty)"
+        })
+        
+    # 3. Unit check
+    old_unit = (m.get('unit_name') or "").lower()
+    new_unit = (new_payload.get('unit_name') or "").lower()
+    if old_unit != new_unit:
+        changes.append({
+            "label": "Unit",
+            "old": m.get('unit_name', 'None').title(),
+            "new": new_payload.get('unit_name', 'None').title()
+        })
 
-        st.write(f"**Unit:** {m.get('unit_name', 'None')}")
-        if m.get("unit_type") == "integer_range":
-            st.write(f"**Range:** {m.get('range_start')} - {m.get('range_end')}")
-            
-    with col2:
-        st.caption("Proposed")
-        st.write(f"**Name:** {new_payload['name'].title()}")
-        st.write("**Description:**")
-        prop_desc = new_payload.get('description')
-        if prop_desc:
-            st.caption(prop_desc)
-        else:
-            st.caption("No description provided.")
+    # 4. Category check
+    if m.get('category_id') != new_payload.get('category_id'):
+        # We only show that the ID changed here for simplicity, 
+        # but you could fetch names if needed.
+        changes.append({
+            "label": "Category",
+            "old": "Changed", 
+            "new": "Updated"
+        })
 
-        st.write(f"**Unit:** {new_payload.get('unit_name', 'None')}")
-        if m.get("unit_type") == "integer_range":
-            st.write(f"**Range:** {new_payload.get('range_start')} - {new_payload.get('range_end')}")
-        prop_desc = new_payload.get('description', 'None')
-        st.write(f"**Desc:** {prop_desc[:30]}..." if prop_desc and len(prop_desc) > 30 else f"**Desc:** {prop_desc}")
+    # 5. Range check (only if applicable)
+    if m.get("unit_type") == "integer_range":
+        if m.get("range_start") != new_payload.get("range_start") or \
+           m.get("range_end") != new_payload.get("range_end"):
+            changes.append({
+                "label": "Range",
+                "old": f"{m.get('range_start')} - {m.get('range_end')}",
+                "new": f"{new_payload.get('range_start')} - {new_payload.get('range_end')}"
+            })
+
+    # Render the UI based on changes
+    if not changes:
+        st.info("No changes detected.")
+    else:
+        for change in changes:
+            with st.container():
+                st.write(f"**{change['label']}**")
+                col_a, col_b = st.columns(2)
+                col_a.caption("Current")
+                col_a.write(change['old'])
+                col_b.caption("Proposed")
+                col_b.write(f":green[{change['new']}]")
+                st.divider()
 
     st.warning("Updating these settings will change how historical data is labeled.")
 
-    if st.button("Confirm & Save", type="primary", use_container_width=True):
+    if st.button("Confirm & Save", type="primary", use_container_width=True, disabled=not changes):
         with st.spinner("Updating..."):
             models.update_metric(m['id'], new_payload)
         utils.finalize_action(f"Updated: {new_payload['name'].title()}")
+        time.sleep(1.5)
+        st.rerun()
 
 def show_edit_metrics(metrics_list, cats):
     """Focused Mobile Editor: Only shows the 'Active' metric for editing."""
