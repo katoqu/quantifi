@@ -55,10 +55,9 @@ def _render_action_card(metric, cat_map, entries, stats):
     trend_color = "#28a745" if (stats.get('change') or 0) >= 0 else "#dc3545"
 
     with st.container(border=True):
-        # Create two columns: one for the text/stats, one for the info popover
-        col_text, col_info = st.columns([0.85, 0.15])
+        col_main = st.columns([1])[0] 
         
-        with col_text:
+        with col_main:
             st.markdown(f"""
                         <div class="action-card-grid">
                             <div class="metric-identity">
@@ -73,28 +72,22 @@ def _render_action_card(metric, cat_map, entries, stats):
                             </div>
                             <div></div> 
                         </div>
+                        <div style="height: 15px;"></div> 
                     """, unsafe_allow_html=True)
-        
-        with col_info:
-            if description:
-                # Use a popover which works perfectly on mobile taps
-                with st.popover("ⓘ", help="View description", use_container_width=False):
-                    st.caption("Description")
-                    st.write(description)
+            choice = st.pills(f"act_{mid}", options=["➕", "📊", "⚙️"], 
+                              key=f"p_{mid}", 
+                              label_visibility="collapsed",
+                              help=description)
             
-        # Add the spacing and pills below
-        st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
-        choice = st.pills(f"act_{mid}", options=["➕", "📊", "⚙️"], key=f"p_{mid}", label_visibility="collapsed")            
-            
-        if choice == "➕":
+            if choice == "➕":
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Record"
                 st.rerun()
-        elif choice == "📊":
+            elif choice == "📊":
                 st.session_state["last_active_mid"] = mid
                 st.session_state["tracker_view_selector"] = "Analytics"
                 st.rerun()
-        elif choice == "⚙️":
+            elif choice == "⚙️":
                 # 1. Set the metric focus and tab selection
                 st.session_state["last_active_mid"] = mid
                 st.session_state["config_tab_selection"] = "📊 Edit Metric"
