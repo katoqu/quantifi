@@ -20,8 +20,7 @@ def tracker_page():
     # --- 2. DATA LOADING & STATE ---
     all_metrics = models.get_metrics(include_archived=False)
     if not all_metrics:
-        st.title("QuantifI")
-        st.info("No active metrics. Restore archived metrics in Settings or create a new one.")
+#        st.info("No active metrics. Restore archived metrics in Settings or create a new one.")
         return
 
     if "tracker_view_selector" not in st.session_state:
@@ -33,8 +32,7 @@ def tracker_page():
 
     # --- 4. STICKY NAVIGATION HEADER ---
     view_options = ["Overview", "Record", "Analytics", "Edit"]
-    with st.container():
-        st.segmented_control(
+    st.segmented_control(
             "Navigation", 
             options=view_options, 
             selection_mode="single",
@@ -42,12 +40,11 @@ def tracker_page():
             key="tracker_view_selector" 
         )
         
-        view_mode = st.session_state["tracker_view_selector"]
+    view_mode = st.session_state["tracker_view_selector"]
 
         # Back Button Pill (simplified label)
-        if view_mode != "Overview":
-            utils.render_back_button(target_page_title="Tracker", target_tab="Overview")
-#        st.divider()    
+    if view_mode != "Overview":
+        utils.render_back_button(target_page_title="Tracker", target_tab="Overview")
 
     # --- 5. METRIC SELECTION (Only for sub-views) ---
     selected_metric = None

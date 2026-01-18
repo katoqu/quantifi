@@ -56,33 +56,50 @@ def to_datetz(date_obj):
 def apply_custom_tabs_css():
     st.markdown("""
         <style>
-        /* --- 1. THE STICKY HEADER CONTAINER --- */
-        /* Targets the container wrapping the segmented control and pills */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPills"]) {
+        /* 1. GLOBAL APP TIGHTENING */
+        /* Targets the main content area to pull everything up */
+        .main .block-container {
+            padding-top: 1.5rem !important; /* Reduces top gap significantly */
+            padding-bottom: 1rem !important;
+            max-width: 100%;
+        }
+
+        /* Reduces default gaps between all Streamlit widgets */
+        [data-testid="stVerticalBlock"] {
+            gap: 0.5rem !important;
+        }
+
+        /* 2. CONSOLIDATED STICKY HEADER */
+        /* Targets any container holding Nav (Segmented Control) or Filters (Pills) */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPills"]),
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stSegmentedControl"]) {
             position: sticky !important;
-            top: 2.85rem !important;
+            top: 0rem !important; /* Sticks directly to the top edge of the content area */
             z-index: 1000 !important;
             background-color: var(--background-color) !important;
-            margin-top: -1.5rem !important;
-            padding-bottom: 5px !important;
+            margin-top: -.5rem !important; /* Pulls the header into the container padding area */
+            padding: 5px 0px !important;
             border-bottom: 1px solid var(--border-color) !important;
         }
 
-        /* 2. REMOVE INTERNAL GAP between segmented control and pills */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPills"]) [data-testid="stVerticalBlock"] {
-            gap: 0rem !important;
+        /* 3. WIDGET-SPECIFIC REFINEMENTS */
+        /* Remove extra internal margins from pills and segmented controls */
+        div[data-testid="stPills"], div[data-testid="stSegmentedControl"] {
+            margin: 0px !important;
+            padding: 0px !important;
         }
 
-        /* 3. TIGHTEN PILL MARGINS */
-        div[data-testid="stPills"] {
-            margin-top: -10px !important;
-            margin-bottom: -10px !important;
-        }
-
-        /* 4. PIN DIVIDER TO PILL */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPills"]) hr {
-            margin-top: 5px !important;
-            margin-bottom: 5px !important;
+        /* 4. MOBILE-ONLY OVERRIDES */
+        /* Further tighten space for small screens (phones) */
+        @media (max-width: 640px) {
+            .main .block-container {
+                padding-top: 0.5rem !important; /* Minimal gap on mobile */
+            }
+            
+            /* Ensure the sticky header stays flush with the browser top */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stSegmentedControl"]) {
+                margin-top: -1rem !important;
+            }
         }
         </style>            
     """, unsafe_allow_html=True)
