@@ -15,7 +15,6 @@ def show_landing_page(metrics_list, all_entries):
             st.session_state["tracker_view_selector"] = "Manage Metrics"
             st.rerun()
         return
-
     render_metric_grid(metrics_list, cats, all_entries)
 
 @st.fragment
@@ -56,7 +55,7 @@ def _render_action_card(metric, cat_map, entries, stats):
 
     with st.container(border=True):
         col_main = st.columns([1])[0] 
-        
+
         with col_main:
             st.markdown(f"""
                         <div class="action-card-grid">

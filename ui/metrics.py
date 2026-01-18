@@ -181,6 +181,7 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
                 if st.button("📦 Archive", key=f"arch_{m['id']}", help="Hide from dashboard", use_container_width=True):
                     models.archive_metric(m['id'])
                     utils.finalize_action(f"Archived: {m['name'].title()}", icon="📦")
+                    st.rerun()
             else:
                 # Show Restore button if metric is already archived
                 if st.button("♻️ Restore", key=f"rest_{m['id']}", help="Show on dashboard again", use_container_width=True):
@@ -188,6 +189,7 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
                     # sb.table("metrics").update({"is_archived": False}).eq("id", m['id'])
                     models.update_metric(m['id'], {"is_archived": False})
                     utils.finalize_action(f"Restored: {m['name'].title()}", icon="✅")
+                    st.rerun()
 
 def show_create_metric(cats):
     """

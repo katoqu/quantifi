@@ -30,7 +30,8 @@ def tracker_page():
 
     utils.apply_custom_tabs_css()
 
-    # --- 4. STICKY NAVIGATION HEADER ---
+    # --- 4. NAVIGATION HEADER ---
+    st.header('Quantif👁')
     view_options = ["Overview", "Record", "Analytics", "Edit"]
     st.segmented_control(
             "Navigation", 
@@ -39,14 +40,17 @@ def tracker_page():
             label_visibility="collapsed",
             key="tracker_view_selector" 
         )
-        
+    
     view_mode = st.session_state["tracker_view_selector"]
 
         # Back Button Pill (simplified label)
     if view_mode != "Overview":
         utils.render_back_button(target_page_title="Tracker", target_tab="Overview")
 
+#    st.html('<div style="height: 15px;"></div>')
+
     # --- 5. METRIC SELECTION (Only for sub-views) ---
+
     selected_metric = None
     if view_mode != "Overview":
         active_id = st.session_state.get("last_active_mid")
@@ -106,7 +110,7 @@ def configure_page():
         if target_page:
             st.switch_page(target_page)
 
-    st.title("Settings & Maintenance")
+    st.header("Settings")
     
     if "config_tab_selection" not in st.session_state:
         st.session_state["config_tab_selection"] = "📊 Edit Metric"
@@ -115,7 +119,7 @@ def configure_page():
 
     # --- 3. STICKY HEADER CONTAINER ---
     with st.container():
-        tab_options = ["📊 Edit Metric", "✨ New Metric", "📁 Categories", "⚙️ Export & Import"]
+        tab_options = ["📊 Edit Metric", "✨ New Metric", "📁 Categories", "⚙️ Ex-/Import"]
         selected_tab = st.segmented_control(
             "Settings Menu",
             options=tab_options,
@@ -126,7 +130,7 @@ def configure_page():
         
         # Simple Back Button
         utils.render_back_button(target_page_title="Tracker", target_tab="Overview")
-#        st.divider()
+        st.html('<div style="height: 10px;"></div>')
 
     # --- 4. DATA LOADING & CONTENT ROUTING ---
     cats = models.get_categories() or []

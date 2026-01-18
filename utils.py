@@ -54,32 +54,32 @@ def to_datetz(date_obj):
     return dt.datetime.combine(date_obj, dt.time(12, 0))
 
 def apply_custom_tabs_css():
+    """Consolidated CSS for mobile-first layout tightening."""
     st.markdown("""
         <style>
         /* 1. GLOBAL APP TIGHTENING */
         /* Targets the main content area to pull everything up */
         .main .block-container {
-            padding-top: 1.5rem !important; /* Reduces top gap significantly */
+            padding-top: 1.2rem !important; /* Minimal top gap */
             padding-bottom: 1rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
             max-width: 100%;
         }
 
         /* Reduces default gaps between all Streamlit widgets */
         [data-testid="stVerticalBlock"] {
-            gap: 0.5rem !important;
+            gap: 0.6rem !important;
         }
 
-        /* 2. CONSOLIDATED STICKY HEADER */
-        /* Targets any container holding Nav (Segmented Control) or Filters (Pills) */
+        /* 2. NAVIGATION BAR SPACING */
+        /* Targets the container holding Nav (Segmented Control) or Filters (Pills) */
         div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPills"]),
         div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stSegmentedControl"]) {
-            position: sticky !important;
-            top: 0rem !important; /* Sticks directly to the top edge of the content area */
-            z-index: 1000 !important;
-            background-color: var(--background-color) !important;
-            margin-top: -.5rem !important; /* Pulls the header into the container padding area */
-            padding: 5px 0px !important;
-            border-bottom: 1px solid var(--border-color) !important;
+            margin-top: 0px !important;
+            padding-bottom: 10px !important; 
+            margin-bottom: 15px !important; /* Creates clear space above action cards */
+            border-bottom: 1px solid var(--border-color);
         }
 
         /* 3. WIDGET-SPECIFIC REFINEMENTS */
@@ -90,15 +90,9 @@ def apply_custom_tabs_css():
         }
 
         /* 4. MOBILE-ONLY OVERRIDES */
-        /* Further tighten space for small screens (phones) */
         @media (max-width: 640px) {
             .main .block-container {
-                padding-top: 0.5rem !important; /* Minimal gap on mobile */
-            }
-            
-            /* Ensure the sticky header stays flush with the browser top */
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stSegmentedControl"]) {
-                margin-top: -1rem !important;
+                padding-top: 0.6rem !important; /* Even tighter on phones */
             }
         }
         </style>            
