@@ -119,7 +119,7 @@ def configure_page():
 
     # --- 3. STICKY HEADER CONTAINER ---
     with st.container():
-        tab_options = ["📊 Edit Metric", "✨ New Metric", "📁 Categories", "⚙️ Ex-/Import"]
+        tab_options = ["📊 Edit Metric", "✨ New Metric", "📁 Categories", "⚙️ Ex/Import"]
         selected_tab = st.segmented_control(
             "Settings Menu",
             options=tab_options,
@@ -142,7 +142,7 @@ def configure_page():
         metrics.show_create_metric(cats)
     elif selected_tab == "📁 Categories":
         manage_lookups.show_manage_lookups()
-    elif selected_tab == "⚙️ Export & Import":
+    elif selected_tab == "⚙️ Ex/Import":
         last_ts = models.get_last_backup_timestamp()
         st.caption(f"🛡️ Last local backup: **{last_ts}**")
         importer.show_data_lifecycle_management()
