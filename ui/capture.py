@@ -32,8 +32,6 @@ def show_capture(selected_metric):
     smart_default = last_entry['value'] if last_entry else float(fallback if fallback is not None else 0.0)
 
     with st.container(border=True):
-        st.markdown(f"**Recording:** {selected_metric['name'].title()}")
-
         if selected_metric.get("description"):
             st.caption(selected_metric["description"])
 
@@ -51,9 +49,18 @@ def show_capture(selected_metric):
             if utype == "integer_range":
                 rs = int(selected_metric.get("range_start", 0))
                 re = int(selected_metric.get("range_end", 10))
-                options = list(range(rs, re + 1))
-                default_index = options.index(int(smart_default)) if int(smart_default) in options else 0
-                val = st.selectbox(f"Value ({unit_name})", options=options, index=default_index)
+                default_val = int(smart_default)
+                if default_val < rs:
+                    default_val = rs
+                elif default_val > re:
+                    default_val = re
+                val = st.slider(
+                    f"Value ({unit_name})",
+                    min_value=rs,
+                    max_value=re,
+                    value=default_val,
+                    step=1,
+                )
             elif utype == "integer":
                 val = st.number_input(f"Value ({unit_name})", value=int(smart_default), step=1, format="%d")
             else:
