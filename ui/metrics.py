@@ -5,7 +5,7 @@ from st_keyup import st_keyup
 import time
 
 @st.dialog("Confirm Metric Update")
-def _confirm_metric_update_dialog(m, new_payload):
+def _confirm_metric_update_dialog(m, new_payload, cat_options=None, new_cat_name=None):
     """Summarizes only the changed values for the user to review."""
     st.markdown("### Review Changes")
     
@@ -42,12 +42,20 @@ def _confirm_metric_update_dialog(m, new_payload):
 
     # 4. Category check
     if m.get('category_id') != new_payload.get('category_id'):
-        # We only show that the ID changed here for simplicity, 
-        # but you could fetch names if needed.
+        cat_options = cat_options or {}
+        old_cat_id = m.get("category_id")
+        new_cat_id = new_payload.get("category_id")
+        old_label = cat_options.get(old_cat_id, "Uncat")
+        if new_cat_id in cat_options:
+            new_label = cat_options.get(new_cat_id, "Uncat")
+        elif new_cat_id is None:
+            new_label = "Uncat"
+        else:
+            new_label = (new_cat_name or "Uncat").title()
         changes.append({
             "label": "Category",
-            "old": "Changed", 
-            "new": "Updated"
+            "old": old_label,
+            "new": new_label
         })
 
     # 5. Range check (only if applicable)
@@ -76,11 +84,21 @@ def _confirm_metric_update_dialog(m, new_payload):
 
     st.warning("Updating these settings will change how historical data is labeled.")
 
-    if st.button("Confirm & Save", type="primary", use_container_width=True, disabled=not changes):
+    col_save, col_cancel = st.columns(2)
+    if col_save.button("Confirm & Save", type="primary", use_container_width=True, disabled=not changes):
         with st.spinner("Updating..."):
             models.update_metric(m['id'], new_payload)
         utils.finalize_action(f"Updated: {new_payload['name'].title()}")
         time.sleep(1.5)
+        st.rerun()
+    if col_cancel.button("Cancel", use_container_width=True):
+        st.session_state[f"ed_nm_{m['id']}"] = m.get("name", "")
+        st.session_state[f"ed_desc_{m['id']}"] = m.get("description", "") or ""
+        st.session_state[f"ed_un_{m['id']}"] = m.get("unit_name", "") or ""
+        st.session_state[f"ed_ct_{m['id']}"] = m.get("category_id")
+        st.session_state.pop(f"inline_cat_{m['id']}", None)
+        st.session_state[f"rs_{m['id']}"] = int(m.get("range_start", 0))
+        st.session_state[f"re_{m['id']}"] = int(m.get("range_end", 10))
         st.rerun()
 
 def show_edit_metrics(metrics_list, cats):
@@ -171,7 +189,12 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
                     payload["range_start"], payload["range_end"] = new_start, new_end
 
                 # Triggers the dialog to show full Current vs Proposed changes
-                _confirm_metric_update_dialog(m, payload)
+                _confirm_metric_update_dialog(
+                    m,
+                    payload,
+                    cat_options=cat_options,
+                    new_cat_name=inline_cat_name
+                )
 
         with col_arch:
             is_archived = m.get('is_archived', False)
