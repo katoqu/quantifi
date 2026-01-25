@@ -12,20 +12,22 @@ def show_manage_lookups():
     # 0. Create New Category (always available)
     with st.container(border=True):
         st.caption("Create New Category")
-        new_cat_name = st.text_input(
-            "New Category Name",
-            key="manage_new_cat_name"
-        )
-        existing_notice = st.session_state.get("manage_cat_notice")
-        notice_name = st.session_state.get("manage_cat_notice_name")
-        norm_input = utils.normalize_name(new_cat_name) if new_cat_name else ""
-        if existing_notice and (not norm_input or (notice_name and norm_input != notice_name)):
-            st.session_state["manage_cat_notice"] = None
-            st.session_state["manage_cat_notice_name"] = None
-            existing_notice = None
-        if existing_notice:
-            st.info(existing_notice)
-        if st.button("✨ Create Category", use_container_width=True):
+        with st.form("manage_create_category", clear_on_submit=True):
+            new_cat_name = st.text_input(
+                "New Category Name",
+                key="manage_new_cat_name"
+            )
+            existing_notice = st.session_state.get("manage_cat_notice")
+            notice_name = st.session_state.get("manage_cat_notice_name")
+            norm_input = utils.normalize_name(new_cat_name) if new_cat_name else ""
+            if existing_notice and (not norm_input or (notice_name and norm_input != notice_name)):
+                st.session_state["manage_cat_notice"] = None
+                st.session_state["manage_cat_notice_name"] = None
+                existing_notice = None
+            if existing_notice:
+                st.info(existing_notice)
+            submitted = st.form_submit_button("✨ Create Category", use_container_width=True)
+        if submitted:
             norm_name = utils.normalize_name(new_cat_name)
             if not norm_name:
                 st.warning("Please enter a category name.")
@@ -101,9 +103,10 @@ def _render_category_editor_block(cats):
                 st.session_state["cat_edit_name"] = target_cat["name"].title()
                 st.rerun()
         else:
+            if "cat_edit_name" not in st.session_state:
+                st.session_state["cat_edit_name"] = target_cat["name"].title()
             upd_val = st.text_input(
                 "Insert New Name",
-                value=target_cat['name'].title(),
                 key="cat_edit_name"
             )
             col_save, col_cancel = st.columns(2)
@@ -112,9 +115,11 @@ def _render_category_editor_block(cats):
                 models.update_category(target_cat['id'], new_name)
                 utils.finalize_action(f"Renamed to: {new_name.title()}")
                 st.session_state["cat_edit_mode"] = False
+                st.session_state.pop("cat_edit_name", None)
                 st.rerun()
             if col_cancel.button("Cancel", use_container_width=True):
                 st.session_state["cat_edit_mode"] = False
+                st.session_state.pop("cat_edit_name", None)
                 st.rerun()
         # Action: Delete (Only if unused)
         if not st.session_state["cat_edit_mode"]:
