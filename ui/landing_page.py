@@ -42,6 +42,11 @@ def render_metric_grid(metrics_list, cats, all_entries):
     for m in metrics_list:
         m_df = grouped_by_metric.get(m['id'], pd.DataFrame())
         stats = visualize.get_metric_stats(m_df) if not m_df.empty else {}
+        if not m_df.empty:
+            spark_values = list(m_df.sort_values("recorded_at")["value"].tail(12))
+        else:
+            spark_values = []
+        stats["spark_values"] = spark_values
         latest_ts = latest_by_metric.get(m['id'], pd.Timestamp.min.tz_localize('UTC'))
         scored_metrics.append((latest_ts, m, stats))
     
@@ -55,29 +60,28 @@ def _render_action_card(metric, cat_map, stats):
     mid, m_name = metric['id'], metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
     description = metric.get("description", "")
-    val_display = f"{stats['latest']:.1f}" if stats else "—"
     trend_color = "#28a745" if (stats.get('change') or 0) >= 0 else "#dc3545"
 
     with st.container(border=True):
         col_main = st.columns([1])[0] 
 
         with col_main:
-            st.markdown(f"""
-                        <div class="action-card-grid">
-                            <div class="metric-identity">
-                                <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700;">{cat_name.upper()}</span><br>
-                                <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">
-                                    {m_name}
-                                </div>
-                            </div>
-                            <div class="value-box">
-                                <span style="font-size: 0.55rem; opacity: 0.7; font-weight: 600;">LATEST</span><br>
-                                <b style="font-size: 1.1rem; color: {trend_color};">{val_display}</b>
-                            </div>
-                            <div></div> 
-                        </div>
-                        <div style="height: 15px;"></div> 
-                    """, unsafe_allow_html=True)
+            sparkline_html = _render_sparkline(stats.get("spark_values", []), trend_color)
+            card_html = "\n".join([
+                '<div class="action-card-grid">',
+                '  <div class="metric-identity">',
+                f'    <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700;">{cat_name.upper()}</span><br>',
+                f'    <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}</div>',
+                '  </div>',
+                '  <div class="value-box">',
+                '    <span style="font-size: 0.55rem; opacity: 0.7; font-weight: 600;">TREND</span><br>',
+                f'    <div style="height: 28px; display: flex; align-items: center;">{sparkline_html}</div>',
+                '  </div>',
+                '  <div></div>',
+                '</div>',
+                '<div style="height: 15px;"></div>'
+            ])
+            st.markdown(card_html, unsafe_allow_html=True)
             choice = st.pills(f"act_{mid}", options=["➕", "📊", "⚙️"], 
                               key=f"p_{mid}", 
                               label_visibility="collapsed",
@@ -106,6 +110,35 @@ def _render_action_card(metric, cat_map, stats):
                 else:
                     # Fallback if page object isn't found
                     st.error("Configure page not found in navigation.")
+
+def _render_sparkline(values, color):
+    if not values:
+        return '<span style="font-size: 0.9rem; opacity: 0.6;">—</span>'
+
+    width = 96
+    height = 28
+    pad = 2
+    vmin = min(values)
+    vmax = max(values)
+
+    if len(values) == 1 or vmax == vmin:
+        points = f"{pad},{height/2} {width-pad},{height/2}"
+    else:
+        step = (width - pad * 2) / (len(values) - 1)
+        span = vmax - vmin
+        pts = []
+        for i, v in enumerate(values):
+            x = pad + i * step
+            y = height - pad - ((v - vmin) / span) * (height - pad * 2)
+            pts.append(f"{x:.2f},{y:.2f}")
+        points = " ".join(pts)
+
+    return (
+        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
+        f'preserveAspectRatio="none" aria-hidden="true">'
+        f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{points}" '
+        f'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    )
 
 def show_advanced_analytics_view(metric):
     st.markdown(f"#### {metric['name'].title()} Trends")
