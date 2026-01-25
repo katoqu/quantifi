@@ -91,7 +91,7 @@ def render_stat_row(stats, mode="compact"):
 
 def show_visualizations(dfe, m_unit, m_name):
     """
-    Renders the chart with an Average Baseline.
+    Renders the chart with a trendline and average baseline.
     """
     if dfe is None or dfe.empty:
         st.info("No data recorded for this metric yet.")
@@ -101,25 +101,89 @@ def show_visualizations(dfe, m_unit, m_name):
     if not pd.api.types.is_datetime64_any_dtype(dfe['recorded_at']):
         dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='mixed', utc=True)
 
-    # Ensure sorting and calculate average
+    # Ensure sorting
     dfe = dfe.sort_values("recorded_at")
-    avg_val = dfe["value"].mean()
+
+    # Aggregation controls (mobile-friendly)
+    agg_options = ["Auto", "Daily", "Weekly", "Monthly", "Yearly"]
+    agg_choice = st.radio(
+        "Aggregation",
+        options=agg_options,
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    plot_df = dfe
+    is_bucketed = False
+    bucket_label = None
+    freq_map = {
+        "Daily": "1D",
+        "Weekly": "1W",
+        "Monthly": "1M",
+        "Yearly": "1Y",
+    }
+    if agg_choice == "Auto" and len(dfe) > 200:
+        bucket_label = "Day"
+        freq = "1D"
+    elif agg_choice in freq_map:
+        freq = freq_map[agg_choice]
+        label_map = {
+            "Daily": "Day",
+            "Weekly": "Week",
+            "Monthly": "Month",
+            "Yearly": "Year",
+        }
+        bucket_label = label_map.get(agg_choice, agg_choice)
+    else:
+        freq = None
+
+    if freq:
+        plot_df = (
+            dfe.set_index("recorded_at")
+            .resample(freq)
+            .mean(numeric_only=True)
+            .dropna()
+            .reset_index()
+        )
+        is_bucketed = True
+
+    avg_val = plot_df["value"].mean()
+    trend_span = min(5, len(plot_df))
+    trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean() if trend_span >= 3 else None
+
+    show_markers = len(plot_df) <= 50
+    use_gl = len(plot_df) > 150
+    line_width = 2 if len(plot_df) > 100 else 3
+    marker_size = 6 if show_markers else 0
+    scatter_cls = go.Scattergl if use_gl else go.Scatter
 
     fig = go.Figure()
     
     # 1. Main Data Trace
-    fig.add_trace(go.Scatter(
-        x=dfe["recorded_at"], 
-        y=dfe["value"], 
-        mode="lines+markers", 
-        line=dict(shape='spline', smoothing=1.3, color='#1f77b4', width=3),
-        marker=dict(size=10, color='#1f77b4', line=dict(color='white', width=2)),
+    fig.add_trace(scatter_cls(
+        x=plot_df["recorded_at"], 
+        y=plot_df["value"], 
+        mode="lines+markers" if show_markers else "lines",
+        line=dict(shape='spline', smoothing=1.0, color='#1f77b4', width=line_width),
+        marker=dict(size=marker_size, color='#1f77b4', line=dict(color='white', width=1)),
         name=m_name,
-        text=[f"{val:.1f} {m_unit}" for val in dfe["value"]],
-        hovertemplate="<b>%{text}</b><extra></extra>"
+        text=[f"{val:.1f} {m_unit}" for val in plot_df["value"]],
+        hovertemplate="<b>%{text}</b><br>%{x|%d %b %Y}<extra></extra>"
     ))
 
-    # 2. Add Horizontal Average Line (New Logic)
+    # 2. Add Trendline
+    if trend is not None:
+        fig.add_trace(go.Scatter(
+            x=plot_df["recorded_at"],
+            y=trend,
+            mode="lines",
+            line=dict(color="rgba(31, 119, 180, 0.5)", width=2),
+            name="Trend",
+            hoverinfo="skip"
+        ))
+
+    # 3. Add Horizontal Average Line
     fig.add_hline(
         y=avg_val, 
         line_dash="dash", 
@@ -131,12 +195,13 @@ def show_visualizations(dfe, m_unit, m_name):
 
     fig.update_layout(
         yaxis_title=f"Value ({m_unit})",
+        xaxis_title=bucket_label if is_bucketed else None,
         hovermode="x unified",
-        hoverlabel=dict(bgcolor="white", font_size=16, font_color="black"),
+        hoverlabel=dict(bgcolor="white", font_size=12, font_color="black"),
         xaxis=dict(showspikes=True, spikemode='across', showgrid=False, fixedrange=True),
         yaxis=dict(fixedrange=True, showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
         margin=dict(l=10, r=10, t=10, b=10),
-        height=300,
+        height=260,
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         showlegend=False,

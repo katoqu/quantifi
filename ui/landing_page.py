@@ -154,10 +154,6 @@ def show_advanced_analytics_view(metric):
             st.rerun()
         return
 
-    # 2. Calculate stats and render visualizations
+    # 2. Render visualizations
     df = pd.DataFrame(entries)
-    stats = visualize.get_metric_stats(df)
-    visualize.render_stat_row(stats, mode="advanced")
-    st.divider()
-    
     visualize.show_visualizations(df, metric.get('unit_name', ''), metric['name'])
