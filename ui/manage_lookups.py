@@ -117,18 +117,19 @@ def _render_category_editor_block(cats):
                 st.session_state["cat_edit_mode"] = False
                 st.rerun()
         # Action: Delete (Only if unused)
-        st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True)
-        if usage_count == 0:
-            if st.button("🗑️ Delete Category", type="secondary", use_container_width=True):
-                models.delete_category(target_cat['id'])
-                utils.finalize_action(f"Deleted: {target_cat['name'].title()}", icon="🗑️")
-                st.session_state["last_active_cat_id"] = None
-                st.session_state["cat_edit_mode"] = False
-                st.rerun()
-        else:
-            st.button(
-                "🔒 Locked (In Use)",
-                disabled=True,
-                use_container_width=True,
-                help="Categories used by metrics cannot be deleted."
-            )
+        if not st.session_state["cat_edit_mode"]:
+            st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True)
+            if usage_count == 0:
+                if st.button("🗑️ Delete Category", type="secondary", use_container_width=True):
+                    models.delete_category(target_cat['id'])
+                    utils.finalize_action(f"Deleted: {target_cat['name'].title()}", icon="🗑️")
+                    st.session_state["last_active_cat_id"] = None
+                    st.session_state["cat_edit_mode"] = False
+                    st.rerun()
+            else:
+                st.button(
+                    "🔒 Locked (In Use)",
+                    disabled=True,
+                    use_container_width=True,
+                    help="Categories used by metrics cannot be deleted."
+                )
