@@ -89,8 +89,7 @@ def _render_category_editor_block(cats):
         if not target_cat:
             return
 
-        metrics_list = models.get_metrics() or []
-        usage_count = sum(1 for m in metrics_list if m.get('category_id') == target_cat['id'])
+        usage_count = models.get_category_usage_count(target_cat["id"])
 
         st.caption(f"Editing Category (Used by {usage_count} metrics)")
 

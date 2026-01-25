@@ -77,6 +77,17 @@ def get_entry_count(metric_id: str):
     )
     return res.count if res and res.count is not None else 0
 
+def get_category_usage_count(category_id: str):
+    """Returns the count of active metrics assigned to a category."""
+    res = _safe_execute(
+        sb.table("metrics")
+        .select("id", count="exact")
+        .eq("category_id", category_id)
+        .eq("is_archived", False),
+        "Failed to count category usage"
+    )
+    return res.count if res and res.count is not None else 0
+
 def get_category_by_name(name: str):
     """Finds a category by name for the current user (case-insensitive)."""
     res = _safe_execute(
