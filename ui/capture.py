@@ -2,6 +2,7 @@ import streamlit as st
 import models
 import utils
 import datetime as dt
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from ui import visualize
 
 @st.fragment
@@ -21,6 +22,92 @@ def show_tracker_suite(selected_metric):
     else:
         st.info("No data recorded for this metric yet. Add your first entry above.")
 
+def _get_initial_datetime(mid):
+    date_key = f"capture_date_{mid}"
+    time_key = f"capture_time_{mid}"
+    if date_key not in st.session_state:
+        st.session_state[date_key] = dt.date.today()
+    if time_key not in st.session_state:
+        st.session_state[time_key] = dt.datetime.now().time().replace(second=0, microsecond=0)
+    return st.session_state[date_key], st.session_state[time_key]
+
+def _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values):
+    if utype == "integer_range":
+        rs = int(selected_metric.get("range_start", 0))
+        re = int(selected_metric.get("range_end", 10))
+        default_val = int(smart_default)
+        if default_val < rs:
+            default_val = rs
+        elif default_val > re:
+            default_val = re
+        return st.slider(
+            f"Value ({unit_name})",
+            min_value=rs,
+            max_value=re,
+            value=default_val,
+            step=1,
+        )
+    if utype == "integer":
+        return st.number_input(f"Value ({unit_name})", value=int(smart_default), step=1, format="%d")
+    step, fmt = _infer_float_step_and_format_from_history(recent_values)
+    if step is None:
+        step, fmt = _infer_float_step_and_format(smart_default)
+    return st.number_input(f"Value ({unit_name})", value=float(smart_default), format=fmt, step=step)
+
+def _infer_float_step_and_format(value, default_decimals=1, max_decimals=6):
+    try:
+        dec = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return 1.0, f"%.{default_decimals}f"
+    decimals = max(0, -dec.as_tuple().exponent)
+    decimals = min(max_decimals, decimals)
+    if decimals == 0:
+        return 1.0, "%.0f"
+    step = 10 ** (-decimals)
+    return step, f"%.{decimals}f"
+
+def _infer_float_step_and_format_from_history(values, default_decimals=1, max_decimals=6):
+    if not values or len(values) < 2:
+        return None, None
+    deltas = [abs(curr - prev) for prev, curr in zip(values, values[1:])]
+    avg_delta = sum(deltas) / len(deltas) if deltas else 0
+    if avg_delta <= 0:
+        return None, None
+    decimals = _max_decimals(values, default_decimals, max_decimals)
+    step = _round_down(avg_delta / 5, decimals)
+    if step <= 0:
+        step = 10 ** (-decimals)
+    return step, f"%.{decimals}f"
+
+def _max_decimals(values, default_decimals, max_decimals):
+    decimals = default_decimals
+    for value in values:
+        try:
+            dec = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            continue
+        decimals = max(decimals, max(0, -dec.as_tuple().exponent))
+    return min(max_decimals, decimals)
+
+def _round_down(value, decimals):
+    if decimals <= 0:
+        return float(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_DOWN))
+    quant = Decimal(f"1e-{decimals}")
+    return float(Decimal(str(value)).quantize(quant, rounding=ROUND_DOWN))
+
+def _get_recent_values(metric_id, limit=5):
+    entries = models.get_entries(metric_id)
+    if not entries:
+        return []
+    entries = sorted(entries, key=lambda row: row.get("recorded_at", ""))
+    values = []
+    for row in entries[-limit:]:
+        try:
+            values.append(float(row["value"]))
+        except (TypeError, ValueError):
+            continue
+    return values
+
 def show_capture(selected_metric):
     mid = selected_metric.get("id")
     unit_name = selected_metric.get("unit_name", "")
@@ -28,6 +115,7 @@ def show_capture(selected_metric):
     
     # Fetch smart default once per fragment execution
     last_entry = models.get_latest_entry_only(mid)
+    recent_values = _get_recent_values(mid) if utype not in ("integer", "integer_range") else []
     fallback = selected_metric.get("range_start", 0.0)
     smart_default = last_entry['value'] if last_entry else float(fallback if fallback is not None else 0.0)
 
@@ -36,35 +124,16 @@ def show_capture(selected_metric):
             st.caption(selected_metric["description"])
 
         # Note: st.form is kept to bundle the inputs
-        with st.form("capture_entry_submit", border=False):
-            date_input = st.date_input("📅 Date", value=dt.date.today())
-            
+        initial_date, initial_time = _get_initial_datetime(mid)
+        with st.form(f"capture_entry_submit_{mid}", border=False):
+            date_input = st.date_input("📅 Date", value=initial_date, key=f"capture_date_{mid}")
             time_input = st.time_input(
-                "⏰ Time", 
-                value=dt.datetime.now().time(),
-                step=60
+                "⏰ Time",
+                value=initial_time,
+                step=60,
+                key=f"capture_time_{mid}",
             )
-            
-            # Value Input Logic
-            if utype == "integer_range":
-                rs = int(selected_metric.get("range_start", 0))
-                re = int(selected_metric.get("range_end", 10))
-                default_val = int(smart_default)
-                if default_val < rs:
-                    default_val = rs
-                elif default_val > re:
-                    default_val = re
-                val = st.slider(
-                    f"Value ({unit_name})",
-                    min_value=rs,
-                    max_value=re,
-                    value=default_val,
-                    step=1,
-                )
-            elif utype == "integer":
-                val = st.number_input(f"Value ({unit_name})", value=int(smart_default), step=1, format="%d")
-            else:
-                val = st.number_input(f"Value ({unit_name})", value=float(smart_default), format="%.1f", step=1.0)
+            val = _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values)
 
             submitted = st.form_submit_button("Add Entry", use_container_width=True, type="primary")
             
@@ -80,7 +149,8 @@ def show_capture(selected_metric):
                 # We clear the specific cache and show a toast. 
                 # The fragment will naturally re-run its internal code
                 # to show the new data in the chart above.
-                st.cache_data.clear() 
+                if hasattr(models.get_latest_entry_only, "clear"):
+                    models.get_latest_entry_only.clear()
                 st.toast(f"✅ Saved: {val} {unit_name}")
 
                 st.rerun(scope="fragment")
