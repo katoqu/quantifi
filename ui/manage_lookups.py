@@ -73,9 +73,11 @@ def _render_category_editor_block(cats):
         active_id = sorted_cat_ids[0]
 
     with st.container(border=True):
+        st.caption("Edit Category")
+
         if not st.session_state["cat_edit_mode"]:
             selected_cat_id = st.selectbox(
-                "Category",
+                "Select Category",
                 options=sorted_cat_ids,
                 format_func=lambda x: cat_options[x],
                 index=sorted_cat_ids.index(active_id),
@@ -91,7 +93,7 @@ def _render_category_editor_block(cats):
 
         usage_count = models.get_category_usage_count(target_cat["id"])
 
-        st.caption(f"Editing Category (Used by {usage_count} metrics)")
+#        st.caption(f"Editing Category (Used by {usage_count} metrics)")
 
         if not st.session_state["cat_edit_mode"]:
             if st.button("✏️ Rename", use_container_width=True):
@@ -100,7 +102,7 @@ def _render_category_editor_block(cats):
                 st.rerun()
         else:
             upd_val = st.text_input(
-                "Category",
+                "Insert New Name",
                 value=target_cat['name'].title(),
                 key="cat_edit_name"
             )
