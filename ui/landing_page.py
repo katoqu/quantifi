@@ -30,23 +30,28 @@ def render_metric_grid(metrics_list, cats, all_entries):
     current_filter = st.session_state.get("cat_filter", "All")
 
     all_df = pd.DataFrame(all_entries)
+    if not all_df.empty:
+        all_df['recorded_at'] = pd.to_datetime(all_df['recorded_at'], format='mixed', utc=True)
+        latest_by_metric = all_df.groupby('metric_id')['recorded_at'].max()
+        grouped_by_metric = {mid: df for mid, df in all_df.groupby('metric_id')}
+    else:
+        latest_by_metric = pd.Series(dtype='datetime64[ns, UTC]')
+        grouped_by_metric = {}
+
     scored_metrics = []
     for m in metrics_list:
-        m_df = all_df[all_df['metric_id'] == m['id']] if not all_df.empty else pd.DataFrame()
-        stats = visualize.get_metric_stats(m_df)
-        
-        latest_ts = pd.Timestamp.min.tz_localize('UTC')
-        if not m_df.empty:
-            latest_ts = pd.to_datetime(m_df['recorded_at'], format='mixed', utc=True).max()
-        scored_metrics.append((latest_ts, m, stats, m_df))
+        m_df = grouped_by_metric.get(m['id'], pd.DataFrame())
+        stats = visualize.get_metric_stats(m_df) if not m_df.empty else {}
+        latest_ts = latest_by_metric.get(m['id'], pd.Timestamp.min.tz_localize('UTC'))
+        scored_metrics.append((latest_ts, m, stats))
     
     scored_metrics.sort(key=lambda x: x[0], reverse=True)
     
-    for _, m, stats, m_df in scored_metrics:
+    for _, m, stats in scored_metrics:
         if current_filter == "All" or cat_map.get(m.get('category_id')) == current_filter:
-            _render_action_card(m, cat_map, m_df.to_dict('records'), stats)
+            _render_action_card(m, cat_map, stats)
 
-def _render_action_card(metric, cat_map, entries, stats):
+def _render_action_card(metric, cat_map, stats):
     mid, m_name = metric['id'], metric['name'].title()
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
     description = metric.get("description", "")
