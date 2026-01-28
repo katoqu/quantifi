@@ -334,7 +334,6 @@ def select_metric(metrics, target_id=None):
     with st.expander(f"{header_label}{invisible_suffix}", expanded=st.session_state["metric_selector_open"]):
         exclude_archived = st.checkbox(
             "Exclude Archived",
-            value=st.session_state["exclude_archived_metrics"],
             key="exclude_archived_metrics",
             on_change=_keep_selector_open,
         )

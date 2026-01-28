@@ -18,7 +18,7 @@ def tracker_page():
         st.session_state["nav_to_record_trigger"] = False 
 
     # --- 2. DATA LOADING & STATE ---
-    all_metrics = models.get_metrics(include_archived=False)
+    all_metrics = models.get_metrics(include_archived=True)
     if not all_metrics:
 #        st.info("No active metrics. Restore archived metrics in Settings or create a new one.")
         return
@@ -85,7 +85,7 @@ def editor_page():
     st.title("Edit")
     
     # 1. Fetch metrics
-    metrics_list = models.get_metrics() or []
+    metrics_list = models.get_metrics(include_archived=True) or []
     if not metrics_list:
         st.info("No metrics found. Please create metrics in Settings before editing data.")
         return
