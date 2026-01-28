@@ -104,43 +104,109 @@ def show_visualizations(dfe, m_unit, m_name):
     # Ensure sorting
     dfe = dfe.sort_values("recorded_at")
 
-    # Aggregation controls (mobile-friendly)
-    agg_options = ["Auto", "Daily", "Weekly", "Monthly", "Yearly"]
-    agg_choice = st.radio(
-        "Aggregation",
-        options=agg_options,
-        index=0,
-        horizontal=True,
+    # View controls (aggregation vs time window)
+    view_mode = st.segmented_control(
+        "View",
+        options=["Aggregation", "Range"],
+        default="Aggregation",
         label_visibility="collapsed",
     )
+
+    agg_choice = None
+    range_choice = None
+    if view_mode == "Range":
+        range_choice = st.radio(
+            "Range",
+            options=["Last week", "Last month", "Last 6 months", "Last year"],
+            index=0,
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    else:
+        agg_options = ["Auto", "Daily", "Weekly", "Monthly", "Yearly"]
+        agg_choice = st.radio(
+            "Aggregation",
+            options=agg_options,
+            index=0,
+            horizontal=True,
+            label_visibility="collapsed",
+        )
 
     plot_df = dfe
     is_bucketed = False
     bucket_label = None
+    tickformat = None
+    dtick = None
+    freq = None
     freq_map = {
         "Daily": "1D",
         "Weekly": "1W",
         "Monthly": "1M",
         "Yearly": "1Y",
     }
-    if agg_choice == "Auto" and len(dfe) > 200:
-        bucket_label = "Day"
-        freq = "1D"
-    elif agg_choice in freq_map:
-        freq = freq_map[agg_choice]
-        label_map = {
-            "Daily": "Day",
-            "Weekly": "Week",
-            "Monthly": "Month",
-            "Yearly": "Year",
-        }
-        bucket_label = label_map.get(agg_choice, agg_choice)
+
+    if view_mode == "Range":
+        last_ts = dfe["recorded_at"].max()
+        if range_choice == "Last week":
+            start_ts = last_ts - pd.Timedelta(days=7)
+            freq = "1D"
+            bucket_label = "Day"
+            tickformat = "%a"
+            dtick = 24 * 60 * 60 * 1000
+        elif range_choice == "Last month":
+            start_ts = last_ts - pd.Timedelta(days=31)
+            freq = "1D"
+            bucket_label = "Day"
+            tickformat = "%d"
+            dtick = 24 * 60 * 60 * 1000
+        elif range_choice == "Last 6 months":
+            start_ts = last_ts - pd.DateOffset(months=6)
+            freq = "1M"
+            bucket_label = "Month"
+            tickformat = "%b"
+            dtick = "M1"
+        elif range_choice == "Last year":
+            start_ts = last_ts - pd.DateOffset(months=12)
+            freq = "1M"
+            bucket_label = "Month"
+            tickformat = "%b"
+            dtick = "M1"
+        else:
+            start_ts = dfe["recorded_at"].min()
+
+        plot_df = dfe[dfe["recorded_at"] >= start_ts]
+        is_bucketed = True
     else:
-        freq = None
+        if agg_choice == "Auto" and len(dfe) > 200:
+            bucket_label = "Day"
+            freq = "1D"
+            tickformat = "%a"
+            dtick = 24 * 60 * 60 * 1000
+        elif agg_choice in freq_map:
+            freq = freq_map[agg_choice]
+            label_map = {
+                "Daily": "Day",
+                "Weekly": "Week",
+                "Monthly": "Month",
+                "Yearly": "Year",
+            }
+            bucket_label = label_map.get(agg_choice, agg_choice)
+            if agg_choice == "Daily":
+                tickformat = "%a"
+                dtick = 24 * 60 * 60 * 1000
+            elif agg_choice == "Weekly":
+                tickformat = "W%W"
+                dtick = 7 * 24 * 60 * 60 * 1000
+            elif agg_choice == "Monthly":
+                tickformat = "%b"
+                dtick = "M1"
+            elif agg_choice == "Yearly":
+                tickformat = "%Y"
+                dtick = "M12"
 
     if freq:
         plot_df = (
-            dfe.set_index("recorded_at")
+            plot_df.set_index("recorded_at")
             .resample(freq)
             .mean(numeric_only=True)
             .dropna()
@@ -198,7 +264,14 @@ def show_visualizations(dfe, m_unit, m_name):
         xaxis_title=bucket_label if is_bucketed else None,
         hovermode="x unified",
         hoverlabel=dict(bgcolor="white", font_size=12, font_color="black"),
-        xaxis=dict(showspikes=True, spikemode='across', showgrid=False, fixedrange=True),
+        xaxis=dict(
+            showspikes=True,
+            spikemode='across',
+            showgrid=False,
+            fixedrange=True,
+            tickformat=tickformat,
+            dtick=dtick,
+        ),
         yaxis=dict(fixedrange=True, showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
         margin=dict(l=10, r=10, t=10, b=10),
         height=260,
