@@ -29,7 +29,6 @@ def _get_initial_datetime(mid):
         st.session_state[date_key] = dt.date.today()
     if time_key not in st.session_state:
         st.session_state[time_key] = dt.datetime.now().time().replace(second=0, microsecond=0)
-    return st.session_state[date_key], st.session_state[time_key]
 
 def _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values):
     if utype == "integer_range":
@@ -124,12 +123,11 @@ def show_capture(selected_metric):
             st.caption(selected_metric["description"])
 
         # Note: st.form is kept to bundle the inputs
-        initial_date, initial_time = _get_initial_datetime(mid)
+        _get_initial_datetime(mid)
         with st.form(f"capture_entry_submit_{mid}", border=False):
-            date_input = st.date_input("📅 Date", value=initial_date, key=f"capture_date_{mid}")
+            date_input = st.date_input("📅 Date", key=f"capture_date_{mid}")
             time_input = st.time_input(
                 "⏰ Time",
-                value=initial_time,
                 step=60,
                 key=f"capture_time_{mid}",
             )

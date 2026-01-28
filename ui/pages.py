@@ -42,6 +42,13 @@ def tracker_page():
         )
     
     view_mode = st.session_state["tracker_view_selector"]
+    last_view = st.session_state.get("last_tracker_view_selection")
+    if last_view != view_mode and view_mode in ("Record", "Analytics", "Edit"):
+        st.session_state["metric_selector_open"] = False
+        st.session_state["metric_selector_reset_token"] = (
+            st.session_state.get("metric_selector_reset_token", 0) + 1
+        ) % 5
+    st.session_state["last_tracker_view_selection"] = view_mode
 
         # Back Button Pill (simplified label)
     if view_mode != "Overview":
@@ -127,6 +134,14 @@ def configure_page():
             label_visibility="collapsed",
             key="config_tab_selection"
         )
+
+        last_tab = st.session_state.get("last_config_tab_selection")
+        if last_tab != selected_tab and selected_tab == "📊 Edit Metric":
+            st.session_state["metric_selector_open"] = False
+            st.session_state["metric_selector_reset_token"] = (
+                st.session_state.get("metric_selector_reset_token", 0) + 1
+            ) % 5
+        st.session_state["last_config_tab_selection"] = selected_tab
         
         # Simple Back Button
         utils.render_back_button(target_page_title="Tracker", target_tab="Overview")

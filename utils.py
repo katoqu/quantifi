@@ -32,7 +32,10 @@ def format_metric_label(metric, unit_map=None):
     """Pulls unit_name directly from the metric object."""
     name = metric.get("name", "").title()
     unit = metric.get("unit_name", "").title()
-    return f"{name} ({unit})" if unit else name
+    label = f"{name} ({unit})" if unit else name
+    if metric.get("is_archived"):
+        label = f"{label} (Archived)"
+    return label
 
 def collect_data(selected_metric, unit_meta=None):
     mid = selected_metric.get("id")

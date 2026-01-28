@@ -302,7 +302,10 @@ def select_metric(metrics, target_id=None):
     if not metrics:
         return None
     
-    sorted_metrics = sorted(metrics, key=lambda x: x.get("name", "").lower())
+    sorted_metrics = sorted(
+        metrics,
+        key=lambda x: (bool(x.get("is_archived")), x.get("name", "").lower()),
+    )
     
     # 1. IDENTIFY ACTIVE METRIC FOR THE HEADER
     active_id = target_id or st.session_state.get("last_active_mid")
@@ -310,13 +313,40 @@ def select_metric(metrics, target_id=None):
     
     # FALLBACK: If the sticky metric is archived/missing, pick the first available one
     if not selected_obj:
-        selected_obj = sorted_metrics[0]
+        selected_obj = next((m for m in sorted_metrics if not m.get("is_archived")), None)
+        if not selected_obj:
+            selected_obj = sorted_metrics[0]
         st.session_state["last_active_mid"] = selected_obj['id']
 
     # 2. COLLAPSIBLE SELECTOR BOX
     header_label = f"🎯 {utils.format_metric_label(selected_obj)}"
     
-    with st.expander(header_label, expanded=False):
+    if "metric_selector_open" not in st.session_state:
+        st.session_state["metric_selector_open"] = False
+    if "exclude_archived_metrics" not in st.session_state:
+        st.session_state["exclude_archived_metrics"] = True
+
+    def _keep_selector_open():
+        st.session_state["metric_selector_open"] = True
+
+    reset_token = st.session_state.get("metric_selector_reset_token", 0)
+    invisible_suffix = "\u200b" * reset_token  # forces a new expander state without visible label change
+    with st.expander(f"{header_label}{invisible_suffix}", expanded=st.session_state["metric_selector_open"]):
+        exclude_archived = st.checkbox(
+            "Exclude Archived",
+            value=st.session_state["exclude_archived_metrics"],
+            key="exclude_archived_metrics",
+            on_change=_keep_selector_open,
+        )
+
+        visible_metrics = (
+            [
+                m for m in sorted_metrics
+                if not m.get("is_archived") or m["id"] == selected_obj["id"]
+            ]
+            if exclude_archived
+            else sorted_metrics
+        )
 
         # 3. DYNAMIC KEY FOR INSTANT SEARCH
         # By adding active_id to the key, the widget resets whenever a new metric is picked.
@@ -332,11 +362,14 @@ def select_metric(metrics, target_id=None):
         ).lower().strip()
 
         # 4. FILTERING LOGIC
-        filtered_metrics = [
-            m for m in sorted_metrics 
-            if search_query in m.get("name", "").lower() or 
-               search_query in m.get("unit_name", "").lower()
-        ] if search_query else sorted_metrics
+        if search_query:
+            filtered_metrics = [
+                m for m in visible_metrics
+                if search_query in m.get("name", "").lower() or
+                   search_query in m.get("unit_name", "").lower()
+            ]
+        else:
+            filtered_metrics = visible_metrics
 
         # 5. RESULT PILLS
         pill_options = {m['id']: utils.format_metric_label(m) for m in filtered_metrics}
