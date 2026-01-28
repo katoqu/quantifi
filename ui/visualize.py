@@ -1,6 +1,7 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+import math
 
 def get_metric_stats(df):
     """
@@ -137,6 +138,11 @@ def show_visualizations(dfe, m_unit, m_name):
     bucket_label = None
     tickformat = None
     dtick = None
+    tickmode = None
+    tick0 = None
+    nticks = None
+    tickvals = None
+    ticktext = None
     freq = None
     freq_map = {
         "Daily": "1D",
@@ -180,7 +186,7 @@ def show_visualizations(dfe, m_unit, m_name):
         if agg_choice == "Auto" and len(dfe) > 200:
             bucket_label = "Day"
             freq = "1D"
-            tickformat = "%a"
+            tickformat = "%d"
             dtick = 24 * 60 * 60 * 1000
         elif agg_choice in freq_map:
             freq = freq_map[agg_choice]
@@ -192,10 +198,10 @@ def show_visualizations(dfe, m_unit, m_name):
             }
             bucket_label = label_map.get(agg_choice, agg_choice)
             if agg_choice == "Daily":
-                tickformat = "%a"
+                tickformat = "%d"
                 dtick = 24 * 60 * 60 * 1000
             elif agg_choice == "Weekly":
-                tickformat = "W%W"
+                tickformat = "%W"
                 dtick = 7 * 24 * 60 * 60 * 1000
             elif agg_choice == "Monthly":
                 tickformat = "%b"
@@ -213,6 +219,33 @@ def show_visualizations(dfe, m_unit, m_name):
             .reset_index()
         )
         is_bucketed = True
+        if freq == "1D":
+            if len(plot_df) > 0:
+                start_ts = plot_df["recorded_at"].iloc[0]
+                end_ts = plot_df["recorded_at"].iloc[-1]
+                span_days = max(0, (end_ts - start_ts).days)
+                periods = min(12, max(2, span_days + 1))
+                tickmode = "array"
+                tickvals = pd.date_range(start=start_ts, end=end_ts, periods=periods).to_pydatetime().tolist()
+                ticktext = [ts.strftime("%d") for ts in tickvals]
+        elif freq == "1W":
+            if len(plot_df) > 0:
+                start_ts = plot_df["recorded_at"].iloc[0]
+                end_ts = plot_df["recorded_at"].iloc[-1]
+                span_weeks = max(0, (end_ts - start_ts).days // 7)
+                periods = min(12, max(2, span_weeks + 1))
+                tickmode = "array"
+                tickvals = pd.date_range(start=start_ts, end=end_ts, periods=periods).to_pydatetime().tolist()
+                ticktext = [ts.strftime("%W") for ts in tickvals]
+        elif freq == "1M":
+            if len(plot_df) > 0:
+                start_ts = plot_df["recorded_at"].iloc[0]
+                end_ts = plot_df["recorded_at"].iloc[-1]
+                month_span = max(0, (end_ts.year - start_ts.year) * 12 + (end_ts.month - start_ts.month))
+                periods = min(12, max(2, month_span + 1))
+                tickmode = "array"
+                tickvals = pd.date_range(start=start_ts, end=end_ts, periods=periods).to_pydatetime().tolist()
+                ticktext = [ts.strftime("%b") for ts in tickvals]
 
     avg_val = plot_df["value"].mean()
     trend_span = min(5, len(plot_df))
@@ -271,6 +304,11 @@ def show_visualizations(dfe, m_unit, m_name):
             fixedrange=True,
             tickformat=tickformat,
             dtick=dtick,
+            tickmode=tickmode,
+            tick0=tick0,
+            nticks=nticks,
+            tickvals=tickvals,
+            ticktext=ticktext,
         ),
         yaxis=dict(fixedrange=True, showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
         margin=dict(l=10, r=10, t=10, b=10),
