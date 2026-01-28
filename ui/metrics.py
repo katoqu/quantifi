@@ -306,6 +306,9 @@ def select_metric(metrics, target_id=None):
         metrics,
         key=lambda x: (bool(x.get("is_archived")), x.get("name", "").lower()),
     )
+
+    categories = models.get_categories() or []
+    cat_labels = {c["id"]: c.get("name", "").title() for c in categories}
     
     # 1. IDENTIFY ACTIVE METRIC FOR THE HEADER
     active_id = target_id or st.session_state.get("last_active_mid")
@@ -347,6 +350,29 @@ def select_metric(metrics, target_id=None):
             else sorted_metrics
         )
 
+        # Category pills
+        category_ids = {m.get("category_id") for m in visible_metrics}
+        category_options = ["ALL"]
+        category_options += sorted(
+            [cid for cid in category_ids if cid is not None],
+            key=lambda cid: cat_labels.get(cid, "").lower(),
+        )
+        if None in category_ids:
+            category_options.append("UNCAT")
+
+        if "metric_category_filter" not in st.session_state or st.session_state["metric_category_filter"] not in category_options:
+            st.session_state["metric_category_filter"] = "ALL"
+
+        selected_category = st.segmented_control(
+            "Category",
+            options=category_options,
+            format_func=lambda x: "All" if x == "ALL" else ("Uncat" if x == "UNCAT" else cat_labels.get(x, "Uncat")),
+            key="metric_category_filter",
+            selection_mode="single",
+            label_visibility="collapsed",
+            on_change=_keep_selector_open,
+        )
+
         # 3. DYNAMIC KEY FOR INSTANT SEARCH
         # By adding active_id to the key, the widget resets whenever a new metric is picked.
         search_box_key = f"search_input_{active_id}"
@@ -361,14 +387,20 @@ def select_metric(metrics, target_id=None):
         ).lower().strip()
 
         # 4. FILTERING LOGIC
+        if selected_category != "ALL":
+            if selected_category == "UNCAT":
+                filtered_metrics = [m for m in visible_metrics if m.get("category_id") is None]
+            else:
+                filtered_metrics = [m for m in visible_metrics if m.get("category_id") == selected_category]
+        else:
+            filtered_metrics = visible_metrics
+
         if search_query:
             filtered_metrics = [
-                m for m in visible_metrics
+                m for m in filtered_metrics
                 if search_query in m.get("name", "").lower() or
                    search_query in m.get("unit_name", "").lower()
             ]
-        else:
-            filtered_metrics = visible_metrics
 
         # 5. RESULT PILLS
         pill_options = {m['id']: utils.format_metric_label(m) for m in filtered_metrics}
