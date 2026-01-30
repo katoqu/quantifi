@@ -154,6 +154,5 @@ def execute_save(mid, state_key, editor_key):
     # Reset state and provide feedback
 
     reset_editor_state(state_key, mid)
-    st.toast("✅ Saved!") # Shortened as requested
-    time.sleep(1.5) 
+    utils.finalize_action("Saved!")
     st.rerun()

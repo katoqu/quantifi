@@ -89,7 +89,6 @@ def _confirm_metric_update_dialog(m, new_payload, cat_options=None, new_cat_name
         with st.spinner("Updating..."):
             models.update_metric(m['id'], new_payload)
         utils.finalize_action(f"Updated: {new_payload['name'].title()}")
-        time.sleep(1.5)
         st.rerun()
     if col_cancel.button("Cancel", use_container_width=True):
         st.session_state[f"ed_nm_{m['id']}"] = m.get("name", "")

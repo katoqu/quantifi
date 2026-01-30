@@ -101,15 +101,15 @@ def apply_custom_tabs_css():
         </style>            
     """, unsafe_allow_html=True)
 
-def finalize_action(message, icon="✅"):
+def finalize_action(message, icon="✅", delay=1.5):
     """
-    Refined for performance: Clears cache and shows a toast.
+    Refined for performance: Clears cache and shows a toast with consistent timing.
     The natural Streamlit rerun triggered by the button click 
     will handle the UI refresh without 'double-hopping'.
     """
     st.cache_data.clear()
     st.toast(f"{icon} {message}")
-    # Removed time.sleep() and st.rerun() to prevent redundant mobile refreshes.
+    time.sleep(delay)
 
 def apply_mobile_table_css():
     """
