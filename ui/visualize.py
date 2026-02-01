@@ -137,11 +137,17 @@ def render_stat_row(stats, mode="compact"):
         """, unsafe_allow_html=True)
 
 def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Last month"):
-    if dfe is None or dfe.empty:
+    """
+    Renders the metric trend chart with safety checks for empty or malformed data.
+    """
+    # 1. INITIAL SAFETY CHECKS
+    # Ensure data exists and contains the required time column before processing
+    if dfe is None or dfe.empty or "recorded_at" not in dfe.columns:
         st.info("No data recorded for this metric yet.")
         return
 
-    # 1. TIMEZONE & TYPE SANITY CHECK
+    # 2. TIMEZONE & TYPE SANITY CHECK
+    # Standardize 'recorded_at' to UTC to prevent comparison errors with Streamlit widgets
     if not pd.api.types.is_datetime64_any_dtype(dfe['recorded_at']):
         dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='mixed', utc=True)
     elif dfe['recorded_at'].dt.tz is None:
@@ -161,12 +167,12 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
 
     last_ts = dfe["recorded_at"].max()
     
-    # --- DYNAMIC CONFIGURATION ---
-    # Aligned with editor_handler logic
+    # 3. DYNAMIC CONFIGURATION
+    # Define frequency and formatting based on the selected time range
     if range_choice == "Last Week":
         start_ts = last_ts - pd.Timedelta(days=7)
         freq, tickformat, hover_label = "1D", "%a", "Value"
-    elif range_choice == "Last month" or range_choice == "Last Month":
+    elif range_choice in ["Last month", "Last Month"]:
         start_ts = last_ts - pd.Timedelta(days=31)
         freq, tickformat, hover_label = "1D", "%d", "Daily Value"
     elif range_choice in ["Last 6 months", "Last year", "Last Year"]:
@@ -177,24 +183,40 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
         start_ts = dfe["recorded_at"].min()
         freq, tickformat, hover_label = "M", "%b", "Monthly Avg"
 
-    # 2. FILTER & RESAMPLE
+    # 4. FILTERING & DATA GUARD
     mask = (dfe["recorded_at"] >= start_ts)
     filtered_df = dfe.loc[mask].copy().sort_values("recorded_at")
     
+    # Check if any data points fall within the selected window to avoid resampler errors
     if filtered_df.empty:
-        st.warning("No data found for the selected time range.")
+        st.warning(f"No data found for the {range_choice} range.")
         return
 
+    # 5. RESAMPLING & TREND CALCULATION
     avg_val = dfe["value"].mean() if range_choice == "All Time" else filtered_df["value"].mean()
-    plot_df = filtered_df.set_index("recorded_at").resample(freq).mean(numeric_only=True).dropna().reset_index()
+    
+    # Use numeric_only=True and dropna() to ensure plot_df remains clean
+    plot_df = (
+        filtered_df
+        .set_index("recorded_at")
+        .resample(freq)
+        .mean(numeric_only=True)
+        .dropna()
+        .reset_index()
+    )
 
-    # 3. TREND & PLOTLY CONSTRUCTION
+    # Final check: if resampling resulted in an empty set, stop before plotting
+    if plot_df.empty:
+        st.info("Insufficient data points in this range to display a chart.")
+        return
+
     trend = None
     if range_choice in ["Last 6 months", "Last year", "Last Year", "All Time"]:
         trend_span = min(5, len(plot_df))
         if trend_span >= 3:
             trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean()
 
+    # 6. PLOTLY CONSTRUCTION
     month_annotations, month_dividers, year_annotations = build_hierarchical_annotations(plot_df, freq, range_choice)
     fig = go.Figure()
 
@@ -214,7 +236,7 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
     fig.add_shape(type="line", x0=plot_df["recorded_at"].min(), x1=plot_df["recorded_at"].max(), y0=avg_val, y1=avg_val, line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"))
 
     fig.update_layout(
-        yaxis_title=m_unit, height=320, margin=dict(l=10, r=10, t=40, b=80), 
+        yaxis_title=m_unit, height=320, margin=dict(l=10, r=10, t=40, b=80),
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False,
         annotations=list(fig.layout.annotations) + month_annotations + year_annotations
     )

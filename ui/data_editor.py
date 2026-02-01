@@ -120,15 +120,19 @@ def show_data_management_suite(selected_metric):
 
     # 3. Visualizations synced with the editor's pill selection
     st.divider()
-    saved_df = st.session_state[f"saved_data_{mid}"]
-    s_mask = (pd.to_datetime(saved_df['recorded_at']).dt.date >= start_date) & \
-             (pd.to_datetime(saved_df['recorded_at']).dt.date <= end_date)
+    saved_df = st.session_state.get(f"saved_data_{mid}")
     
-    # Pass selection to enforce the range on the chart
-    visualize.show_visualizations(
-        saved_df.loc[s_mask].sort_values("recorded_at"), 
-        m_unit, 
-        m_name, 
-        show_pills=False, 
-        external_range=selection
-    )
+    # NEW DEFENSIVE CHECK: Ensure data exists before mask application
+    if saved_df is not None and not saved_df.empty and 'recorded_at' in saved_df.columns:
+        s_mask = (pd.to_datetime(saved_df['recorded_at']).dt.date >= start_date) & \
+                 (pd.to_datetime(saved_df['recorded_at']).dt.date <= end_date)
+        
+        visualize.show_visualizations(
+            saved_df.loc[s_mask].sort_values("recorded_at"), 
+            m_unit, 
+            m_name, 
+            show_pills=False, 
+            external_range=selection
+        )
+    else:
+        st.info("No data available to visualize.")

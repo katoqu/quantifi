@@ -64,28 +64,6 @@ def has_unsaved_changes(state_key):
         return (log != "").any()
     return False
 
-def reset_editor_state(state_key, mid=None):
-    """
-    Clears draft and baseline without deleting keys to maintain state stability.
-    Deleting keys often causes full-page reruns in fragments.
-    """
-    if state_key in st.session_state:
-        # Re-initialize as an empty dataframe with the correct columns
-        cols = st.session_state[state_key].columns
-        st.session_state[state_key] = pd.DataFrame(columns=cols)
-    
-    saved_key = f"saved_data_{mid}"
-    if saved_key in st.session_state:
-        st.session_state[saved_key] = pd.DataFrame()
-
-    if mid:
-        # Synchronize baselines so the conflict warning doesn't immediately re-trigger
-        st.session_state[f"prev_date_{mid}"] = (
-            st.session_state.get(f"start_date_{mid}"),
-            st.session_state.get(f"end_date_{mid}")
-        )
-        st.session_state[f"prev_pill_{mid}"] = st.session_state.get(f"pill_{mid}")
-
 def revert_date_range(mid):
     """Snaps UI pickers back to the last safe baseline saved in session state."""
     prev_key = f"prev_date_{mid}"
@@ -123,12 +101,37 @@ def get_change_summary(state_key, editor_key):
         "add": len(state.get("added_rows", []))
     }
 
+def reset_editor_state(state_key, mid=None):
+    """
+    Clears draft and baseline without deleting keys to maintain state stability.
+    Ensures that columns remain present to avoid KeyErrors in visualizations.
+    """
+    # Define the exact columns your application logic expects
+    standard_cols = ["id", "recorded_at", "value", "Change Log", "Select"]
+    
+    if state_key in st.session_state:
+        # Re-initialize as an empty dataframe with the correct columns
+        st.session_state[state_key] = pd.DataFrame(columns=standard_cols)
+    
+    saved_key = f"saved_data_{mid}"
+    if saved_key in st.session_state:
+        # Ensure the visualization data source also keeps its columns
+        st.session_state[saved_key] = pd.DataFrame(columns=standard_cols)
+
+    if mid:
+        # Synchronize baselines so the conflict warning doesn't immediately re-trigger
+        st.session_state[f"prev_date_{mid}"] = (
+            st.session_state.get(f"start_date_{mid}"),
+            st.session_state.get(f"end_date_{mid}")
+        )
+        st.session_state[f"prev_pill_{mid}"] = st.session_state.get(f"pill_{mid}")
+
 def execute_save(mid, state_key, editor_key):
     """Commits all pending edits to the database and refreshes state."""
     df = st.session_state[state_key]
     state = st.session_state.get(editor_key, {})
     
-    # 1. Process Deletions
+    # 1. Process Deletions (using the markers defined in sync_editor_changes)
     for _, row in df[df["Change Log"] == "🔴"].iterrows():
         if pd.notna(row.get("id")): 
             models.delete_entry(row["id"])
@@ -149,8 +152,18 @@ def execute_save(mid, state_key, editor_key):
                 "recorded_at": pd.to_datetime(row.get("recorded_at", dt.datetime.now())).isoformat(), 
                 "metric_id": mid
             })
-            
-    # Clean up and trigger a full rerun to ensure visualizers fetch fresh DB data
+    
+    # --- FIX: RE-FETCH FRESH DATA ---
+    # We clear the cache and fetch the updated dataset from the DB
+    # Assuming your metric object is available or you just need the ID to re-fetch
+    # If collect_data requires the full 'selected_metric' dict, you may need to pass it in
+    fresh_dfe, _, _ = utils.collect_data({"id": mid}) 
+
+    # 4. Clean up and update state with fresh data instead of empty DFs
     reset_editor_state(state_key, mid)
+    if fresh_dfe is not None:
+        st.session_state[f"saved_data_{mid}"] = fresh_dfe.copy()
+        st.session_state[state_key] = fresh_dfe.assign(**{"Change Log": "", "Select": False})
+
     utils.finalize_action("Changes Saved Successfully!")
     st.rerun()
