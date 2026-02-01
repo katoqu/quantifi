@@ -108,12 +108,14 @@ def _get_recent_values(metric_id, limit=5):
             continue
     return values
 
+# In capture.py
+
 def show_capture(selected_metric):
     mid = selected_metric.get("id")
     unit_name = selected_metric.get("unit_name", "")
     utype = selected_metric.get("unit_type", "float")
     
-    # Fetch smart default once per fragment execution
+    # 1. Fetch smart defaults
     last_entry = models.get_latest_entry_only(mid)
     recent_values = _get_recent_values(mid) if utype not in ("integer", "integer_range") else []
     fallback = selected_metric.get("range_start", 0.0)
@@ -125,41 +127,60 @@ def show_capture(selected_metric):
 
         _get_initial_datetime(mid)
         
-        # --- FIX: Toggle is now OUTSIDE the form ---
-        # This allows it to trigger a rerun so the form can "react" to it.
+        # 2. Time Toggle (Outside form to allow immediate interaction)
         show_time_toggle = st.toggle("Set specific time", value=False, key=f"toggle_time_{mid}")
         
+        # 3. Form Start
         with st.form(f"capture_entry_submit_{mid}", border=False):
             date_input = st.date_input("📅 Date", key=f"capture_date_{mid}")
             
             if show_time_toggle:
-                # This will now appear instantly when the toggle is clicked
-                time_input = st.time_input(
-                    "⏰ Time",
-                    step=60,
-                    key=f"capture_time_{mid}",
-                )
+                time_input = st.time_input("⏰ Time", step=60, key=f"capture_time_{mid}")
             else:
-                # Fallback to current/stored time if hidden
                 time_input = st.session_state[f"capture_time_{mid}"]
 
             val = _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values)
+
+            # --- NEW LOCATION: Inside form, below value ---
+            target_action = None
+            if utype != "integer_range":
+                st.write("") # Small spacer
+                st.caption("Target for next session")
+                target_action = st.pills(
+                    "Target",
+                    options=["Reduce", "Stay", "Increase", "Pause"],
+                    selection_mode="single",
+                    key=f"target_{mid}",
+                    label_visibility="collapsed"
+                )
+                st.write("") # Small spacer
+            # ----------------------------------------------
 
             submitted = st.form_submit_button("Add Entry", use_container_width=True, type="primary")
             
             if submitted:
                 final_dt = dt.datetime.combine(date_input, time_input)
+                
+                # Save to DB
                 models.create_entry({
                     "metric_id": mid, 
                     "value": val, 
-                    "recorded_at": final_dt.isoformat()
+                    "recorded_at": final_dt.isoformat(),
+                    "target_action": target_action 
                 })
                 
-                # Clear the editor's draft so it fetches the new entry on next render
+                # Cleanup & Cache Clearing
                 editor_handler.reset_editor_state(f"data_{mid}", mid)
-
+                
                 if hasattr(models.get_latest_entry_only, "clear"):
                     models.get_latest_entry_only.clear()
-                utils.finalize_action(f"Saved: {val} {unit_name}")
+                
+                # CRITICAL: Clear the landing page cache so the badge appears instantly
+                models.get_all_entries_bulk.clear()
 
+                st.success(f"Saved: {val} {unit_name}")
+                
+                # Small delay to let user see success message before reload
+                import time
+                time.sleep(0.5)
                 st.rerun(scope="fragment")

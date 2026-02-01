@@ -19,7 +19,7 @@ def show_landing_page(metrics_list, all_entries):
 
 @st.fragment
 def render_metric_grid(metrics_list, cats, all_entries):
-    #Initialize the session state for the pills if it doesn't exist
+    # Initialize the session state for the pills if it doesn't exist
     if "cat_filter" not in st.session_state:
         st.session_state["cat_filter"] = "All"
 
@@ -30,6 +30,7 @@ def render_metric_grid(metrics_list, cats, all_entries):
     current_filter = st.session_state.get("cat_filter", "All")
 
     all_df = pd.DataFrame(all_entries)
+
     if not all_df.empty:
         all_df['recorded_at'] = pd.to_datetime(all_df['recorded_at'], format='mixed', utc=True)
         latest_by_metric = all_df.groupby('metric_id')['recorded_at'].max()
@@ -42,21 +43,35 @@ def render_metric_grid(metrics_list, cats, all_entries):
     for m in metrics_list:
         m_df = grouped_by_metric.get(m['id'], pd.DataFrame())
         stats = visualize.get_metric_stats(m_df) if not m_df.empty else {}
+        
+        # --- FIX START: Extract Target ---
+        latest_target = None
+        if not m_df.empty and "target_action" in m_df.columns:
+            # Sort by date to ensure we get the absolute latest
+            latest_entry = m_df.sort_values("recorded_at").iloc[-1]
+            if pd.notna(latest_entry.get("target_action")):
+                latest_target = latest_entry["target_action"]
+        # --- FIX END ---
+
         if not m_df.empty:
             spark_values = list(m_df.sort_values("recorded_at")["value"].tail(12))
         else:
             spark_values = []
         stats["spark_values"] = spark_values
         latest_ts = latest_by_metric.get(m['id'], pd.Timestamp.min.tz_localize('UTC'))
-        scored_metrics.append((latest_ts, m, stats))
+        
+        # --- FIX: Append 4 items instead of 3 ---
+        scored_metrics.append((latest_ts, m, stats, latest_target)) 
     
     scored_metrics.sort(key=lambda x: (x[1].get('is_archived', False), x[1]['name'].lower()))
     
-    for _, m, stats in scored_metrics:
+    # Now this loop will work because we appended 4 items above
+    for _, m, stats, target in scored_metrics:
         if current_filter == "All" or cat_map.get(m.get('category_id')) == current_filter:
-            _render_action_card(m, cat_map, stats)
+            _render_action_card(m, cat_map, stats, target)
 
-def _render_action_card(metric, cat_map, stats):
+
+def _render_action_card(metric, cat_map, stats, target=None):
     mid, m_name = metric['id'], metric['name'].title()
     is_archived = metric.get('is_archived', False) # Detect archived status
     
@@ -69,6 +84,40 @@ def _render_action_card(metric, cat_map, stats):
     description = metric.get("description", "")
     trend_color ="#007bff"
 
+    # --- NEW: Badge Logic ---
+    badge_html = ""
+    if target:
+        # Define colors for your specific actions
+        color_map = {
+            "Increase": "#e6f4ea", # Light Green bg
+            "text_Increase": "#137333", # Dark Green text
+            "Reduce": "#fce8e6",   # Light Red
+            "text_Reduce": "#c5221f", 
+            "Stay": "#e8f0fe",     # Light Blue
+            "text_Stay": "#1967d2",
+            "Pause": "#f1f3f4",    # Grey
+            "text_Pause": "#3c4043"
+        }
+        
+        bg = color_map.get(target, "#f1f3f4")
+        tx = color_map.get(f"text_{target}", "#3c4043")
+        
+        badge_html = f"""
+        <span style="
+            background-color: {bg}; 
+            color: {tx}; 
+            padding: 2px 6px; 
+            border-radius: 4px; 
+            font-size: 0.6rem; 
+            font-weight: 700; 
+            margin-left: 8px; 
+            text-transform: uppercase; 
+            vertical-align: middle;">
+            {target}
+        </span>
+        """
+    # ------------------------
+
     with st.container(border=True):
         col_main = st.columns([1])[0] 
 
@@ -78,7 +127,8 @@ def _render_action_card(metric, cat_map, stats):
                 '<div class="action-card-grid">',
                 '  <div class="metric-identity">',
                 f'    <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700;">{cat_name.upper()}</span><br>',
-                f'    <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}</div>',
+                # Updated line below to include badge_html
+                f'    <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}{badge_html}</div>',
                 '  </div>',
                 '  <div class="value-box">',
                 '    <span style="font-size: 0.55rem; opacity: 0.7; font-weight: 600;">TREND</span><br>',
