@@ -142,7 +142,6 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
     days_diff = (max_date - min_date).days
 
     if show_pills:
-        # Define available ranges based on history
         options = ["Last Week"]
         if days_diff > 7:
             options.append("Last month")
@@ -152,7 +151,6 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
             options.append("Last year")
         options.append("All Time")
 
-        # Determine safe default
         default_val = "Last month" if "Last month" in options else "All Time"
         
         range_choice = st.pills(
@@ -168,6 +166,10 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
     last_ts = dfe["recorded_at"].max()
     
     # 3. DYNAMIC CONFIGURATION
+    
+    # Default hover date format (includes day)
+    hover_date_fmt = "%d %b %Y"
+
     if range_choice == "Last Week":
         start_ts = last_ts - pd.Timedelta(days=7)
         freq, tickformat, hover_label = "D", "%a", "Value"
@@ -187,10 +189,13 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
         # Adaptive Resampling for All Time based on span
         if days_diff <= 31:
              freq, tickformat, hover_label = "D", "%d %b", "Daily Value"
-        elif days_diff <= 365:
+        elif days_diff <= 150:
              freq, tickformat, hover_label = "W", "%d %b", "Weekly Avg"
         else:
-             freq, tickformat, hover_label = "M", "%b '%y", "Monthly Avg"
+             # --- CHANGED: Use 'MS' (Month Start) to align to 1st of month ---
+             freq, tickformat, hover_label = "MS", "%b '%y", "Monthly Avg"
+             # --- CHANGED: Explicitly hide day in formatting ---
+             hover_date_fmt = "%b %Y"
 
     # 4. FILTERING & DATA GUARD
     mask = (dfe["recorded_at"] >= start_ts)
@@ -216,8 +221,6 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
         st.info("Insufficient data points in this range to display a chart.")
         return
 
-    # Safety check: If zoomed in view has very few points, force Day/Month format
-    # This catches edge cases where "Last Year" is selected but data is sparse
     if range_choice in ["Last 6 months", "Last year"] and len(plot_df) < 8:
          tickformat = "%d %b"
 
@@ -238,7 +241,8 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
         line=dict(shape='spline', smoothing=0.8, color='#1f77b4', width=3),
         marker=dict(size=6, color='#1f77b4', line=dict(color='white', width=1)),
         name=m_name,
-        hovertemplate = f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x|%d %b %Y}}<extra></extra>"
+        # Use the dynamic hover_date_fmt here
+        hovertemplate = f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
     ))
 
     if trend is not None:
