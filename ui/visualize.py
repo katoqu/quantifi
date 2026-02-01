@@ -12,7 +12,7 @@ def build_hierarchical_annotations(plot_df, freq, range_choice=None):
         return month_annotations, month_dividers, year_annotations
 
     # --- YEAR DIVIDERS & LABELS ---
-    if range_choice in ["Last 6 months", "Last year", "All Time", "Custom"]:
+    if range_choice in ["Year", "All", "Custom"]:
         years = plot_df["recorded_at"].dt.year.unique()
         
         if len(years) > 1:
@@ -36,7 +36,7 @@ def build_hierarchical_annotations(plot_df, freq, range_choice=None):
                 ))
 
     # --- CENTERED MONTH LABEL (Last Month View) ---
-    if range_choice == "Last month":
+    if range_choice == "Month":
         months = plot_df["recorded_at"].dt.to_period("M").unique()
         for m in months:
             m_data = plot_df[plot_df["recorded_at"].dt.to_period("M") == m]
@@ -142,16 +142,14 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
     days_diff = (max_date - min_date).days
 
     if show_pills:
-        options = ["Last Week"]
+        options = ["Week"]
         if days_diff > 7:
-            options.append("Last month")
-        if days_diff > 30:
-            options.append("Last 6 months")
+            options.append("Month")
         if days_diff > 180:
-            options.append("Last year")
-        options.append("All Time")
+            options.append("Year")
+        options.append("All")
 
-        default_val = "Last month" if "Last month" in options else "All Time"
+        default_val = "Month" if "Month" in options else "All"
         
         range_choice = st.pills(
             "Time Range",
@@ -170,20 +168,18 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
     # Default hover date format (includes day)
     hover_date_fmt = "%d %b %Y"
 
-    if range_choice == "Last Week":
+    if range_choice == "Week":
         start_ts = last_ts - pd.Timedelta(days=7)
         freq, tickformat, hover_label = "D", "%a", "Value"
         
-    elif range_choice in ["Last month", "Last Month"]:
+    elif range_choice in ["Month"]:
         start_ts = last_ts - pd.Timedelta(days=31)
         freq, tickformat, hover_label = "D", "%d", "Daily Value"
         
-    elif range_choice in ["Last 6 months", "Last year", "Last Year"]:
-        months_back = 6 if "6 months" in range_choice else 12
-        start_ts = last_ts - pd.DateOffset(months=months_back)
-        freq, tickformat, hover_label = "W", "%b", "Weekly Avg"
-        
-    else: # "All Time" or "Custom"
+    elif range_choice == "Year":
+        start_ts = last_ts - pd.DateOffset(months=12)
+        freq, tickformat, hover_label = "W", "%b", "Weekly Avg"        
+    else: # "All" or "Custom"
         start_ts = dfe["recorded_at"].min()
         
         # Adaptive Resampling for All Time based on span
@@ -225,7 +221,7 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
          tickformat = "%d %b"
 
     trend = None
-    if range_choice in ["Last 6 months", "Last year", "Last Year", "All Time"]:
+    if range_choice in ["6M", "Year", "All"]:
         trend_span = min(5, len(plot_df))
         if trend_span >= 3:
             trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean()
@@ -264,4 +260,4 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="La
         )
     )
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})

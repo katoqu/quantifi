@@ -88,7 +88,7 @@ def show_data_management_suite(selected_metric):
 
     # 1. Unified Filters & Navigation
     abs_min, abs_max = editor_handler.get_date_bounds(dfe, mid)
-    pill_options = ["Last Week", "Last Month", "Last Year", "All Time", "Custom"]
+    pill_options = ["Week", "Month", "Year", "All", "Custom"]
     selection = st.segmented_control(label="", options=pill_options, default="Last Month", key=f"pill_{mid}")
 
     p_start, p_end = editor_handler.get_pill_range(selection, abs_min, abs_max)
