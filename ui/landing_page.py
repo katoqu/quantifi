@@ -50,7 +50,7 @@ def render_metric_grid(metrics_list, cats, all_entries):
         latest_ts = latest_by_metric.get(m['id'], pd.Timestamp.min.tz_localize('UTC'))
         scored_metrics.append((latest_ts, m, stats))
     
-    scored_metrics.sort(key=lambda x: x[0], reverse=True)
+    scored_metrics.sort(key=lambda x: (x[1].get('is_archived', False), x[1]['name'].lower()))
     
     for _, m, stats in scored_metrics:
         if current_filter == "All" or cat_map.get(m.get('category_id')) == current_filter:
@@ -58,9 +58,16 @@ def render_metric_grid(metrics_list, cats, all_entries):
 
 def _render_action_card(metric, cat_map, stats):
     mid, m_name = metric['id'], metric['name'].title()
+    is_archived = metric.get('is_archived', False) # Detect archived status
+    
+    # Format the name: Title Case + Archive label if applicable
+    m_name = metric['name'].title()
+    if is_archived:
+        m_name += " (Archived)"
+    
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
     description = metric.get("description", "")
-    trend_color = "#28a745" if (stats.get('change') or 0) >= 0 else "#dc3545"
+    trend_color ="#007bff"
 
     with st.container(border=True):
         col_main = st.columns([1])[0] 
