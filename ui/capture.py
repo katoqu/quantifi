@@ -4,6 +4,7 @@ import utils
 import datetime as dt
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from ui import visualize
+from logic import editor_handler
 
 @st.fragment
 def show_tracker_suite(selected_metric):
@@ -122,15 +123,26 @@ def show_capture(selected_metric):
         if selected_metric.get("description"):
             st.caption(selected_metric["description"])
 
-        # Note: st.form is kept to bundle the inputs
         _get_initial_datetime(mid)
+        
+        # --- FIX: Toggle is now OUTSIDE the form ---
+        # This allows it to trigger a rerun so the form can "react" to it.
+        show_time_toggle = st.toggle("Set specific time", value=False, key=f"toggle_time_{mid}")
+        
         with st.form(f"capture_entry_submit_{mid}", border=False):
             date_input = st.date_input("📅 Date", key=f"capture_date_{mid}")
-            time_input = st.time_input(
-                "⏰ Time",
-                step=60,
-                key=f"capture_time_{mid}",
-            )
+            
+            if show_time_toggle:
+                # This will now appear instantly when the toggle is clicked
+                time_input = st.time_input(
+                    "⏰ Time",
+                    step=60,
+                    key=f"capture_time_{mid}",
+                )
+            else:
+                # Fallback to current/stored time if hidden
+                time_input = st.session_state[f"capture_time_{mid}"]
+
             val = _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values)
 
             submitted = st.form_submit_button("Add Entry", use_container_width=True, type="primary")
@@ -143,10 +155,9 @@ def show_capture(selected_metric):
                     "recorded_at": final_dt.isoformat()
                 })
                 
-                # REPLACEMENT FOR st.rerun():
-                # We clear the specific cache and show a toast. 
-                # The fragment will naturally re-run its internal code
-                # to show the new data in the chart above.
+                # Clear the editor's draft so it fetches the new entry on next render
+                editor_handler.reset_editor_state(f"data_{mid}", mid)
+
                 if hasattr(models.get_latest_entry_only, "clear"):
                     models.get_latest_entry_only.clear()
                 utils.finalize_action(f"Saved: {val} {unit_name}")
