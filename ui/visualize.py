@@ -4,191 +4,48 @@ import pandas as pd
 import math
 
 def build_hierarchical_annotations(plot_df, freq, range_choice=None):
-    """
-    Build hierarchical month/year annotations for x-axis grouping.
-    Returns (month_annotations, month_dividers, year_annotations)
-    For monthly mode, only years are shown at top (months are shown as tick labels).
-    Yearly mode doesn't use hierarchical annotations.
-    For range modes, show appropriate labels (month, period label, or year).
-    """
     month_annotations = []
-    month_dividers = []
+    month_dividers = [] # This will now hold our vertical lines
     year_annotations = []
     
     if plot_df is None or plot_df.empty:
         return month_annotations, month_dividers, year_annotations
-    
-    # Skip hierarchical annotations for yearly mode
-    if freq == "1Y":
-        return month_annotations, month_dividers, year_annotations
-    
-    # For range modes, show appropriate label at top
-    if range_choice in ["Last month", "Last 6 months", "Last year"]:
-        if len(plot_df) > 0:
-            first_ts = plot_df["recorded_at"].iloc[0]
-            last_ts = plot_df["recorded_at"].iloc[-1]
-            mid_ts = first_ts + (last_ts - first_ts) / 2
+
+    # --- YEAR DIVIDERS & LABELS ---
+    if range_choice in ["Last 6 months", "Last year", "All Time"]:
+        years = plot_df["recorded_at"].dt.year.unique()
+        for y in years:
+            y_data = plot_df[plot_df["recorded_at"].dt.year == y]
             
-            # Determine label based on range choice
-            if range_choice == "Last month":
-                label = mid_ts.strftime("%B")
-            elif range_choice == "Last 6 months":
-                label = "6 Months"
-            elif range_choice == "Last year":
-                label = mid_ts.strftime("%Y")
-            
-            year_annotations.append(dict(
-                x=mid_ts,
-                y=1.08,
-                text=label,
-                showarrow=False,
-                xref="x",
-                yref="paper",
-                font=dict(size=10, color="rgba(0,0,0,0.6)"),
-                xanchor="center"
-            ))
-        return month_annotations, month_dividers, year_annotations
-    
-    # For monthly mode, skip month annotations (already shown as tick labels)
-    if freq == "1M":
-        # Only show years at top for monthly mode
-        current_year = None
-        year_start_ts = None
-        
-        for idx, ts in enumerate(plot_df["recorded_at"]):
-            year_key = ts.year
-            
-            if current_year is None:
-                current_year = year_key
-                year_start_ts = ts
-            elif current_year != year_key:
-                prev_ts = plot_df["recorded_at"].iloc[idx - 1]
-                year_mid_ts = year_start_ts + (prev_ts - year_start_ts) / 2
-                year_annotations.append(dict(
-                    x=year_mid_ts,
-                    y=1.08,
-                    text=str(current_year),
-                    showarrow=False,
-                    xref="x",
-                    yref="paper",
-                    font=dict(size=10, color="rgba(0,0,0,0.6)"),
-                    xanchor="center"
+            # Vertical line at the start of each year (Jan 1st)
+            # We only draw it if it's within our actual plot range
+            year_start = pd.Timestamp(year=y, month=1, day=1, tz='UTC')
+            if plot_df["recorded_at"].min() <= year_start <= plot_df["recorded_at"].max():
+                month_dividers.append(dict(
+                    type="line", x0=year_start, x1=year_start, y0=0, y1=1,
+                    xref="x", yref="paper",
+                    line=dict(color="rgba(0,0,0,0.1)", width=1, dash="dot")
                 ))
-                current_year = year_key
-                year_start_ts = ts
-        
-        # Add last year annotation
-        if current_year is not None:
-            last_ts = plot_df["recorded_at"].iloc[-1]
-            year_mid_ts = year_start_ts + (last_ts - year_start_ts) / 2
+
+            # Centered Year Label at the top
+            mid_ts = y_data["recorded_at"].iloc[0] + (y_data["recorded_at"].iloc[-1] - y_data["recorded_at"].iloc[0]) / 2
             year_annotations.append(dict(
-                x=year_mid_ts,
-                y=1.08,
-                text=str(current_year),
-                showarrow=False,
-                xref="x",
-                yref="paper",
-                font=dict(size=10, color="rgba(0,0,0,0.6)"),
-                xanchor="center"
+                x=mid_ts, y=1.12, text=f"<b>{y}</b>", showarrow=False, xref="x", yref="paper",
+                font=dict(size=11, color="rgba(0,0,0,0.4)"), xanchor="center"
             ))
-        
-        return month_annotations, month_dividers, year_annotations
-    
-    # For daily and weekly modes, show both months and years
-    month_label_format = "%b"
-    
-    current_month = None
-    current_year = None
-    month_start_ts = None
-    year_start_ts = None
-    
-    for idx, ts in enumerate(plot_df["recorded_at"]):
-        month_key = (ts.year, ts.month)
-        year_key = ts.year
-        
-        # Track year changes
-        if current_year is None:
-            current_year = year_key
-            year_start_ts = ts
-        elif current_year != year_key:
-            # Add year annotation for previous year
-            prev_ts = plot_df["recorded_at"].iloc[idx - 1]
-            year_mid_ts = year_start_ts + (prev_ts - year_start_ts) / 2
-            year_annotations.append(dict(
-                x=year_mid_ts,
-                y=1.08,
-                text=str(current_year),
-                showarrow=False,
-                xref="x",
-                yref="paper",
-                font=dict(size=10, color="rgba(0,0,0,0.6)"),
-                xanchor="center"
-            ))
-            current_year = year_key
-            year_start_ts = ts
-        
-        # Track month changes
-        if current_month is None:
-            current_month = month_key
-            month_start_ts = ts
-        elif current_month != month_key:
-            # Add month annotation for previous month
-            prev_ts = plot_df["recorded_at"].iloc[idx - 1]
-            month_mid_ts = month_start_ts + (prev_ts - month_start_ts) / 2
+
+    # --- CENTERED MONTH LABEL (Last Month View) ---
+    if range_choice == "Last month":
+        months = plot_df["recorded_at"].dt.to_period("M").unique()
+        for m in months:
+            m_data = plot_df[plot_df["recorded_at"].dt.to_period("M") == m]
+            mid_ts = m_data["recorded_at"].iloc[0] + (m_data["recorded_at"].iloc[-1] - m_data["recorded_at"].iloc[0]) / 2
             month_annotations.append(dict(
-                x=month_mid_ts,
-                y=-0.50,
-                text=month_mid_ts.strftime(month_label_format),
-                showarrow=False,
-                xref="x",
-                yref="paper",
-                font=dict(size=11, color="rgba(0,0,0,0.7)"),
-                xanchor="center"
+                x=mid_ts, y=-0.3, text=f"<b>{m_data['recorded_at'].iloc[0].strftime('%B')}</b>",
+                showarrow=False, xref="x", yref="paper",
+                font=dict(size=12, color="rgba(0,0,0,0.6)"), xanchor="center"
             ))
-            # Add divider line
-            month_dividers.append(dict(
-                type="line",
-                x0=prev_ts,
-                x1=prev_ts,
-                y0=0,
-                y1=1,
-                xref="x",
-                yref="paper",
-                line=dict(color="rgba(0,0,0,0.1)", width=1)
-            ))
-            current_month = month_key
-            month_start_ts = ts
-    
-    # Add annotation for the last month
-    if current_month is not None:
-        last_ts = plot_df["recorded_at"].iloc[-1]
-        month_mid_ts = month_start_ts + (last_ts - month_start_ts) / 2
-        month_annotations.append(dict(
-            x=month_mid_ts,
-            y=-0.50,
-            text=month_mid_ts.strftime(month_label_format),
-            showarrow=False,
-            xref="x",
-            yref="paper",
-            font=dict(size=11, color="rgba(0,0,0,0.7)"),
-            xanchor="center"
-        ))
-    
-    # Add annotation for the last year
-    if current_year is not None:
-        last_ts = plot_df["recorded_at"].iloc[-1]
-        year_mid_ts = year_start_ts + (last_ts - year_start_ts) / 2
-        year_annotations.append(dict(
-            x=year_mid_ts,
-            y=1.08,
-            text=str(current_year),
-            showarrow=False,
-            xref="x",
-            yref="paper",
-            font=dict(size=10, color="rgba(0,0,0,0.6)"),
-            xanchor="center"
-        ))
-    
+            
     return month_annotations, month_dividers, year_annotations
 
 def get_metric_stats(df):
@@ -279,241 +136,120 @@ def render_stat_row(stats, mode="compact"):
         """, unsafe_allow_html=True)
 
 def show_visualizations(dfe, m_unit, m_name):
-    """
-    Renders the chart with a trendline and average baseline.
-    """
     if dfe is None or dfe.empty:
         st.info("No data recorded for this metric yet.")
         return
 
-    # Check date column before sorting
     if not pd.api.types.is_datetime64_any_dtype(dfe['recorded_at']):
         dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='mixed', utc=True)
 
-    # Ensure sorting
-    dfe = dfe.sort_values("recorded_at")
-
-    # View controls (aggregation vs time window)
-    view_mode = st.segmented_control(
-        "View",
-        options=["Aggregation", "Range"],
-        default="Aggregation",
-        label_visibility="collapsed",
+    range_choice = st.pills(
+        "Time Range",
+        options=["Last month", "Last 6 months", "Last year", "All Time"],
+        default="Last month",
+        key="viz_range_pills",
+        label_visibility="collapsed"
     )
 
-    agg_choice = None
-    range_choice = None
-    if view_mode == "Range":
-        range_choice = st.radio(
-            "Range",
-            options=["Last month", "Last 6 months", "Last year"],
-            index=0,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-    else:
-        agg_options = ["Auto", "Daily", "Weekly", "Monthly", "Yearly"]
-        agg_choice = st.radio(
-            "Aggregation",
-            options=agg_options,
-            index=0,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-
-    plot_df = dfe
-    is_bucketed = False
-    bucket_label = None
-    tickformat = None
-    dtick = None
-    tickmode = None
-    tick0 = None
-    nticks = None
-    tickvals = None
-    ticktext = None
-    freq = None
-    freq_map = {
-        "Daily": "1D",
-        "Weekly": "1W",
-        "Monthly": "1M",
-        "Yearly": "1Y",
-    }
-
-    if view_mode == "Range":
-        last_ts = dfe["recorded_at"].max()
-        if range_choice == "Last month":
-            start_ts = last_ts - pd.Timedelta(days=31)
-            freq = "1D"
-            bucket_label = "Day"
-            tickformat = "%d"
-            dtick = 24 * 60 * 60 * 1000
-        elif range_choice == "Last 6 months":
-            start_ts = last_ts - pd.DateOffset(months=6)
-            freq = "1M"
-            bucket_label = "Month"
-            tickformat = "%b"
-            dtick = "M1"
-        elif range_choice == "Last year":
-            start_ts = last_ts - pd.DateOffset(months=12)
-            freq = "1M"
-            bucket_label = "Month"
-            tickformat = "%b"
-            dtick = "M1"
+    last_ts = dfe["recorded_at"].max()
+    
+    # --- DYNAMIC LABELING LOGIC ---
+    # We define what the "dot" actually represents based on the frequency
+    if range_choice == "Last month":
+        start_ts = last_ts - pd.Timedelta(days=31)
+        freq = "1D"
+        tickformat = "%d" 
+        dtick = 7 * 24 * 60 * 60 * 1000 
+        hover_label = "Daily Value"
+        date_hover = "%d %b"
+        
+    elif range_choice in ["Last 6 months", "Last year"]:
+        start_ts = last_ts - pd.DateOffset(months=6 if range_choice == "Last 6 months" else 12)
+        freq = "W"
+        tickformat = "%b"
+        dtick = "M1"
+        hover_label = "Weekly Avg"
+        date_hover = "Week %W, %Y"
+        
+    else: # "All Time"
+        start_ts = dfe["recorded_at"].min()
+        delta_days = (last_ts - start_ts).days
+        if delta_days > 180:
+            freq = "M"
+            hover_label = "Monthly Avg"
+            date_hover = "%b %Y"
         else:
-            start_ts = dfe["recorded_at"].min()
+            freq = "W"
+            hover_label = "Weekly Avg"
+            date_hover = "Week %W, %Y"
+            
+        tickformat = "%b"
+        dtick = "M3" if delta_days > 730 else "M1"
 
-        plot_df = dfe[dfe["recorded_at"] >= start_ts]
-        is_bucketed = True
-    else:
-        if agg_choice == "Auto" and len(dfe) > 200:
-            bucket_label = "Day"
-            freq = "1D"
-            tickformat = "%d"
-            dtick = 24 * 60 * 60 * 1000
-        elif agg_choice in freq_map:
-            freq = freq_map[agg_choice]
-            label_map = {
-                "Daily": "Day",
-                "Weekly": "Week",
-                "Monthly": "Month",
-                "Yearly": "Year",
-            }
-            bucket_label = label_map.get(agg_choice, agg_choice)
-            if agg_choice == "Daily":
-                tickformat = "%d"
-                dtick = 24 * 60 * 60 * 1000
-            elif agg_choice == "Weekly":
-                tickformat = "%W"
-                dtick = 7 * 24 * 60 * 60 * 1000
-            elif agg_choice == "Monthly":
-                tickformat = "%b"
-                dtick = "M1"
-            elif agg_choice == "Yearly":
-                tickformat = "%Y"
-                dtick = "M12"
+    # Filter and Resample
+    mask = (dfe["recorded_at"] >= start_ts)
+    filtered_df = dfe.loc[mask].copy().sort_values("recorded_at")
+    avg_val = dfe["value"].mean() if range_choice == "All Time" else filtered_df["value"].mean()
+    plot_df = filtered_df.set_index("recorded_at").resample(freq).mean(numeric_only=True).dropna().reset_index()
 
-    if freq:
-        plot_df = (
-            plot_df.set_index("recorded_at")
-            .resample(freq)
-            .mean(numeric_only=True)
-            .dropna()
-            .reset_index()
-        )
-        is_bucketed = True
-        if freq == "1D":
-            if len(plot_df) > 0:
-                start_ts = plot_df["recorded_at"].iloc[0]
-                end_ts = plot_df["recorded_at"].iloc[-1]
-                span_days = max(0, (end_ts - start_ts).days)
-                periods = min(12, max(2, span_days + 1))
-                tickmode = "array"
-                tickvals = pd.date_range(start=start_ts, end=end_ts, periods=periods).to_pydatetime().tolist()
-                ticktext = [ts.strftime("%d") for ts in tickvals]
-        elif freq == "1W":
-            if len(plot_df) > 0:
-                start_ts = plot_df["recorded_at"].iloc[0]
-                end_ts = plot_df["recorded_at"].iloc[-1]
-                span_weeks = max(0, (end_ts - start_ts).days // 7)
-                periods = min(12, max(2, span_weeks + 1))
-                tickmode = "array"
-                tickvals = pd.date_range(start=start_ts, end=end_ts, periods=periods).to_pydatetime().tolist()
-                ticktext = [ts.strftime("%W") for ts in tickvals]
-        elif freq == "1M":
-            if len(plot_df) > 0:
-                start_ts = plot_df["recorded_at"].iloc[0]
-                end_ts = plot_df["recorded_at"].iloc[-1]
-                month_span = max(0, (end_ts.year - start_ts.year) * 12 + (end_ts.month - start_ts.month))
-                periods = min(12, max(2, month_span + 1))
-                tickmode = "array"
-                tickvals = pd.date_range(start=start_ts, end=end_ts, periods=periods).to_pydatetime().tolist()
-                ticktext = [ts.strftime("%b") for ts in tickvals]
+    # Trend calculation
+    trend = None
+    if range_choice in ["Last 6 months", "Last year", "All Time"]:
+        trend_span = min(5, len(plot_df))
+        if trend_span >= 3:
+            trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean()
 
-    avg_val = plot_df["value"].mean()
-    trend_span = min(5, len(plot_df))
-    trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean() if trend_span >= 3 else None
-
-    show_markers = len(plot_df) <= 50
-    use_gl = len(plot_df) > 150
-    line_width = 2 if len(plot_df) > 100 else 3
-    marker_size = 6 if show_markers else 0
-    scatter_cls = go.Scattergl if use_gl else go.Scatter
-
-    # Build hierarchical month/year annotations
-    if is_bucketed and len(plot_df) > 0:
-        month_annotations, month_dividers, year_annotations = build_hierarchical_annotations(plot_df, freq, range_choice)
-    else:
-        month_annotations, month_dividers, year_annotations = [], [], []
+    month_annotations, month_dividers, year_annotations = build_hierarchical_annotations(plot_df, freq, range_choice)
 
     fig = go.Figure()
-    
-    # 1. Main Data Trace
-    fig.add_trace(scatter_cls(
+
+    # 1. Main Data Trace with Dynamic Hover Labels
+    fig.add_trace(go.Scatter(
         x=plot_df["recorded_at"], 
         y=plot_df["value"], 
-        mode="lines+markers" if show_markers else "lines",
-        line=dict(shape='spline', smoothing=1.0, color='#1f77b4', width=line_width),
-        marker=dict(size=marker_size, color='#1f77b4', line=dict(color='white', width=1)),
+        mode="lines+markers" if len(plot_df) < 53 else "lines",
+        line=dict(shape='spline', smoothing=0.8, color='#1f77b4', width=3),
+        marker=dict(size=6, color='#1f77b4', line=dict(color='white', width=1)),
         name=m_name,
-        text=[f"{val:.1f} {m_unit}" for val in plot_df["value"]],
-        hovertemplate="<b>%{text}</b><br>%{x|%d %b %Y}<extra></extra>"
+        # Updated hovertemplate to show "Weekly Avg", etc.
+        hovertemplate = (
+            f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>" +
+            f"%{{x|{date_hover}}}<extra></extra>"
+        )
     ))
 
-    # 2. Add Trendline
+    # 2. Trendline
     if trend is not None:
         fig.add_trace(go.Scatter(
-            x=plot_df["recorded_at"],
-            y=trend,
-            mode="lines",
-            line=dict(color="rgba(31, 119, 180, 0.5)", width=2),
-            name="Trend",
-            hoverinfo="skip"
+            x=plot_df["recorded_at"], y=trend, mode="lines",
+            line=dict(color="rgba(31, 119, 180, 0.3)", width=2),
+            name="Trend", hoverinfo="skip"
         ))
 
-    # 3. Add Horizontal Average Line
-    fig.add_hline(
-        y=avg_val, 
-        line_dash="dash", 
-        line_color="rgba(255, 75, 75, 0.5)", 
-        annotation_text=f"Avg: {avg_val:.1f}", 
-        annotation_position="bottom right",
-        annotation_font_color="rgba(255, 75, 75, 0.8)"
+    # 3. Harmonized Average Line
+    fig.add_shape(
+        type="line", x0=plot_df["recorded_at"].min(), x1=plot_df["recorded_at"].max(),
+        y0=avg_val, y1=avg_val, line=dict(color="rgba(255, 75, 75, 0.5)", width=2, dash="dash"),
+        xref="x", yref="y"
     )
 
+    fig.add_annotation(
+        x=plot_df["recorded_at"].max(), y=avg_val, text=f"Avg: {avg_val:.1f}",
+        showarrow=False, xanchor="right", yanchor="bottom",
+        font=dict(size=10, color="rgba(255, 75, 75, 0.8)"),
+        bgcolor="rgba(255, 255, 255, 0.7)", yshift=2
+    )
+
+    # Scaling
+    all_visible_y = plot_df["value"].tolist() + [avg_val]
     fig.update_layout(
-        yaxis_title=f"Value ({m_unit})",
-        xaxis_title=None,
-        hovermode="x unified",
-        hoverlabel=dict(bgcolor="white", font_size=12, font_color="black"),
-        xaxis=dict(
-            showspikes=True,
-            spikemode='across',
-            showgrid=False,
-            fixedrange=True,
-            tickformat=tickformat,
-            dtick=dtick,
-            tickmode=tickmode,
-            tick0=tick0,
-            nticks=nticks,
-            tickvals=tickvals,
-            ticktext=ticktext,
-        ),
-        yaxis=dict(fixedrange=True, showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
-        margin=dict(l=10, r=10, t=30, b=130 if freq in ["1D", "1W"] else 60),
-        height=260,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        showlegend=False,
-        dragmode=False,
-        annotations=month_annotations + year_annotations,
-        shapes=month_dividers
+        yaxis_title=m_unit,
+        yaxis=dict(range=[min(all_visible_y)*0.95, max(all_visible_y)*1.05], fixedrange=True, showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
+        xaxis=dict(showgrid=False, tickformat=tickformat, dtick=dtick, tickangle=0, fixedrange=True, tickfont=dict(size=10, color="rgba(0,0,0,0.6)")),
+        margin=dict(l=10, r=10, t=40, b=80), height=320,
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False,
+        annotations=list(fig.layout.annotations) + month_annotations + year_annotations,
+        shapes=list(fig.layout.shapes) + month_dividers 
     )
 
-    st.plotly_chart(fig, use_container_width=True, 
-                    config={
-                        'displayModeBar': False, 
-                        'scrollZoom': False,  # Prevents chart from hijacking scroll
-                        'doubleClick': 'reset',
-                        'showAxisDragHandles': False,
-                        'modeBarButtonsToRemove': ['pan2d', 'zoom2d'] # Removes zoom/pan tools
-                    })
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
