@@ -149,6 +149,6 @@ def show_capture(selected_metric):
                 # to show the new data in the chart above.
                 if hasattr(models.get_latest_entry_only, "clear"):
                     models.get_latest_entry_only.clear()
-                utils.finalize_action(f"Saved: {val} {unit_name}", delay=1.0)
+                utils.finalize_action(f"Saved: {val} {unit_name}")
 
                 st.rerun(scope="fragment")
