@@ -50,33 +50,34 @@ def build_hierarchical_annotations(plot_df, freq, range_choice=None):
 
 def get_metric_stats(df):
     """
-    Pure logic: Returns calculated stats from a dataframe.
-    Optimized for bulk data by checking types before conversion.
+    Optimized stats calculation with NaN protection and TZ alignment.
     """
     if df is None or df.empty:
-        # Return a dictionary with defaults instead of None
         return {
             "latest": 0.0, "ma7": None, "change": 0.0,
             "avg": 0.0, "count": 0, "last_date": "No Data"
         }
 
-    # Performance Fix: Only convert to datetime if it's not already converted
+    # Force UTC alignment immediately to prevent TypeError during filtering
     if not pd.api.types.is_datetime64_any_dtype(df['recorded_at']):
         df['recorded_at'] = pd.to_datetime(df['recorded_at'], format='mixed', utc=True)
+    elif df['recorded_at'].dt.tz is None:
+        df['recorded_at'] = df['recorded_at'].dt.tz_localize('UTC')
     
-    # Ensure data is sorted for rolling calculations
     df = df.sort_values("recorded_at")
 
-    latest_val = float(df["value"].iloc[-1])
+    # Handle potential trailing NaNs in the value column
+    clean_series = df["value"].dropna()
+    if clean_series.empty:
+        return { "latest": 0.0, "ma7": None, "change": 0.0, "avg": 0.0, "count": 0, "last_date": "No Data" }
+
+    latest_val = float(clean_series.iloc[-1])
     
-    # Calculate 7D Average (optimized for speed)
-    ma7 = df['value'].rolling(window=7).mean().iloc[-1] if len(df) >= 7 else None
+    # 7D Moving Average
+    ma7 = clean_series.rolling(window=7).mean().iloc[-1] if len(clean_series) >= 7 else None
     
-    # Calculate Period Change
-    change = None
-    if len(df) >= 2:
-        prev_val = float(df['value'].iloc[-2])
-        change = latest_val - prev_val
+    # Delta calculation
+    change = float(clean_series.iloc[-1] - clean_series.iloc[-2]) if len(clean_series) >= 2 else 0.0
 
     last_ts = df['recorded_at'].iloc[-1]
         
@@ -84,7 +85,7 @@ def get_metric_stats(df):
         "latest": latest_val,
         "ma7": ma7,
         "change": change,
-        "avg": float(df["value"].mean()),
+        "avg": float(clean_series.mean()),
         "count": len(df),
         "last_date": last_ts.strftime('%d %b') 
     }
@@ -140,8 +141,12 @@ def show_visualizations(dfe, m_unit, m_name):
         st.info("No data recorded for this metric yet.")
         return
 
+    # 1. TIMEZONE & TYPE SANITY CHECK
+    # Ensure dfe is datetime-aware and UTC to match our filter timestamps
     if not pd.api.types.is_datetime64_any_dtype(dfe['recorded_at']):
         dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='mixed', utc=True)
+    elif dfe['recorded_at'].dt.tz is None:
+        dfe['recorded_at'] = dfe['recorded_at'].dt.tz_localize('UTC')
 
     range_choice = st.pills(
         "Time Range",
@@ -153,18 +158,19 @@ def show_visualizations(dfe, m_unit, m_name):
 
     last_ts = dfe["recorded_at"].max()
     
-    # --- DYNAMIC LABELING LOGIC ---
-    # We define what the "dot" actually represents based on the frequency
+    # --- DYNAMIC CONFIGURATION ---
     if range_choice == "Last month":
         start_ts = last_ts - pd.Timedelta(days=31)
         freq = "1D"
         tickformat = "%d" 
-        dtick = 7 * 24 * 60 * 60 * 1000 
+        dtick = 7 * 24 * 60 * 60 * 1000 # 7 days in ms
         hover_label = "Daily Value"
         date_hover = "%d %b"
         
     elif range_choice in ["Last 6 months", "Last year"]:
-        start_ts = last_ts - pd.DateOffset(months=6 if range_choice == "Last 6 months" else 12)
+        months_back = 6 if range_choice == "Last 6 months" else 12
+        start_ts = last_ts - pd.DateOffset(months=months_back)
+        # Resample to weekly for smoother trends over long periods
         freq = "W"
         tickformat = "%b"
         dtick = "M1"
@@ -186,24 +192,32 @@ def show_visualizations(dfe, m_unit, m_name):
         tickformat = "%b"
         dtick = "M3" if delta_days > 730 else "M1"
 
-    # Filter and Resample
+    # 2. FILTER & RESAMPLE
     mask = (dfe["recorded_at"] >= start_ts)
     filtered_df = dfe.loc[mask].copy().sort_values("recorded_at")
+    
+    if filtered_df.empty:
+        st.warning("No data found for the selected time range.")
+        return
+
     avg_val = dfe["value"].mean() if range_choice == "All Time" else filtered_df["value"].mean()
+    
+    # Resample and clean up NaNs created by empty frequency buckets
     plot_df = filtered_df.set_index("recorded_at").resample(freq).mean(numeric_only=True).dropna().reset_index()
 
-    # Trend calculation
+    # 3. TREND CALCULATION
     trend = None
     if range_choice in ["Last 6 months", "Last year", "All Time"]:
         trend_span = min(5, len(plot_df))
         if trend_span >= 3:
             trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean()
 
+    # 4. PLOTLY CONSTRUCTION
     month_annotations, month_dividers, year_annotations = build_hierarchical_annotations(plot_df, freq, range_choice)
 
     fig = go.Figure()
 
-    # 1. Main Data Trace with Dynamic Hover Labels
+    # Main Data Trace
     fig.add_trace(go.Scatter(
         x=plot_df["recorded_at"], 
         y=plot_df["value"], 
@@ -211,14 +225,13 @@ def show_visualizations(dfe, m_unit, m_name):
         line=dict(shape='spline', smoothing=0.8, color='#1f77b4', width=3),
         marker=dict(size=6, color='#1f77b4', line=dict(color='white', width=1)),
         name=m_name,
-        # Updated hovertemplate to show "Weekly Avg", etc.
         hovertemplate = (
             f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>" +
             f"%{{x|{date_hover}}}<extra></extra>"
         )
     ))
 
-    # 2. Trendline
+    # Trendline
     if trend is not None:
         fig.add_trace(go.Scatter(
             x=plot_df["recorded_at"], y=trend, mode="lines",
@@ -226,29 +239,49 @@ def show_visualizations(dfe, m_unit, m_name):
             name="Trend", hoverinfo="skip"
         ))
 
-    # 3. Harmonized Average Line
+    # Average Line
     fig.add_shape(
         type="line", x0=plot_df["recorded_at"].min(), x1=plot_df["recorded_at"].max(),
-        y0=avg_val, y1=avg_val, line=dict(color="rgba(255, 75, 75, 0.5)", width=2, dash="dash"),
+        y0=avg_val, y1=avg_val, line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"),
         xref="x", yref="y"
     )
 
-    fig.add_annotation(
-        x=plot_df["recorded_at"].max(), y=avg_val, text=f"Avg: {avg_val:.1f}",
-        showarrow=False, xanchor="right", yanchor="bottom",
-        font=dict(size=10, color="rgba(255, 75, 75, 0.8)"),
-        bgcolor="rgba(255, 255, 255, 0.7)", yshift=2
-    )
-
-    # Scaling
+    # 5. DYNAMIC Y-AXIS SCALING
     all_visible_y = plot_df["value"].tolist() + [avg_val]
+    y_min, y_max = min(all_visible_y), max(all_visible_y)
+    y_range = y_max - y_min
+    # Buffer is 10% of the data spread, or at least 0.5 units to prevent ultra-flat charts
+    padding = max(y_range * 0.1, 0.5)
+
     fig.update_layout(
         yaxis_title=m_unit,
-        yaxis=dict(range=[min(all_visible_y)*0.95, max(all_visible_y)*1.05], fixedrange=True, showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
-        xaxis=dict(showgrid=False, tickformat=tickformat, dtick=dtick, tickangle=0, fixedrange=True, tickfont=dict(size=10, color="rgba(0,0,0,0.6)")),
-        margin=dict(l=10, r=10, t=40, b=80), height=320,
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False,
-        annotations=list(fig.layout.annotations) + month_annotations + year_annotations,
+        yaxis=dict(
+            range=[y_min - padding, y_max + padding], 
+            fixedrange=True, 
+            showgrid=True, 
+            gridcolor="rgba(0,0,0,0.05)"
+        ),
+        xaxis=dict(
+            showgrid=False, 
+            tickformat=tickformat, 
+            dtick=dtick, 
+            tickangle=0, 
+            fixedrange=True, 
+            tickfont=dict(size=10, color="rgba(0,0,0,0.6)")
+        ),
+        margin=dict(l=10, r=10, t=40, b=80), 
+        height=320,
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)', 
+        showlegend=False,
+        annotations=list(fig.layout.annotations) + [
+            dict(
+                x=plot_df["recorded_at"].max(), y=avg_val, text=f"Avg: {avg_val:.1f}",
+                showarrow=False, xanchor="right", yanchor="bottom",
+                font=dict(size=10, color="rgba(255, 75, 75, 0.8)"),
+                bgcolor="rgba(255, 255, 255, 0.7)", yshift=2
+            )
+        ] + month_annotations + year_annotations,
         shapes=list(fig.layout.shapes) + month_dividers 
     )
 
