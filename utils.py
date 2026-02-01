@@ -101,7 +101,7 @@ def apply_custom_tabs_css():
         </style>            
     """, unsafe_allow_html=True)
 
-def finalize_action(message, icon="✅", delay=1.5):
+def finalize_action(message, icon="✅", delay=1):
     """
     Refined for performance: Clears cache and shows a toast with consistent timing.
     The natural Streamlit rerun triggered by the button click 
