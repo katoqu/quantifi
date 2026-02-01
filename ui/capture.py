@@ -19,7 +19,7 @@ def show_tracker_suite(selected_metric):
 
     # 3. Inline Visualization Update
     if dfe is not None and not dfe.empty:
-        visualize.show_visualizations(dfe, m_unit, m_name)
+        visualize.show_visualizations(dfe, m_unit, m_name, show_pills=True)
     else:
         st.info("No data recorded for this metric yet. Add your first entry above.")
 

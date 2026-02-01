@@ -136,61 +136,46 @@ def render_stat_row(stats, mode="compact"):
             </div>
         """, unsafe_allow_html=True)
 
-def show_visualizations(dfe, m_unit, m_name):
+def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Last month"):
     if dfe is None or dfe.empty:
         st.info("No data recorded for this metric yet.")
         return
 
     # 1. TIMEZONE & TYPE SANITY CHECK
-    # Ensure dfe is datetime-aware and UTC to match our filter timestamps
     if not pd.api.types.is_datetime64_any_dtype(dfe['recorded_at']):
         dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='mixed', utc=True)
     elif dfe['recorded_at'].dt.tz is None:
         dfe['recorded_at'] = dfe['recorded_at'].dt.tz_localize('UTC')
 
-    range_choice = st.pills(
-        "Time Range",
-        options=["Last month", "Last 6 months", "Last year", "All Time"],
-        default="Last month",
-        key="viz_range_pills",
-        label_visibility="collapsed"
-    )
+    # Use internal pills or external selection from editor
+    if show_pills:
+        range_choice = st.pills(
+            "Time Range",
+            options=["Last Week", "Last month", "Last 6 months", "Last year", "All Time"],
+            default="Last month",
+            key="viz_range_pills",
+            label_visibility="collapsed"
+        )
+    else:
+        range_choice = external_range
 
     last_ts = dfe["recorded_at"].max()
     
     # --- DYNAMIC CONFIGURATION ---
-    if range_choice == "Last month":
+    # Aligned with editor_handler logic
+    if range_choice == "Last Week":
+        start_ts = last_ts - pd.Timedelta(days=7)
+        freq, tickformat, hover_label = "1D", "%a", "Value"
+    elif range_choice == "Last month" or range_choice == "Last Month":
         start_ts = last_ts - pd.Timedelta(days=31)
-        freq = "1D"
-        tickformat = "%d" 
-        dtick = 7 * 24 * 60 * 60 * 1000 # 7 days in ms
-        hover_label = "Daily Value"
-        date_hover = "%d %b"
-        
-    elif range_choice in ["Last 6 months", "Last year"]:
-        months_back = 6 if range_choice == "Last 6 months" else 12
+        freq, tickformat, hover_label = "1D", "%d", "Daily Value"
+    elif range_choice in ["Last 6 months", "Last year", "Last Year"]:
+        months_back = 6 if "6 months" in range_choice else 12
         start_ts = last_ts - pd.DateOffset(months=months_back)
-        # Resample to weekly for smoother trends over long periods
-        freq = "W"
-        tickformat = "%b"
-        dtick = "M1"
-        hover_label = "Weekly Avg"
-        date_hover = "Week %W, %Y"
-        
-    else: # "All Time"
+        freq, tickformat, hover_label = "W", "%b", "Weekly Avg"
+    else: # "All Time" or "Custom"
         start_ts = dfe["recorded_at"].min()
-        delta_days = (last_ts - start_ts).days
-        if delta_days > 180:
-            freq = "M"
-            hover_label = "Monthly Avg"
-            date_hover = "%b %Y"
-        else:
-            freq = "W"
-            hover_label = "Weekly Avg"
-            date_hover = "Week %W, %Y"
-            
-        tickformat = "%b"
-        dtick = "M3" if delta_days > 730 else "M1"
+        freq, tickformat, hover_label = "M", "%b", "Monthly Avg"
 
     # 2. FILTER & RESAMPLE
     mask = (dfe["recorded_at"] >= start_ts)
@@ -201,23 +186,18 @@ def show_visualizations(dfe, m_unit, m_name):
         return
 
     avg_val = dfe["value"].mean() if range_choice == "All Time" else filtered_df["value"].mean()
-    
-    # Resample and clean up NaNs created by empty frequency buckets
     plot_df = filtered_df.set_index("recorded_at").resample(freq).mean(numeric_only=True).dropna().reset_index()
 
-    # 3. TREND CALCULATION
+    # 3. TREND & PLOTLY CONSTRUCTION
     trend = None
-    if range_choice in ["Last 6 months", "Last year", "All Time"]:
+    if range_choice in ["Last 6 months", "Last year", "Last Year", "All Time"]:
         trend_span = min(5, len(plot_df))
         if trend_span >= 3:
             trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean()
 
-    # 4. PLOTLY CONSTRUCTION
     month_annotations, month_dividers, year_annotations = build_hierarchical_annotations(plot_df, freq, range_choice)
-
     fig = go.Figure()
 
-    # Main Data Trace
     fig.add_trace(go.Scatter(
         x=plot_df["recorded_at"], 
         y=plot_df["value"], 
@@ -225,64 +205,18 @@ def show_visualizations(dfe, m_unit, m_name):
         line=dict(shape='spline', smoothing=0.8, color='#1f77b4', width=3),
         marker=dict(size=6, color='#1f77b4', line=dict(color='white', width=1)),
         name=m_name,
-        hovertemplate = (
-            f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>" +
-            f"%{{x|{date_hover}}}<extra></extra>"
-        )
+        hovertemplate = f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x}}<extra></extra>"
     ))
 
-    # Trendline
     if trend is not None:
-        fig.add_trace(go.Scatter(
-            x=plot_df["recorded_at"], y=trend, mode="lines",
-            line=dict(color="rgba(31, 119, 180, 0.3)", width=2),
-            name="Trend", hoverinfo="skip"
-        ))
+        fig.add_trace(go.Scatter(x=plot_df["recorded_at"], y=trend, mode="lines", line=dict(color="rgba(31, 119, 180, 0.3)", width=2), name="Trend", hoverinfo="skip"))
 
-    # Average Line
-    fig.add_shape(
-        type="line", x0=plot_df["recorded_at"].min(), x1=plot_df["recorded_at"].max(),
-        y0=avg_val, y1=avg_val, line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"),
-        xref="x", yref="y"
-    )
-
-    # 5. DYNAMIC Y-AXIS SCALING
-    all_visible_y = plot_df["value"].tolist() + [avg_val]
-    y_min, y_max = min(all_visible_y), max(all_visible_y)
-    y_range = y_max - y_min
-    # Buffer is 10% of the data spread, or at least 0.5 units to prevent ultra-flat charts
-    padding = max(y_range * 0.1, 0.5)
+    fig.add_shape(type="line", x0=plot_df["recorded_at"].min(), x1=plot_df["recorded_at"].max(), y0=avg_val, y1=avg_val, line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"))
 
     fig.update_layout(
-        yaxis_title=m_unit,
-        yaxis=dict(
-            range=[y_min - padding, y_max + padding], 
-            fixedrange=True, 
-            showgrid=True, 
-            gridcolor="rgba(0,0,0,0.05)"
-        ),
-        xaxis=dict(
-            showgrid=False, 
-            tickformat=tickformat, 
-            dtick=dtick, 
-            tickangle=0, 
-            fixedrange=True, 
-            tickfont=dict(size=10, color="rgba(0,0,0,0.6)")
-        ),
-        margin=dict(l=10, r=10, t=40, b=80), 
-        height=320,
-        paper_bgcolor='rgba(0,0,0,0)', 
-        plot_bgcolor='rgba(0,0,0,0)', 
-        showlegend=False,
-        annotations=list(fig.layout.annotations) + [
-            dict(
-                x=plot_df["recorded_at"].max(), y=avg_val, text=f"Avg: {avg_val:.1f}",
-                showarrow=False, xanchor="right", yanchor="bottom",
-                font=dict(size=10, color="rgba(255, 75, 75, 0.8)"),
-                bgcolor="rgba(255, 255, 255, 0.7)", yshift=2
-            )
-        ] + month_annotations + year_annotations,
-        shapes=list(fig.layout.shapes) + month_dividers 
+        yaxis_title=m_unit, height=320, margin=dict(l=10, r=10, t=40, b=80), 
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False,
+        annotations=list(fig.layout.annotations) + month_annotations + year_annotations
     )
 
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})

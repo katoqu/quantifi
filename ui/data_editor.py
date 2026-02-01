@@ -81,15 +81,15 @@ def show_data_management_suite(selected_metric):
         return
 
     # Initialize states
-    if state_key not in st.session_state:
+    if state_key not in st.session_state or st.session_state[state_key].empty:
         st.session_state[state_key] = dfe.assign(**{"Change Log": "", "Select": False})
     if f"saved_data_{mid}" not in st.session_state:
         st.session_state[f"saved_data_{mid}"] = dfe.copy()
 
-    # 1. Filters & Navigation (Always Visible)
+    # 1. Unified Filters & Navigation
     abs_min, abs_max = editor_handler.get_date_bounds(dfe, mid)
     pill_options = ["Last Week", "Last Month", "Last Year", "All Time", "Custom"]
-    selection = st.segmented_control(label = "", options=pill_options, default="Last Month", key=f"pill_{mid}")
+    selection = st.segmented_control(label="", options=pill_options, default="Last Month", key=f"pill_{mid}")
 
     p_start, p_end = editor_handler.get_pill_range(selection, abs_min, abs_max)
 
@@ -102,7 +102,7 @@ def show_data_management_suite(selected_metric):
         st.session_state[f"start_date_{mid}"] = start_date
         st.session_state[f"end_date_{mid}"] = end_date
 
-    # 3. Table Logic (Previously inside the expander)
+    # 2. Table Logic
     if start_date and end_date:
         if editor_handler.is_date_conflict(mid, state_key):
             _render_conflict_warning(mid, state_key)
@@ -118,9 +118,17 @@ def show_data_management_suite(selected_metric):
             m_unit, mid, state_key, selected_metric
         )
 
-    # 4. Visualizations synced with filters
+    # 3. Visualizations synced with the editor's pill selection
     st.divider()
     saved_df = st.session_state[f"saved_data_{mid}"]
     s_mask = (pd.to_datetime(saved_df['recorded_at']).dt.date >= start_date) & \
              (pd.to_datetime(saved_df['recorded_at']).dt.date <= end_date)
-    visualize.show_visualizations(saved_df.loc[s_mask].sort_values("recorded_at"), m_unit, m_name)
+    
+    # Pass selection to enforce the range on the chart
+    visualize.show_visualizations(
+        saved_df.loc[s_mask].sort_values("recorded_at"), 
+        m_unit, 
+        m_name, 
+        show_pills=False, 
+        external_range=selection
+    )
