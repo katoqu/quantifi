@@ -127,17 +127,30 @@ def show_capture(selected_metric):
 
         _get_initial_datetime(mid)
         
-        # 2. Time Toggle (Outside form to allow immediate interaction)
-        show_time_toggle = st.toggle("Set specific time", value=False, key=f"toggle_time_{mid}")
+        when_key = f"capture_when_{mid}"
+        if when_key not in st.session_state:
+            st.session_state[when_key] = "Now"
+
+        # Outside the form so switching options immediately updates the UI
+        when_selection = st.pills(
+            "When",
+            options=["Now", "Yesterday", "Custom"],
+            selection_mode="single",
+            key=when_key,
+            label_visibility="collapsed",
+        )
         
         # 3. Form Start
         with st.form(f"capture_entry_submit_{mid}", border=False):
-            date_input = st.date_input("📅 Date", key=f"capture_date_{mid}")
-            
-            if show_time_toggle:
+            date_input = st.session_state.get(f"capture_date_{mid}", dt.date.today())
+            time_input = st.session_state.get(
+                f"capture_time_{mid}",
+                dt.datetime.now().time().replace(second=0, microsecond=0),
+            )
+
+            if when_selection == "Custom":
+                date_input = st.date_input("📅 Date", key=f"capture_date_{mid}")
                 time_input = st.time_input("⏰ Time", step=60, key=f"capture_time_{mid}")
-            else:
-                time_input = st.session_state[f"capture_time_{mid}"]
 
             val = _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values)
 
@@ -159,7 +172,15 @@ def show_capture(selected_metric):
             submitted = st.form_submit_button("Add Entry", use_container_width=True, type="primary")
             
             if submitted:
-                final_dt = dt.datetime.combine(date_input, time_input)
+                if when_selection == "Yesterday":
+                    final_dt = dt.datetime.combine(
+                        dt.date.today() - dt.timedelta(days=1),
+                        dt.time(12, 0),
+                    )
+                elif when_selection == "Custom":
+                    final_dt = dt.datetime.combine(date_input, time_input)
+                else:
+                    final_dt = dt.datetime.now().replace(second=0, microsecond=0)
                 
                 # Save to DB
                 models.create_entry({
