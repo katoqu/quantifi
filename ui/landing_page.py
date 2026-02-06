@@ -198,8 +198,6 @@ def _render_sparkline(values, color):
     )
 
 def show_advanced_analytics_view(metric):
-    st.markdown(f"#### {metric['name'].title()} Trends")
-    
     # 1. Fetch entries specifically for this metric using the function in models.py
     entries = models.get_entries(metric_id=metric['id']) #
 

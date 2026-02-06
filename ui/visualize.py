@@ -136,7 +136,7 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Mo
     elif dfe['recorded_at'].dt.tz is None:
         dfe['recorded_at'] = dfe['recorded_at'].dt.tz_localize('UTC')
 
-    # 2. CALCULATE DATA SPAN FOR SMART PILLS
+    # 2. CALCULATE DATA SPAN FOR SMART RANGE OPTIONS
     min_date = dfe["recorded_at"].min()
     max_date = dfe["recorded_at"].max()
     days_diff = (max_date - min_date).days
@@ -150,13 +150,16 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Mo
         options.append("All")
 
         default_val = "Month" if "Month" in options else "All"
-        
-        range_choice = st.pills(
-            "Time Range",
+
+        range_key = f"viz_range_{m_name}"
+        if range_key in st.session_state and st.session_state[range_key] not in options:
+            del st.session_state[range_key]
+
+        range_choice = st.segmented_control(
+            label="",
             options=options,
             default=default_val,
-            key="viz_range_pills",
-            label_visibility="collapsed"
+            key=range_key,
         )
     else:
         range_choice = external_range
@@ -245,6 +248,17 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Mo
         fig.add_trace(go.Scatter(x=plot_df["recorded_at"], y=trend, mode="lines", line=dict(color="rgba(31, 119, 180, 0.3)", width=2), name="Trend", hoverinfo="skip"))
 
     fig.add_shape(type="line", x0=plot_df["recorded_at"].min(), x1=plot_df["recorded_at"].max(), y0=avg_val, y1=avg_val, line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"))
+    fig.add_annotation(
+        x=0.99,
+        xref="paper",
+        xanchor="right",
+        y=avg_val,
+        yref="y",
+        yanchor="bottom",
+        text=f"Avg {avg_val:.1f} {m_unit}".strip(),
+        showarrow=False,
+        font=dict(size=10, color="rgba(255, 75, 75, 0.55)"),
+    )
 
     fig.update_layout(
         yaxis_title=m_unit, 
@@ -254,10 +268,42 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Mo
         plot_bgcolor='rgba(0,0,0,0)', 
         showlegend=False,
         annotations=list(fig.layout.annotations) + month_annotations + year_annotations,
+        hovermode="x",
+        dragmode="pan",
         xaxis=dict(
             tickformat=tickformat,
             nticks=8,
+            fixedrange=True,
         )
     )
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+    fig.update_yaxes(fixedrange=True)
+    fig.update_xaxes(
+        showspikes=True,
+        spikemode="across",
+        spikesnap="cursor",
+        spikecolor="rgba(0,0,0,0.25)",
+        spikethickness=1,
+    )
+    fig.update_yaxes(
+        showspikes=True,
+        spikemode="across",
+        spikesnap="cursor",
+        spikecolor="rgba(0,0,0,0.25)",
+        spikethickness=1,
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "displayModeBar": False,
+            "staticPlot": False,
+            "scrollZoom": False,
+            "doubleClick": False,
+            "displaylogo": False,
+            "editable": False,
+            "showAxisDragHandles": False,
+            "showAxisRangeEntryBoxes": False,
+        },
+    )
