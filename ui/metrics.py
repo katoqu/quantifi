@@ -1,8 +1,85 @@
 import streamlit as st
 import models
 import utils
-from st_keyup import st_keyup
-import time
+
+
+_RECENT_METRICS_MAX = 8
+
+
+def _push_recent_metric(metric_id, *, max_items=_RECENT_METRICS_MAX):
+    if not metric_id:
+        return
+    recent_ids = st.session_state.get("recent_metric_ids")
+    if not isinstance(recent_ids, list):
+        recent_ids = []
+    recent_ids = [rid for rid in recent_ids if str(rid) != str(metric_id)]
+    recent_ids.insert(0, metric_id)
+    st.session_state["recent_metric_ids"] = recent_ids[:max_items]
+
+
+def _metric_search_label(metric, cat_labels):
+    cat_id = metric.get("category_id")
+    cat = "Uncat" if cat_id is None else cat_labels.get(cat_id, "Uncat")
+    return f"{cat} • {utils.format_metric_label(metric)}"
+
+
+@st.dialog("Browse metrics")
+def _browse_metric_dialog(metrics, cat_labels, current_id):
+    if "exclude_archived_metrics" not in st.session_state:
+        st.session_state["exclude_archived_metrics"] = True
+
+    hide_archived = st.checkbox("Hide archived", key="exclude_archived_metrics")
+
+    visible_metrics = (
+        [m for m in metrics if not m.get("is_archived") or str(m.get("id")) == str(current_id)]
+        if hide_archived
+        else metrics
+    )
+
+    id_to_metric = {m["id"]: m for m in visible_metrics}
+
+    category_ids = {m.get("category_id") for m in visible_metrics}
+    category_options = ["ALL"]
+    category_options += sorted(
+        [cid for cid in category_ids if cid is not None],
+        key=lambda cid: cat_labels.get(cid, "").lower(),
+    )
+    if None in category_ids:
+        category_options.append("UNCAT")
+
+    selected_category = st.selectbox(
+        "Category",
+        options=category_options,
+        format_func=lambda x: "All" if x == "ALL" else ("Uncat" if x == "UNCAT" else cat_labels.get(x, "Uncat")),
+        index=0,
+    )
+
+    if selected_category == "ALL":
+        filtered_metrics = visible_metrics
+    elif selected_category == "UNCAT":
+        filtered_metrics = [m for m in visible_metrics if m.get("category_id") is None]
+    else:
+        filtered_metrics = [m for m in visible_metrics if m.get("category_id") == selected_category]
+
+    filtered_ids = [m["id"] for m in sorted(filtered_metrics, key=lambda m: m.get("name", "").lower())]
+    if not filtered_ids:
+        st.caption("No matching metrics.")
+        return
+
+    default_idx = filtered_ids.index(current_id) if current_id in filtered_ids else 0
+    picked_id = st.selectbox(
+        "Metric",
+        options=filtered_ids,
+        index=default_idx,
+        format_func=lambda mid: _metric_search_label(id_to_metric[mid], cat_labels),
+    )
+
+    col_use, col_cancel = st.columns(2)
+    if col_use.button("Use metric", type="primary", use_container_width=True):
+        st.session_state["last_active_mid"] = picked_id
+        _push_recent_metric(picked_id)
+        st.rerun()
+    col_cancel.button("Cancel", use_container_width=True)
 
 @st.dialog("Confirm Metric Update")
 def _confirm_metric_update_dialog(m, new_payload, cat_options=None, new_cat_name=None):
@@ -290,13 +367,6 @@ def show_create_metric(cats):
             else:
                 st.warning("Please enter a name for the metric.")
 
-def on_metric_selected():
-    """Syncs the internal widget state to the global sticky state."""
-    # Only update if the user has actually clicked a pill
-    if st.session_state.get("metric_pill_selector"):
-        st.session_state["last_active_mid"] = st.session_state["metric_pill_selector"]
-        st.session_state["metric_search"] = ""
-
 def select_metric(metrics, target_id=None):
     if not metrics:
         return None
@@ -305,117 +375,59 @@ def select_metric(metrics, target_id=None):
         metrics,
         key=lambda x: (bool(x.get("is_archived")), x.get("name", "").lower()),
     )
+    id_to_metric = {m["id"]: m for m in sorted_metrics}
 
     categories = models.get_categories() or []
     cat_labels = {c["id"]: c.get("name", "").title() for c in categories}
     
-    # 1. IDENTIFY ACTIVE METRIC FOR THE HEADER
     active_id = target_id or st.session_state.get("last_active_mid")
     selected_obj = next((m for m in sorted_metrics if str(m['id']) == str(active_id)), None)
     
-    # FALLBACK: If the sticky metric is archived/missing, pick the first available one
     if not selected_obj:
         selected_obj = next((m for m in sorted_metrics if not m.get("is_archived")), None)
         if not selected_obj:
             selected_obj = sorted_metrics[0]
         st.session_state["last_active_mid"] = selected_obj['id']
 
-    # 2. COLLAPSIBLE SELECTOR BOX
-    header_label = f"🎯 {utils.format_metric_label(selected_obj)}"
-    
-    if "metric_selector_open" not in st.session_state:
-        st.session_state["metric_selector_open"] = False
-    if "exclude_archived_metrics" not in st.session_state:
-        st.session_state["exclude_archived_metrics"] = True
+    # Seed recents (do not reorder unless the user explicitly selects)
+    recent_ids = st.session_state.get("recent_metric_ids")
+    if not isinstance(recent_ids, list) or not recent_ids:
+        st.session_state["recent_metric_ids"] = [selected_obj["id"]]
+    elif selected_obj["id"] not in recent_ids:
+        st.session_state["recent_metric_ids"] = [selected_obj["id"], *recent_ids][: _RECENT_METRICS_MAX]
 
-    def _keep_selector_open():
-        st.session_state["metric_selector_open"] = True
+    available_ids = {m["id"] for m in sorted_metrics}
+    recent_ids = [rid for rid in st.session_state.get("recent_metric_ids", []) if rid in available_ids]
+    if selected_obj["id"] not in recent_ids:
+        recent_ids.insert(0, selected_obj["id"])
+    recent_ids = recent_ids[:_RECENT_METRICS_MAX]
 
-    reset_token = st.session_state.get("metric_selector_reset_token", 0)
-    invisible_suffix = "\u200b" * reset_token  # forces a new expander state without visible label change
-    with st.expander(f"{header_label}{invisible_suffix}", expanded=st.session_state["metric_selector_open"]):
-        exclude_archived = st.checkbox(
-            "Exclude Archived",
-            key="exclude_archived_metrics",
-            on_change=_keep_selector_open,
-        )
+    with st.container(border=True):
+        c_left, c_right = st.columns([3, 1])
+        with c_left:
+            st.markdown(f"**🎯 {utils.format_metric_label(selected_obj)}**")
+        with c_right:
+            if st.button("Browse…", use_container_width=True):
+                _browse_metric_dialog(sorted_metrics, cat_labels, selected_obj["id"])
 
-        visible_metrics = (
-            [
-                m for m in sorted_metrics
-                if not m.get("is_archived") or m["id"] == selected_obj["id"]
-            ]
-            if exclude_archived
-            else sorted_metrics
-        )
+        if len(recent_ids) > 1:
+            recent_key = "metric_recent_selector"
+            if recent_key in st.session_state and st.session_state[recent_key] not in recent_ids:
+                st.session_state.pop(recent_key, None)
 
-        # Category pills
-        category_ids = {m.get("category_id") for m in visible_metrics}
-        category_options = ["ALL"]
-        category_options += sorted(
-            [cid for cid in category_ids if cid is not None],
-            key=lambda cid: cat_labels.get(cid, "").lower(),
-        )
-        if None in category_ids:
-            category_options.append("UNCAT")
-
-        if "metric_category_filter" not in st.session_state or st.session_state["metric_category_filter"] not in category_options:
-            st.session_state["metric_category_filter"] = "ALL"
-
-        selected_category = st.segmented_control(
-            "Category",
-            options=category_options,
-            format_func=lambda x: "All" if x == "ALL" else ("Uncat" if x == "UNCAT" else cat_labels.get(x, "Uncat")),
-            key="metric_category_filter",
-            selection_mode="single",
-            label_visibility="collapsed",
-            on_change=_keep_selector_open,
-        )
-
-        # 3. DYNAMIC KEY FOR INSTANT SEARCH
-        # By adding active_id to the key, the widget resets whenever a new metric is picked.
-        search_box_key = f"search_input_{active_id}"
-
-        # 3. INSTANT SEARCH (st_keyup)
-        search_query = st_keyup(
-            "Filter metrics...",
-            key=search_box_key,
-            value=st.session_state.get("metric_search", ""),
-            placeholder="Type to find another...",
-            label_visibility="collapsed"
-        ).lower().strip()
-
-        # 4. FILTERING LOGIC
-        if selected_category != "ALL":
-            if selected_category == "UNCAT":
-                filtered_metrics = [m for m in visible_metrics if m.get("category_id") is None]
-            else:
-                filtered_metrics = [m for m in visible_metrics if m.get("category_id") == selected_category]
-        else:
-            filtered_metrics = visible_metrics
-
-        if search_query:
-            filtered_metrics = [
-                m for m in filtered_metrics
-                if search_query in m.get("name", "").lower() or
-                   search_query in m.get("unit_name", "").lower()
-            ]
-
-        # 5. RESULT PILLS
-        pill_options = {m['id']: utils.format_metric_label(m) for m in filtered_metrics}
-        
-        if pill_options:
-            st.segmented_control(
-                "Change Metric",
-                options=list(pill_options.keys()),
-                format_func=lambda x: pill_options.get(x),
-                key="metric_pill_selector",
+            picked_recent = st.segmented_control(
+                "Recent",
+                options=recent_ids,
+                format_func=lambda mid: utils.format_metric_label(id_to_metric.get(mid, {"id": mid})),
                 selection_mode="single",
                 label_visibility="collapsed",
-                on_change=on_metric_selected,
-                default=None 
+                default=selected_obj["id"],
+                key=recent_key,
             )
-        else:
-            st.caption("No matching metrics found.")
+
+            if picked_recent and str(picked_recent) != str(selected_obj["id"]):
+                st.session_state["last_active_mid"] = picked_recent
+                _push_recent_metric(picked_recent)
+                selected_obj = next((m for m in sorted_metrics if str(m["id"]) == str(picked_recent)), selected_obj)
 
     return selected_obj
