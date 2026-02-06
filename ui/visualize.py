@@ -122,7 +122,7 @@ def render_stat_row(stats, mode="compact"):
             </div>
         """, unsafe_allow_html=True)
 
-def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Last month"):
+def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Month"):
     """
     Renders the metric trend chart with adaptive scaling and safe range selection.
     """

@@ -6,17 +6,17 @@ import datetime as dt
 
 def get_pill_range(selection, abs_min, abs_max):
     """Calculates start/end dates based on pill selection."""
-    today = dt.date.today()
     # Support both title case and lowercase variations from different UI components
     sel = selection.lower() if selection else ""
+    end_date = abs_max if abs_max else dt.date.today()
     
     if "week" in sel:
-        return today - dt.timedelta(days=7), today
+        return end_date - dt.timedelta(days=7), end_date
     elif "month" in sel:
-        return today - dt.timedelta(days=30), today
+        return end_date - dt.timedelta(days=31), end_date
     elif "year" in sel:
-        return today - dt.timedelta(days=365), today
-    elif "all time" in sel:
+        return end_date - dt.timedelta(days=365), end_date
+    elif sel in {"all", "all time"} or "all time" in sel:
         return abs_min, abs_max
     return None, None 
 

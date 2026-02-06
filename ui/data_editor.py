@@ -88,8 +88,20 @@ def show_data_management_suite(selected_metric):
 
     # 1. Unified Filters & Navigation
     abs_min, abs_max = editor_handler.get_date_bounds(dfe, mid)
-    pill_options = ["Week", "Month", "Year", "All", "Custom"]
-    selection = st.segmented_control(label="", options=pill_options, default="Last Month", key=f"pill_{mid}")
+    days_diff = (pd.to_datetime(abs_max) - pd.to_datetime(abs_min)).days
+    pill_options = ["Week"]
+    if days_diff > 7:
+        pill_options.append("Month")
+    if days_diff > 180:
+        pill_options.append("Year")
+    pill_options.extend(["All", "Custom"])
+
+    pill_key = f"pill_{mid}"
+    if pill_key in st.session_state and st.session_state[pill_key] not in pill_options:
+        del st.session_state[pill_key]
+
+    default_val = "Month" if "Month" in pill_options else "Week"
+    selection = st.segmented_control(label="", options=pill_options, default=default_val, key=pill_key)
 
     p_start, p_end = editor_handler.get_pill_range(selection, abs_min, abs_max)
 
