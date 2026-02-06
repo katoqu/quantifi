@@ -32,8 +32,12 @@ def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
     """Renders the interactive data editor table."""
     ui_view_df = view_df.reset_index(drop=True)
     editor_key = f"editor_{mid}"
+    kind = selected_metric.get("metric_kind")
     utype = selected_metric.get("unit_type", "float")
-    step = 1 if "integer" in utype else 0.1
+    if kind in ("count", "score"):
+        step = 1
+    else:
+        step = 1 if "integer" in utype else 0.1
 
     st.data_editor(
         ui_view_df,
@@ -143,6 +147,11 @@ def show_data_management_suite(selected_metric):
             saved_df.loc[s_mask].sort_values("recorded_at"), 
             m_unit, 
             m_name, 
+            metric_kind=selected_metric.get("metric_kind"),
+            unit_type=selected_metric.get("unit_type", "float"),
+            range_start=selected_metric.get("range_start"),
+            range_end=selected_metric.get("range_end"),
+            higher_is_better=selected_metric.get("higher_is_better", True),
             show_pills=False, 
             external_range=selection
         )

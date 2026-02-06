@@ -122,7 +122,19 @@ def render_stat_row(stats, mode="compact"):
             </div>
         """, unsafe_allow_html=True)
 
-def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Month"):
+def show_visualizations(
+    dfe,
+    m_unit,
+    m_name,
+    *,
+    metric_kind=None,
+    unit_type="float",
+    range_start=None,
+    range_end=None,
+    higher_is_better=True,
+    show_pills=True,
+    external_range="Month",
+):
     """
     Renders the metric trend chart with adaptive scaling and safe range selection.
     """
@@ -205,14 +217,44 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Mo
         return
 
     # 5. RESAMPLING
-    avg_val = dfe["value"].mean() if range_choice == "All Time" else filtered_df["value"].mean()
-    
+    kind = metric_kind
+    if kind not in ("quantitative", "count", "score"):
+        if unit_type == "integer_range":
+            kind = "score"
+        elif unit_type == "integer":
+            kind = "count"
+        else:
+            kind = "quantitative"
+
+    is_ordinal_score = kind == "score"
+    is_count = kind == "count"
+
+    if is_ordinal_score:
+        agg_func = "median"
+    elif is_count:
+        agg_func = "sum"
+    else:
+        agg_func = "mean"
+
+    if is_ordinal_score:
+        baseline_label = "Median"
+        baseline_val = float(filtered_df["value"].median())
+        baseline_val_str = f"{baseline_val:.0f}"
+    elif is_count:
+        baseline_label = "Avg"
+        baseline_val = float(filtered_df["value"].mean())
+        baseline_val_str = f"{baseline_val:.0f}"
+    else:
+        baseline_label = "Avg"
+        baseline_val = float(filtered_df["value"].mean())
+        baseline_val_str = f"{baseline_val:.1f}"
+
     plot_df = (
         filtered_df
         .set_index("recorded_at")
-        .resample(freq)
-        .mean(numeric_only=True)
-        .dropna()
+        .resample(freq)[["value"]]
+        .agg(agg_func)
+        .dropna(subset=["value"])
         .reset_index()
     )
 
@@ -224,7 +266,7 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Mo
          tickformat = "%d %b"
 
     trend = None
-    if range_choice in ["6M", "Year", "All"]:
+    if kind == "quantitative" and range_choice in ["6M", "Year", "All"]:
         trend_span = min(5, len(plot_df))
         if trend_span >= 3:
             trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean()
@@ -233,29 +275,82 @@ def show_visualizations(dfe, m_unit, m_name, show_pills=True, external_range="Mo
     month_annotations, month_dividers, year_annotations = build_hierarchical_annotations(plot_df, freq, range_choice)
     fig = go.Figure()
 
-    fig.add_trace(go.Scatter(
-        x=plot_df["recorded_at"], 
-        y=plot_df["value"], 
-        mode="lines+markers" if len(plot_df) < 53 else "lines",
-        line=dict(shape='spline', smoothing=0.8, color='#1f77b4', width=3),
-        marker=dict(size=6, color='#1f77b4', line=dict(color='white', width=1)),
-        name=m_name,
-        # Use the dynamic hover_date_fmt here
-        hovertemplate = f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
-    ))
+    if is_ordinal_score:
+        rs = range_start
+        re = range_end
+        if rs is None:
+            try:
+                rs = int(math.floor(float(filtered_df["value"].min())))
+            except Exception:
+                rs = 1
+        if re is None:
+            try:
+                re = int(math.ceil(float(filtered_df["value"].max())))
+            except Exception:
+                re = 5
+        colorscale = "RdYlGn" if bool(higher_is_better) else "RdYlGn_r"
+
+        fig.add_trace(
+            go.Bar(
+                x=plot_df["recorded_at"],
+                y=plot_df["value"],
+                name=m_name,
+                marker=dict(
+                    color=plot_df["value"],
+                    colorscale=colorscale,
+                    cmin=rs,
+                    cmax=re,
+                    showscale=False,
+                    line=dict(color="rgba(255,255,255,0.9)", width=1),
+                ),
+                hovertemplate=f"<b>{hover_label}: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>",
+            )
+        )
+        fig.update_yaxes(range=[rs - 0.5, re + 0.5], dtick=1)
+        fig.update_layout(bargap=0.25)
+    elif is_count:
+        fig.add_trace(
+            go.Bar(
+                x=plot_df["recorded_at"],
+                y=plot_df["value"],
+                name=m_name,
+                marker=dict(color="rgba(31, 119, 180, 0.85)", line=dict(color="rgba(255,255,255,0.9)", width=1)),
+                hovertemplate=f"<b>{hover_label}: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>",
+            )
+        )
+        fig.update_layout(bargap=0.25)
+    else:
+        fig.add_trace(
+            go.Scatter(
+                x=plot_df["recorded_at"],
+                y=plot_df["value"],
+                mode="lines+markers" if len(plot_df) < 53 else "lines",
+                line=dict(shape="spline", smoothing=0.8, color="#1f77b4", width=3),
+                marker=dict(size=6, color="#1f77b4", line=dict(color="white", width=1)),
+                name=m_name,
+                hovertemplate=f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>",
+            )
+        )
 
     if trend is not None:
         fig.add_trace(go.Scatter(x=plot_df["recorded_at"], y=trend, mode="lines", line=dict(color="rgba(31, 119, 180, 0.3)", width=2), name="Trend", hoverinfo="skip"))
 
-    fig.add_shape(type="line", x0=plot_df["recorded_at"].min(), x1=plot_df["recorded_at"].max(), y0=avg_val, y1=avg_val, line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"))
+    fig.add_shape(
+        type="line",
+        x0=plot_df["recorded_at"].min(),
+        x1=plot_df["recorded_at"].max(),
+        y0=baseline_val,
+        y1=baseline_val,
+        line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"),
+    )
     fig.add_annotation(
         x=0.99,
         xref="paper",
         xanchor="right",
-        y=avg_val,
+        y=baseline_val,
         yref="y",
         yanchor="bottom",
-        text=f"Avg {avg_val:.1f} {m_unit}".strip(),
+        text=f"{baseline_label} {baseline_val_str} {m_unit}".strip(),
         showarrow=False,
         font=dict(size=10, color="rgba(255, 75, 75, 0.55)"),
     )

@@ -19,7 +19,17 @@ def show_tracker_suite(selected_metric):
 
     # 3. Inline Visualization Update
     if dfe is not None and not dfe.empty:
-        visualize.show_visualizations(dfe, m_unit, m_name, show_pills=True)
+        visualize.show_visualizations(
+            dfe,
+            m_unit,
+            m_name,
+            metric_kind=selected_metric.get("metric_kind"),
+            unit_type=selected_metric.get("unit_type", "float"),
+            range_start=selected_metric.get("range_start"),
+            range_end=selected_metric.get("range_end"),
+            higher_is_better=selected_metric.get("higher_is_better", True),
+            show_pills=True,
+        )
     else:
         st.info("No data recorded for this metric yet. Add your first entry above.")
 
@@ -33,8 +43,8 @@ def _get_initial_datetime(mid):
 
 def _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values):
     if utype == "integer_range":
-        rs = int(selected_metric.get("range_start", 0))
-        re = int(selected_metric.get("range_end", 10))
+        rs = int(selected_metric.get("range_start", 1))
+        re = int(selected_metric.get("range_end", 5))
         default_val = int(smart_default)
         if default_val < rs:
             default_val = rs
@@ -113,7 +123,15 @@ def _get_recent_values(metric_id, limit=5):
 def show_capture(selected_metric):
     mid = selected_metric.get("id")
     unit_name = selected_metric.get("unit_name", "")
-    utype = selected_metric.get("unit_type", "float")
+    kind = selected_metric.get("metric_kind")
+    if kind == "score":
+        utype = "integer_range"
+    elif kind == "count":
+        utype = "integer"
+    elif kind == "quantitative":
+        utype = "float"
+    else:
+        utype = selected_metric.get("unit_type", "float")
     
     # 1. Fetch smart defaults
     last_entry = models.get_latest_entry_only(mid)

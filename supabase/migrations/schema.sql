@@ -19,8 +19,10 @@ create table metrics (
   description text,
   unit_name text,
   unit_type text default 'float', -- Options: float, integer, integer_range
+  metric_kind text, -- Options: quantitative, count, score
   range_start integer,
   range_end integer,
+  higher_is_better boolean default true,
   is_archived boolean default false,
   category_id uuid references categories(id) on delete set null,
   user_id uuid not null references auth.users default auth.uid(),
@@ -30,6 +32,15 @@ create table metrics (
   CONSTRAINT check_range_logic CHECK (
     (unit_type = 'integer_range' AND range_end > range_start) OR 
     (unit_type != 'integer_range')
+  ),
+  CONSTRAINT metrics_kind_check CHECK (
+    metric_kind in ('quantitative', 'count', 'score') OR metric_kind is null
+  ),
+  CONSTRAINT metrics_kind_unit_type_consistency CHECK (
+    metric_kind is null
+    or (metric_kind = 'quantitative' and unit_type = 'float')
+    or (metric_kind = 'count' and unit_type = 'integer')
+    or (metric_kind = 'score' and unit_type = 'integer_range')
   )
 );
 

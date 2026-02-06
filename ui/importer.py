@@ -51,7 +51,8 @@ def _handle_import_logic(uploaded_file, wipe_first):
         
         # --- 1. PRE-VALIDATION / DRY RUN ---
         errors = []
-        ALLOWED_TYPES = ['float', 'integer', 'integer_range'] # Added strict whitelist
+        ALLOWED_TYPES = ['float', 'integer', 'integer_range']  # Added strict whitelist
+        ALLOWED_KINDS = ['quantitative', 'count', 'score']
         
         # Check for mandatory columns
         required_cols = ['Metric', 'Value', 'Date', 'Type', 'Archived']
@@ -68,6 +69,12 @@ def _handle_import_logic(uploaded_file, wipe_first):
                 m_type = str(row.get('Type')).strip().lower()
                 if m_type not in ALLOWED_TYPES:
                     errors.append(f"Row {row_num}: Invalid Type '{m_type}'. Must be one of {ALLOWED_TYPES}")
+
+                # A2. Validate Kind Whitelist (optional)
+                if "Kind" in df_import.columns and pd.notna(row.get("Kind")):
+                    m_kind = str(row.get("Kind")).strip().lower()
+                    if m_kind not in ALLOWED_KINDS:
+                        errors.append(f"Row {row_num}: Invalid Kind '{m_kind}'. Must be one of {ALLOWED_KINDS}")
 
                 # B. Validate integer_range specific logic
                 if m_type == 'integer_range':
@@ -110,7 +117,7 @@ def _handle_import_logic(uploaded_file, wipe_first):
             log.write("🏗️ **Syncing Schema...**")
             schema_cols = ['Metric', 'Description', 'Unit', 'Category', 'Type', 'Min', 'Max', 'Archived']
             # Fill missing metadata with defaults
-            for col in ['Description', 'Unit', 'Category', 'Min', 'Max', 'Archived']:
+            for col in ['Description', 'Unit', 'Category', 'Min', 'Max', 'Archived', 'Kind', 'HigherIsBetter']:
                 if col not in df_import.columns: df_import[col] = None
             
             unique_metrics = df_import[schema_cols].drop_duplicates()
@@ -118,16 +125,33 @@ def _handle_import_logic(uploaded_file, wipe_first):
             for i, (_, row) in enumerate(unique_metrics.iterrows()):
                 met_name = str(row['Metric']).strip().lower()
                 if not models.get_metric_by_name(met_name):
+                    m_type = str(row['Type']).strip().lower()
+                    if pd.notna(row.get("Kind")):
+                        m_kind = str(row.get("Kind")).strip().lower()
+                    else:
+                        m_kind = "score" if m_type == "integer_range" else ("count" if m_type == "integer" else "quantitative")
+
+                    # Keep `unit_type` aligned to kind for consistent behavior.
+                    if m_kind == "score":
+                        m_type = "integer_range"
+                    elif m_kind == "count":
+                        m_type = "integer"
+                    else:
+                        m_type = "float"
+
                     payload = {
                         "name": met_name,
                         "description": str(row['Description']) if pd.notna(row['Description']) else None,
                         "is_archived": bool(row['Archived']) if pd.notna(row['Archived']) else False,
                         "unit_name": str(row['Unit']).lower() if pd.notna(row['Unit']) else None,
                         "category_id": utils.ensure_category_id("NEW_CAT", str(row['Category'])) if pd.notna(row['Category']) else None,
-                        "unit_type": str(row['Type']).strip().lower(),
+                        "unit_type": m_type,
+                        "metric_kind": m_kind,
                         "range_start": int(row['Min']) if pd.notna(row['Min']) else None,
                         "range_end": int(row['Max']) if pd.notna(row['Max']) else None
                     }
+                    if pd.notna(row.get("HigherIsBetter")):
+                        payload["higher_is_better"] = bool(row.get("HigherIsBetter"))
                     res = models.create_metric(payload)
                     if not res:
                         st.error(f"Failed to create metric: {met_name}. Aborting.")
@@ -183,8 +207,11 @@ def _render_template_downloader():
                 "Unit": m.get('unit_name', ''),
                 "Category": "", # User fills this or we look up cat name
                 "Type": m.get('unit_type', 'float'),
+                "Kind": m.get('metric_kind', ''),
                 "Min": m.get('range_start', ''),
                 "Max": m.get('range_end', '')
+                ,
+                "HigherIsBetter": m.get("higher_is_better", True),
             })
         
         df_template = pd.DataFrame(template_rows)

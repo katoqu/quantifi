@@ -77,6 +77,29 @@ def get_entry_count(metric_id: str):
     )
     return res.count if res and res.count is not None else 0
 
+def metric_has_fractional_values(metric_id: str, limit: int = 2000):
+    """
+    Returns True if the metric has any values with a fractional part.
+    Best-effort: only checks up to `limit` values.
+    """
+    res = _safe_execute(
+        sb.table("entries")
+        .select("value")
+        .eq("metric_id", metric_id)
+        .limit(limit),
+        "Failed to fetch values for integer check",
+    )
+    if not res or not res.data:
+        return False
+    for row in res.data:
+        try:
+            val = float(row.get("value"))
+        except (TypeError, ValueError):
+            continue
+        if not val.is_integer():
+            return True
+    return False
+
 def get_category_usage_count(category_id: str):
     """Returns the count of active metrics assigned to a category."""
     res = _safe_execute(
@@ -166,7 +189,7 @@ def get_flat_export_data():
     # 1. Update query to include metadata columns from the metrics table
     query = _safe_execute(
         sb.table("entries").select(
-            "recorded_at, value, target_action, metrics(name, description, unit_name, unit_type, range_start, range_end, is_archived, categories(name))"
+            "recorded_at, value, target_action, metrics(name, description, unit_name, unit_type, metric_kind, higher_is_better, range_start, range_end, is_archived, categories(name))"
         ),
         "Failed to fetch export data"
     )
@@ -189,8 +212,10 @@ def get_flat_export_data():
             "Unit": m_meta.get("unit_name", ""),
             "Category": m_meta.get("categories", {}).get("name") if m_meta.get("categories") else "None",
             "Type": m_meta.get("unit_type", "float"),
+            "Kind": m_meta.get("metric_kind"),
             "Min": m_meta.get("range_start"),
             "Max": m_meta.get("range_end"),
+            "HigherIsBetter": m_meta.get("higher_is_better", True),
             "Target": entry.get("target_action", "")
         })
     return rows

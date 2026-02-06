@@ -211,4 +211,13 @@ def show_advanced_analytics_view(metric):
 
     # 2. Render visualizations
     df = pd.DataFrame(entries)
-    visualize.show_visualizations(df, metric.get('unit_name', ''), metric['name'])
+    visualize.show_visualizations(
+        df,
+        metric.get("unit_name", ""),
+        metric["name"],
+        metric_kind=metric.get("metric_kind"),
+        unit_type=metric.get("unit_type", "float"),
+        range_start=metric.get("range_start"),
+        range_end=metric.get("range_end"),
+        higher_is_better=metric.get("higher_is_better", True),
+    )

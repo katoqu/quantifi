@@ -6,6 +6,113 @@ import utils
 _RECENT_METRICS_MAX = 8
 
 
+_METRIC_KIND_OPTIONS = ["quantitative", "count", "score"]
+_KIND_TO_UNIT_TYPE = {"quantitative": "float", "count": "integer", "score": "integer_range"}
+
+def _int_or_default(value, default):
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _infer_metric_kind(metric):
+    kind = metric.get("metric_kind")
+    if kind in _METRIC_KIND_OPTIONS:
+        return kind
+    utype = (metric.get("unit_type") or "float").strip().lower()
+    if utype == "integer_range":
+        return "score"
+    if utype == "integer":
+        return "count"
+    return "quantitative"
+
+def _can_convert_kind(from_kind, to_kind):
+    if from_kind == to_kind:
+        return False
+    if from_kind == "score" and to_kind == "count":
+        return True
+    if from_kind == "count" and to_kind == "score":
+        return True
+    return False
+
+@st.dialog("Convert Metric Kind")
+def _convert_metric_kind_dialog(metric):
+    mid = metric.get("id")
+    if not mid:
+        st.error("Missing metric id.")
+        return
+
+    current_kind = _infer_metric_kind(metric)
+    entry_count = models.get_entry_count(mid)
+    st.caption(f"Metric has {entry_count} entries. Conversion changes aggregation + visualization defaults.")
+
+    allowed_targets = [k for k in _METRIC_KIND_OPTIONS if _can_convert_kind(current_kind, k)]
+    if not allowed_targets:
+        st.info("No supported conversions for this metric yet.")
+        return
+
+    target_kind = st.selectbox("Convert to", options=allowed_targets, index=0)
+
+    rs = metric.get("range_start", 1)
+    re = metric.get("range_end", 5)
+    hib = bool(metric.get("higher_is_better", True))
+
+    if target_kind == "score":
+        st.caption("Score requires bounds and a direction (higher-is-better). Existing values must fit inside the bounds.")
+        c1, c2 = st.columns(2)
+        rs = c1.number_input("Min", value=int(rs or 1), step=1, key=f"conv_rs_{mid}")
+        re = c2.number_input("Max", value=int(re or 5), step=1, key=f"conv_re_{mid}")
+        hib = st.toggle("Higher is better", value=hib, key=f"conv_hib_{mid}")
+        if rs >= re:
+            st.error("Max must be strictly greater than Min.")
+            return
+
+        actual_min, actual_max = models.get_metric_value_bounds(mid)
+        if actual_min is not None:
+            if rs > actual_min:
+                st.error(f"Existing data has values as low as {actual_min}; Min must be ≤ {actual_min}.")
+                return
+            if re < actual_max:
+                st.error(f"Existing data has values as high as {actual_max}; Max must be ≥ {actual_max}.")
+                return
+
+        if models.metric_has_fractional_values(mid):
+            st.error("Existing values include decimals; score metrics require whole numbers. Fix data first or keep as count/quantitative.")
+            return
+
+    if target_kind == "count":
+        st.caption("Count metrics are treated as totals per period (weekly/monthly views use sums). Range limits will be removed.")
+        if not bool(metric.get("higher_is_better", True)):
+            st.info("Note: 'higher is better' is ignored for counts (no red/green scale).")
+
+    confirm = st.checkbox("I understand this changes historical aggregation/visuals.", value=False, key=f"conv_confirm_{mid}")
+    if not confirm:
+        return
+
+    payload = {
+        "metric_kind": target_kind,
+        "unit_type": _KIND_TO_UNIT_TYPE[target_kind],
+    }
+    if target_kind == "score":
+        payload.update(
+            {
+                "range_start": int(rs),
+                "range_end": int(re),
+                "higher_is_better": bool(hib),
+            }
+        )
+    elif target_kind == "count":
+        payload.update({"range_start": None, "range_end": None})
+
+    if st.button("Convert", type="primary", use_container_width=True):
+        models.update_metric(mid, payload)
+        utils.finalize_action(f"Converted kind: {metric.get('name','Metric').title()} → {target_kind}")
+        st.rerun()
+
+
 def _push_recent_metric(metric_id, *, max_items=_RECENT_METRICS_MAX):
     if not metric_id:
         return
@@ -136,7 +243,7 @@ def _confirm_metric_update_dialog(m, new_payload, cat_options=None, new_cat_name
         })
 
     # 5. Range check (only if applicable)
-    if m.get("unit_type") == "integer_range":
+    if (m.get("unit_type") == "integer_range") or (new_payload.get("unit_type") == "integer_range"):
         if m.get("range_start") != new_payload.get("range_start") or \
            m.get("range_end") != new_payload.get("range_end"):
             changes.append({
@@ -144,6 +251,31 @@ def _confirm_metric_update_dialog(m, new_payload, cat_options=None, new_cat_name
                 "old": f"{m.get('range_start')} - {m.get('range_end')}",
                 "new": f"{new_payload.get('range_start')} - {new_payload.get('range_end')}"
             })
+
+    # 6. Kind check
+    old_kind = _infer_metric_kind(m)
+    new_kind = new_payload.get("metric_kind", old_kind)
+    if new_kind != old_kind:
+        changes.append(
+            {
+                "label": "Kind",
+                "old": old_kind,
+                "new": new_kind,
+            }
+        )
+
+    # 7. Score direction check
+    if new_kind == "score":
+        old_dir = bool(m.get("higher_is_better", True))
+        new_dir = bool(new_payload.get("higher_is_better", True))
+        if old_dir != new_dir:
+            changes.append(
+                {
+                    "label": "Higher Is Better",
+                    "old": "Yes" if old_dir else "No",
+                    "new": "Yes" if new_dir else "No",
+                }
+            )
 
     # Render the UI based on changes
     if not changes:
@@ -173,8 +305,8 @@ def _confirm_metric_update_dialog(m, new_payload, cat_options=None, new_cat_name
         st.session_state[f"ed_un_{m['id']}"] = m.get("unit_name", "") or ""
         st.session_state[f"ed_ct_{m['id']}"] = m.get("category_id")
         st.session_state.pop(f"inline_cat_{m['id']}", None)
-        st.session_state[f"rs_{m['id']}"] = int(m.get("range_start", 0))
-        st.session_state[f"re_{m['id']}"] = int(m.get("range_end", 10))
+        st.session_state[f"rs_{m['id']}"] = _int_or_default(m.get("range_start"), 1)
+        st.session_state[f"re_{m['id']}"] = _int_or_default(m.get("range_end"), 5)
         st.rerun()
 
 def show_edit_metrics(metrics_list, cats):
@@ -224,14 +356,58 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
         if new_cat_id == "NEW_CAT":
             inline_cat_name = st.text_input("New Category Name", key=f"inline_cat_{m['id']}")
 
+        current_kind = _infer_metric_kind(m)
+        entry_count = models.get_entry_count(m["id"])
+        can_change_kind = entry_count == 0
+        kind_disabled_msg = None if can_change_kind else f"Kind locked (has {entry_count} entries). Use Convert below."
+
+        kind_label = "Kind"
+        if kind_disabled_msg:
+            kind_label = f"{kind_label} — {kind_disabled_msg}"
+
+        kind_key = f"ed_kind_{m['id']}"
+        if kind_key not in st.session_state:
+            st.session_state[kind_key] = current_kind
+
+        new_kind = st.selectbox(
+            kind_label,
+            options=_METRIC_KIND_OPTIONS,
+            index=_METRIC_KIND_OPTIONS.index(current_kind),
+            key=kind_key,
+            disabled=not can_change_kind,
+        )
+
+        if not can_change_kind:
+            col_conv, _ = st.columns([1, 2])
+            if col_conv.button("Convert…", key=f"conv_btn_{m['id']}", use_container_width=True):
+                _convert_metric_kind_dialog(m)
+
+        new_higher_is_better = bool(m.get("higher_is_better", True))
+        if new_kind == "score":
+            new_higher_is_better = st.toggle(
+                "Higher is better",
+                value=new_higher_is_better,
+                key=f"ed_hib_{m['id']}",
+            )
+
         new_start, new_end = m.get("range_start", 0), m.get("range_end", 10)
         range_error = False
         error_msg = ""
         
-        if m.get("unit_type") == "integer_range":
+        if new_kind == "score":
             rcol1, rcol2 = st.columns(2)
-            new_start = rcol1.number_input("Min", value=int(m.get("range_start", 0)), step=1, key=f"rs_{m['id']}")
-            new_end = rcol2.number_input("Max", value=int(m.get("range_end", 10)), step=1, key=f"re_{m['id']}")
+            new_start = rcol1.number_input(
+                "Min",
+                value=_int_or_default(m.get("range_start"), 1),
+                step=1,
+                key=f"rs_{m['id']}",
+            )
+            new_end = rcol2.number_input(
+                "Max",
+                value=_int_or_default(m.get("range_end"), 5),
+                step=1,
+                key=f"re_{m['id']}",
+            )
             
             if new_start >= new_end:
                 range_error, error_msg = True, "Max must be strictly greater than Min."
@@ -261,8 +437,13 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
                     "unit_name": utils.normalize_name(new_unit),
                     "category_id": target_cat_id
                 }
-                if m.get("unit_type") == "integer_range":
+                if new_kind == "score":
                     payload["range_start"], payload["range_end"] = new_start, new_end
+                    payload["higher_is_better"] = bool(new_higher_is_better)
+
+                if can_change_kind:
+                    payload["metric_kind"] = new_kind
+                    payload["unit_type"] = _KIND_TO_UNIT_TYPE[new_kind]
 
                 # Triggers the dialog to show full Current vs Proposed changes
                 _confirm_metric_update_dialog(
@@ -304,21 +485,25 @@ def show_create_metric(cats):
         # 1.5 Add Description Field
         desc = st.text_area("Description (Optional)", placeholder="What does this metric track?", key="create_desc")
 
-        col_unit, col_type = st.columns(2)
+        col_unit, col_kind = st.columns(2)
         unit_name = col_unit.text_input("Unit", placeholder="e.g., km", key="create_unit")
-        unit_type = col_type.selectbox(
-            "Value Type", 
-            options=["float", "integer", "integer_range"],
-            key="create_utype"
+        metric_kind = col_kind.selectbox(
+            "Kind",
+            options=_METRIC_KIND_OPTIONS,
+            format_func=lambda k: {"quantitative": "Quantitative", "count": "Count", "score": "Score"}.get(k, k),
+            key="create_mkind",
         )
+        unit_type = _KIND_TO_UNIT_TYPE[metric_kind]
 
         # 2. Dynamic Range Configuration
         range_start, range_end = 0, 10
         range_error = False
-        if unit_type == "integer_range":
+        higher_is_better = True
+        if metric_kind == "score":
+            higher_is_better = st.toggle("Higher is better", value=True, key="create_hib")
             rcol1, rcol2 = st.columns(2)
-            range_start = rcol1.number_input("Min Value", value=0, step=1, key="create_rs")
-            range_end = rcol2.number_input("Max Value", value=10, step=1, key="create_re")
+            range_start = rcol1.number_input("Min Value", value=1, step=1, key="create_rs")
+            range_end = rcol2.number_input("Max Value", value=5, step=1, key="create_re")
             if range_start >= range_end:
                 st.error("Max must be greater than Min")
                 range_error = True
@@ -353,12 +538,14 @@ def show_create_metric(cats):
                     "description": desc.strip() if desc else None,
                     "unit_name": utils.normalize_name(unit_name) if unit_name else None,
                     "unit_type": unit_type, 
+                    "metric_kind": metric_kind,
                     "category_id": final_cat_id
                 }
                 
-                if unit_type == "integer_range":
+                if metric_kind == "score":
                     payload["range_start"] = range_start
                     payload["range_end"] = range_end
+                    payload["higher_is_better"] = bool(higher_is_better)
 
                 models.create_metric(payload)
                 
