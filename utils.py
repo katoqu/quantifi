@@ -159,16 +159,16 @@ def apply_landing_grid_css():
     <style>
             /* 1. SHRINK THE CONTAINER BOX: Targets the inner padding of the border */
             [data-testid="stVerticalBlockBorderWrapper"] > div {
-                padding: 4px 10px !important; 
+                padding: 6px 10px !important; 
             }
 
-            /* 2. THE 50/50 GRID: Split the flex space equally, lock buttons to 100px */
+            /* 2. MOBILE-FIRST GRID: Identity + compact trend box */
             .action-card-grid {
                 display: grid !important;
-                grid-template-columns: 2fr 1fr 100px !important; 
+                grid-template-columns: minmax(0, 1fr) fit-content(124px) !important;
                 align-items: center !important;
                 width: 100%;
-                gap: 0px !important;
+                gap: 6px !important;
             }
 
             /* 3. TIGHTEN TEXT: Reduce vertical space between lines */
@@ -177,18 +177,66 @@ def apply_landing_grid_css():
                 min-width: 0;
             }
 
+            .truncate-text {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                min-width: 0;
+            }
+
+            .trend-head {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 8px;
+                margin-bottom: 1px;
+                min-width: 0;
+            }
+
+            .recent-value {
+                font-size: 0.82rem;
+                font-weight: 900;
+                opacity: 0.92;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                min-width: 0;
+                text-align: right;
+            }
+
+            .recent-date {
+                font-size: 0.65rem;
+                font-weight: 700;
+                opacity: 0.55;
+                white-space: nowrap;
+                text-align: right;
+                margin-bottom: 3px;
+            }
+
             .value-box {
-                justify-self: start; 
+                justify-self: end; 
                 border-left: 1px solid rgba(128,128,128,0.2); 
-                padding-left: 10px;
+                padding-left: 8px;
                 line-height: 1.0;
                 text-align: left;
+                min-width: 0;
             }
 
             div[data-testid="stPills"] { 
                 margin-top: 4px !important; 
                 display: flex;
                 justify-content: flex-end;
+            }
+
+            @media (max-width: 640px) {
+                .action-card-grid {
+                    grid-template-columns: minmax(0, 1fr) fit-content(108px) !important;
+                    gap: 4px !important;
+                }
+
+                .value-box {
+                    padding-left: 6px !important;
+                }
             }
         </style>
     """, unsafe_allow_html=True)

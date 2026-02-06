@@ -4,6 +4,36 @@ import auth
 import models
 from ui import visualize, pages
 
+def _normalize_metric_kind(metric_kind, unit_type):
+    if metric_kind in ("quantitative", "count", "score"):
+        return metric_kind
+    if unit_type == "integer_range":
+        return "score"
+    if unit_type == "integer":
+        return "count"
+    return "quantitative"
+
+def _format_latest_value(*, metric, stats):
+    if not stats or stats.get("last_date") in (None, "", "No Data") or stats.get("count", 0) == 0:
+        return "—", ""
+
+    kind = _normalize_metric_kind(metric.get("metric_kind"), metric.get("unit_type", "float"))
+    unit = (metric.get("unit_name") or "").strip()
+    val = stats.get("latest")
+    if val is None:
+        return "—", ""
+
+    try:
+        if kind == "quantitative":
+            value_str = f"{float(val):.1f}"
+        else:
+            value_str = f"{int(round(float(val)))}"
+    except Exception:
+        value_str = str(val)
+
+    suffix = f" {unit}" if unit else ""
+    return value_str, suffix
+
 def show_landing_page(metrics_list, all_entries):
     cats = models.get_categories() or []
     user = auth.get_current_user()
@@ -42,7 +72,7 @@ def render_metric_grid(metrics_list, cats, all_entries):
     scored_metrics = []
     for m in metrics_list:
         m_df = grouped_by_metric.get(m['id'], pd.DataFrame())
-        stats = visualize.get_metric_stats(m_df) if not m_df.empty else {}
+        stats = visualize.get_metric_stats(m_df)
         
         # --- FIX START: Extract Target ---
         latest_target = None
@@ -83,6 +113,10 @@ def _render_action_card(metric, cat_map, stats, target=None):
     cat_name = cat_map.get(metric.get('category_id'), "Uncat")
     description = metric.get("description", "")
     trend_color ="#007bff"
+    kind = _normalize_metric_kind(metric.get("metric_kind"), metric.get("unit_type", "float"))
+    latest_value_str, latest_unit_suffix = _format_latest_value(metric=metric, stats=stats)
+    last_date = stats.get("last_date") if stats else None
+    last_date_str = last_date if last_date not in (None, "", "No Data") else ""
 
     # --- NEW: Badge Logic ---
     badge_html = ""
@@ -122,7 +156,14 @@ def _render_action_card(metric, cat_map, stats, target=None):
         col_main = st.columns([1])[0] 
 
         with col_main:
-            sparkline_html = _render_sparkline(stats.get("spark_values", []), trend_color)
+            sparkline_html = _render_sparkline(
+                stats.get("spark_values", []),
+                trend_color,
+                kind=kind,
+                higher_is_better=metric.get("higher_is_better", True),
+                range_start=metric.get("range_start"),
+                range_end=metric.get("range_end"),
+            )
             card_html = "\n".join([
                 '<div class="action-card-grid">',
                 '  <div class="metric-identity">',
@@ -131,12 +172,14 @@ def _render_action_card(metric, cat_map, stats, target=None):
                 f'    <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}{badge_html}</div>',
                 '  </div>',
                 '  <div class="value-box">',
-                '    <span style="font-size: 0.55rem; opacity: 0.7; font-weight: 600;">TREND</span><br>',
+                '    <div class="trend-head">',
+                f'      <span class="recent-value">{latest_value_str}{latest_unit_suffix}</span>',
+                '    </div>',
+                f'    <div class="recent-date">{last_date_str}</div>',
                 f'    <div style="height: 28px; display: flex; align-items: center;">{sparkline_html}</div>',
                 '  </div>',
-                '  <div></div>',
                 '</div>',
-                '<div style="height: 15px;"></div>'
+                '<div style="height: 8px;"></div>'
             ])
             st.markdown(card_html, unsafe_allow_html=True)
             choice = st.pills(f"act_{mid}", options=["➕", "📊", "⚙️"], 
@@ -168,33 +211,115 @@ def _render_action_card(metric, cat_map, stats, target=None):
                     # Fallback if page object isn't found
                     st.error("Configure page not found in navigation.")
 
-def _render_sparkline(values, color):
+def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=True, range_start=None, range_end=None):
     if not values:
         return '<span style="font-size: 0.9rem; opacity: 0.6;">—</span>'
 
     width = 96
     height = 28
     pad = 2
-    vmin = min(values)
-    vmax = max(values)
+    clean = [v for v in values if v is not None and pd.notna(v)]
+    if not clean:
+        return '<span style="font-size: 0.9rem; opacity: 0.6;">—</span>'
 
-    if len(values) == 1 or vmax == vmin:
-        points = f"{pad},{height/2} {width-pad},{height/2}"
-    else:
-        step = (width - pad * 2) / (len(values) - 1)
+    vmin = float(min(clean))
+    vmax = float(max(clean))
+
+    def to_y(v):
+        if len(clean) == 1 or vmax == vmin:
+            return height / 2
         span = vmax - vmin
+        return height - pad - ((float(v) - vmin) / span) * (height - pad * 2)
+
+    last_x = None
+    last_y = None
+
+    if kind == "count":
+        # Mini bar chart (better signal for count metrics)
+        n = len(clean)
+        bar_gap = 1.0
+        available = width - pad * 2
+        bar_w = max(2.0, (available - bar_gap * (n - 1)) / max(1, n))
+        vmax_local = max(1.0, vmax)
+        rects = []
+        for i, v in enumerate(clean):
+            x = pad + i * (bar_w + bar_gap)
+            h = ((float(v) / vmax_local) * (height - pad * 2)) if vmax_local else 0
+            y = height - pad - h
+            is_last = i == n - 1
+            rects.append(
+                f'<rect x="{x:.2f}" y="{y:.2f}" width="{bar_w:.2f}" height="{h:.2f}" '
+                f'rx="1.2" ry="1.2" fill="{color}" opacity="0.85" '
+                f'stroke="rgba(0,0,0,0.22)" stroke-width="{1 if is_last else 0}"/>'
+            )
+        return (
+            f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
+            f'preserveAspectRatio="none" aria-hidden="true">{"".join(rects)}</svg>'
+        )
+
+    if kind == "score":
+        # Discrete blocks with a red->green scale (reversed if lower is better)
+        rs = range_start
+        re = range_end
+        try:
+            rs = int(rs) if rs is not None else int(round(vmin))
+        except Exception:
+            rs = int(round(vmin))
+        try:
+            re = int(re) if re is not None else int(round(vmax))
+        except Exception:
+            re = int(round(vmax))
+        span = max(1, re - rs)
+        n = len(clean)
+        gap = 1.0
+        available = width - pad * 2
+        block_w = max(2.0, (available - gap * (n - 1)) / max(1, n))
+        rects = []
+        for i, v in enumerate(clean):
+            x = pad + i * (block_w + gap)
+            vv = float(v)
+            t = min(1.0, max(0.0, (vv - rs) / span))
+            if not bool(higher_is_better):
+                t = 1.0 - t
+            # Simple interpolation between red and green
+            r = int(round(220 * (1.0 - t) + 40 * t))
+            g = int(round(60 * (1.0 - t) + 180 * t))
+            b = int(round(70 * (1.0 - t) + 80 * t))
+            fill = f"rgb({r},{g},{b})"
+            is_last = i == n - 1
+            rects.append(
+                f'<rect x="{x:.2f}" y="{pad:.2f}" width="{block_w:.2f}" height="{height - pad * 2:.2f}" '
+                f'rx="2" ry="2" fill="{fill}" opacity="0.95" '
+                f'stroke="rgba(0,0,0,0.22)" stroke-width="{1 if is_last else 0}"/>'
+            )
+        return (
+            f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
+            f'preserveAspectRatio="none" aria-hidden="true">{"".join(rects)}</svg>'
+        )
+
+    # quantitative: line sparkline with a "spike" marker at the latest point
+    if len(clean) == 1 or vmax == vmin:
+        points = f"{pad},{height/2} {width-pad},{height/2}"
+        last_x, last_y = width - pad, height / 2
+    else:
+        step = (width - pad * 2) / (len(clean) - 1)
         pts = []
-        for i, v in enumerate(values):
+        for i, v in enumerate(clean):
             x = pad + i * step
-            y = height - pad - ((v - vmin) / span) * (height - pad * 2)
+            y = to_y(v)
             pts.append(f"{x:.2f},{y:.2f}")
+            last_x, last_y = x, y
         points = " ".join(pts)
 
     return (
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
         f'preserveAspectRatio="none" aria-hidden="true">'
+        f'<line x1="{last_x:.2f}" x2="{last_x:.2f}" y1="{pad}" y2="{height-pad}" '
+        f'stroke="rgba(0,0,0,0.10)" stroke-width="1"/>'
         f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{points}" '
-        f'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        f'stroke-linecap="round" stroke-linejoin="round"/>'
+        f'<circle cx="{last_x:.2f}" cy="{last_y:.2f}" r="2.6" fill="{color}" stroke="white" stroke-width="1.2"/>'
+        f'</svg>'
     )
 
 def show_advanced_analytics_view(metric):
