@@ -117,6 +117,12 @@ def _render_action_card(metric, cat_map, stats, target=None):
     latest_value_str, latest_unit_suffix = _format_latest_value(metric=metric, stats=stats)
     last_date = stats.get("last_date") if stats else None
     last_date_str = last_date if last_date not in (None, "", "No Data") else ""
+    latest_label_value = (
+        f"{latest_value_str}{latest_unit_suffix}"
+        if latest_value_str not in (None, "", "—") and stats and stats.get("count", 0) > 0
+        else ""
+    )
+    spark_caption = "\n".join([s for s in (latest_label_value, last_date_str) if s])
 
     # --- NEW: Badge Logic ---
     badge_html = ""
@@ -156,7 +162,7 @@ def _render_action_card(metric, cat_map, stats, target=None):
         col_main = st.columns([1])[0] 
 
         with col_main:
-            sparkline_html = _render_sparkline(
+            sparkline_svg = _render_sparkline(
                 stats.get("spark_values", []),
                 trend_color,
                 kind=kind,
@@ -164,6 +170,28 @@ def _render_action_card(metric, cat_map, stats, target=None):
                 range_start=metric.get("range_start"),
                 range_end=metric.get("range_end"),
             )
+            if latest_label_value or last_date_str:
+                caption_value_html = (
+                    f'<div class="spark-caption-value" title="{latest_label_value}">{latest_label_value}</div>'
+                    if latest_label_value
+                    else ""
+                )
+                caption_date_html = (
+                    f'<div class="spark-caption-date" title="{last_date_str}">{last_date_str}</div>'
+                    if last_date_str
+                    else ""
+                )
+                sparkline_html = "\n".join([
+                    '<div class="spark-stack">',
+                    f'  <div class="spark-caption" title="{spark_caption}">',
+                    f'    {caption_value_html}',
+                    f'    {caption_date_html}',
+                    '  </div>',
+                    f'  {sparkline_svg}',
+                    '</div>',
+                ])
+            else:
+                sparkline_html = f'<div class="spark-stack">{sparkline_svg}</div>'
             card_html = "\n".join([
                 '<div class="action-card-grid">',
                 '  <div class="metric-identity">',
@@ -172,11 +200,7 @@ def _render_action_card(metric, cat_map, stats, target=None):
                 f'    <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}{badge_html}</div>',
                 '  </div>',
                 '  <div class="value-box">',
-                '    <div class="trend-head">',
-                f'      <span class="recent-value">{latest_value_str}{latest_unit_suffix}</span>',
-                '    </div>',
-                f'    <div class="recent-date">{last_date_str}</div>',
-                f'    <div style="height: 28px; display: flex; align-items: center;">{sparkline_html}</div>',
+                f'    <div style="display: flex; align-items: flex-end; justify-content: flex-end;">{sparkline_html}</div>',
                 '  </div>',
                 '</div>',
                 '<div style="height: 8px;"></div>'
@@ -215,7 +239,7 @@ def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=Tr
     if not values:
         return '<span style="font-size: 0.9rem; opacity: 0.6;">—</span>'
 
-    width = 96
+    width = 192
     height = 28
     pad = 2
     clean = [v for v in values if v is not None and pd.notna(v)]
@@ -242,19 +266,31 @@ def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=Tr
         bar_w = max(2.0, (available - bar_gap * (n - 1)) / max(1, n))
         vmax_local = max(1.0, vmax)
         rects = []
+        last_cx = None
+        last_cy = None
         for i, v in enumerate(clean):
             x = pad + i * (bar_w + bar_gap)
             h = ((float(v) / vmax_local) * (height - pad * 2)) if vmax_local else 0
             y = height - pad - h
             is_last = i == n - 1
+            if is_last:
+                last_cx = x + bar_w / 2
+                last_cy = y
             rects.append(
                 f'<rect x="{x:.2f}" y="{y:.2f}" width="{bar_w:.2f}" height="{h:.2f}" '
                 f'rx="1.2" ry="1.2" fill="{color}" opacity="0.85" '
                 f'stroke="rgba(0,0,0,0.22)" stroke-width="{1 if is_last else 0}"/>'
             )
+        lollipop = ""
+        if last_cx is not None and last_cy is not None:
+            lollipop = (
+                f'<line x1="{last_cx:.2f}" x2="{last_cx:.2f}" y1="{last_cy:.2f}" y2="{pad:.2f}" '
+                f'stroke="rgba(0,0,0,0.16)" stroke-width="1"/>'
+                f'<circle cx="{last_cx:.2f}" cy="{last_cy:.2f}" r="2.6" fill="{color}" stroke="white" stroke-width="1.2"/>'
+            )
         return (
-            f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
-            f'preserveAspectRatio="none" aria-hidden="true">{"".join(rects)}</svg>'
+            f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
+            f'preserveAspectRatio="none" aria-hidden="true">{"".join(rects)}{lollipop}</svg>'
         )
 
     if kind == "score":
@@ -275,26 +311,42 @@ def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=Tr
         available = width - pad * 2
         block_w = max(2.0, (available - gap * (n - 1)) / max(1, n))
         rects = []
+        last_cx = None
+        last_cy = None
+        last_fill = None
         for i, v in enumerate(clean):
             x = pad + i * (block_w + gap)
             vv = float(v)
-            t = min(1.0, max(0.0, (vv - rs) / span))
-            if not bool(higher_is_better):
-                t = 1.0 - t
+            t_height = min(1.0, max(0.0, (vv - rs) / span))
+            t_color = (1.0 - t_height) if not bool(higher_is_better) else t_height
             # Simple interpolation between red and green
-            r = int(round(220 * (1.0 - t) + 40 * t))
-            g = int(round(60 * (1.0 - t) + 180 * t))
-            b = int(round(70 * (1.0 - t) + 80 * t))
+            r = int(round(220 * (1.0 - t_color) + 40 * t_color))
+            g = int(round(60 * (1.0 - t_color) + 180 * t_color))
+            b = int(round(70 * (1.0 - t_color) + 80 * t_color))
             fill = f"rgb({r},{g},{b})"
+            h = max(2.0, t_height * (height - pad * 2))
+            y = height - pad - h
             is_last = i == n - 1
+            if is_last:
+                last_cx = x + block_w / 2
+                last_cy = y
+                last_fill = fill
             rects.append(
-                f'<rect x="{x:.2f}" y="{pad:.2f}" width="{block_w:.2f}" height="{height - pad * 2:.2f}" '
+                f'<rect x="{x:.2f}" y="{y:.2f}" width="{block_w:.2f}" height="{h:.2f}" '
                 f'rx="2" ry="2" fill="{fill}" opacity="0.95" '
                 f'stroke="rgba(0,0,0,0.22)" stroke-width="{1 if is_last else 0}"/>'
             )
+        lollipop = ""
+        if last_cx is not None and last_cy is not None:
+            lollipop = (
+                f'<line x1="{last_cx:.2f}" x2="{last_cx:.2f}" y1="{last_cy:.2f}" y2="{pad:.2f}" '
+                f'stroke="rgba(0,0,0,0.16)" stroke-width="1"/>'
+                f'<circle cx="{last_cx:.2f}" cy="{last_cy:.2f}" r="2.6" fill="{last_fill or color}" '
+                f'stroke="white" stroke-width="1.2"/>'
+            )
         return (
-            f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
-            f'preserveAspectRatio="none" aria-hidden="true">{"".join(rects)}</svg>'
+            f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
+            f'preserveAspectRatio="none" aria-hidden="true">{"".join(rects)}{lollipop}</svg>'
         )
 
     # quantitative: line sparkline with a "spike" marker at the latest point
@@ -312,10 +364,10 @@ def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=Tr
         points = " ".join(pts)
 
     return (
-        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
+        f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
         f'preserveAspectRatio="none" aria-hidden="true">'
-        f'<line x1="{last_x:.2f}" x2="{last_x:.2f}" y1="{pad}" y2="{height-pad}" '
-        f'stroke="rgba(0,0,0,0.10)" stroke-width="1"/>'
+        f'<line x1="{last_x:.2f}" x2="{last_x:.2f}" y1="{last_y:.2f}" y2="{pad:.2f}" '
+        f'stroke="rgba(0,0,0,0.16)" stroke-width="1"/>'
         f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{points}" '
         f'stroke-linecap="round" stroke-linejoin="round"/>'
         f'<circle cx="{last_x:.2f}" cy="{last_y:.2f}" r="2.6" fill="{color}" stroke="white" stroke-width="1.2"/>'

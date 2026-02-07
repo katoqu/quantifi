@@ -165,7 +165,7 @@ def apply_landing_grid_css():
             /* 2. MOBILE-FIRST GRID: Identity + compact trend box */
             .action-card-grid {
                 display: grid !important;
-                grid-template-columns: minmax(0, 1fr) fit-content(124px) !important;
+                grid-template-columns: minmax(0, 1fr) fit-content(220px) !important;
                 align-items: center !important;
                 width: 100%;
                 gap: 6px !important;
@@ -193,6 +193,49 @@ def apply_landing_grid_css():
                 min-width: 0;
             }
 
+            .spark-stack {
+                width: 192px;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 2px;
+                transform: translateY(30px);
+            }
+
+            .spark-stack > svg {
+                display: block;
+            }
+
+            .spark-caption {
+                width: 192px;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                line-height: 1.0;
+                font-variant-numeric: tabular-nums;
+            }
+
+            .spark-caption-value {
+                max-width: 192px;
+                font-size: 0.72rem;
+                font-weight: 900;
+                opacity: 0.92;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .spark-caption-date {
+                max-width: 192px;
+                margin-top: 1px;
+                font-size: 0.60rem;
+                font-weight: 700;
+                opacity: 0.55;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
             .recent-value {
                 font-size: 0.82rem;
                 font-weight: 900;
@@ -215,11 +258,11 @@ def apply_landing_grid_css():
 
             .value-box {
                 justify-self: end; 
-                border-left: 1px solid rgba(128,128,128,0.2); 
-                padding-left: 8px;
+                padding-left: 0px;
                 line-height: 1.0;
                 text-align: left;
                 min-width: 0;
+                align-self: end;
             }
 
             div[data-testid="stPills"] { 
@@ -230,7 +273,7 @@ def apply_landing_grid_css():
 
             @media (max-width: 640px) {
                 .action-card-grid {
-                    grid-template-columns: minmax(0, 1fr) fit-content(108px) !important;
+                    grid-template-columns: minmax(0, 1fr) fit-content(200px) !important;
                     gap: 4px !important;
                 }
 
