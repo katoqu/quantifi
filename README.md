@@ -2,6 +2,10 @@
 
 Minimal Streamlit app for manual metric tracking using Supabase as the backend.
 
+Docs:
+- Testing: `docs/TESTING.md`
+- Documentation strategy: `docs/DOCUMENTATION.md`
+
 Quick start (local):
 
 1. Create and activate a virtual environment:
@@ -65,4 +69,10 @@ To maintain version control, never create tables directly in the Supabase Web UI
 
 ```bash
 streamlit run app.py
+```
+
+Testing:
+
+```bash
+python3 -m pytest
 ```
