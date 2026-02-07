@@ -238,7 +238,8 @@ def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=Tr
 
     width = 192
     height = 28
-    pad = 2
+    # Slight extra padding prevents the end-marker from getting clipped on very narrow screens.
+    pad = 4
     clean = [v for v in values if v is not None and pd.notna(v)]
     if not clean:
         return '<span style="font-size: 0.9rem; opacity: 0.6;">—</span>'
