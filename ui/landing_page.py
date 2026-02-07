@@ -51,13 +51,21 @@ def show_landing_page(metrics_list, all_entries):
 def render_metric_grid(metrics_list, cats, all_entries):
     # Initialize the session state for the pills if it doesn't exist
     if "cat_filter" not in st.session_state:
-        st.session_state["cat_filter"] = "All"
+        st.session_state["cat_filter"] = None
 
     cat_map = {c['id']: c['name'].title() for c in cats}
-    cat_options = ["All"] + sorted([c['name'].title() for c in cats])
+    cat_options = ["Recent"] + sorted([c['name'].title() for c in cats])
+    if st.session_state.get("cat_filter") is not None and st.session_state.get("cat_filter") not in cat_options:
+        st.session_state["cat_filter"] = None
     
-    st.pills("Filter", options=cat_options, key="cat_filter", label_visibility="collapsed")
-    current_filter = st.session_state.get("cat_filter", "All")
+    st.pills(
+        "Filter",
+        options=cat_options,
+        key="cat_filter",
+        label_visibility="collapsed",
+        selection_mode="single",
+    )
+    current_filter = st.session_state.get("cat_filter")
 
     all_df = pd.DataFrame(all_entries)
 
@@ -92,12 +100,29 @@ def render_metric_grid(metrics_list, cats, all_entries):
         
         # --- FIX: Append 4 items instead of 3 ---
         scored_metrics.append((latest_ts, m, stats, latest_target)) 
-    
+
+    if current_filter == "Recent":
+        recent = [
+            (ts, m, stats, target)
+            for ts, m, stats, target in scored_metrics
+            if ts is not None
+            and ts != pd.Timestamp.min.tz_localize('UTC')
+            and not m.get("is_archived", False)
+        ]
+        recent.sort(key=lambda x: x[0], reverse=True)
+        recent = recent[:5]
+        if not recent:
+            st.info("No recent metrics yet — add an entry to see them here.")
+            return
+        for _, m, stats, target in recent:
+            _render_action_card(m, cat_map, stats, target)
+        return
+
     scored_metrics.sort(key=lambda x: (x[1].get('is_archived', False), x[1]['name'].lower()))
-    
+
     # Now this loop will work because we appended 4 items above
     for _, m, stats, target in scored_metrics:
-        if current_filter == "All" or cat_map.get(m.get('category_id')) == current_filter:
+        if current_filter is None or cat_map.get(m.get('category_id')) == current_filter:
             _render_action_card(m, cat_map, stats, target)
 
 
