@@ -159,64 +159,75 @@ def apply_landing_grid_css():
     <style>
             /* 1. SHRINK THE CONTAINER BOX: Targets the inner padding of the border */
             [data-testid="stVerticalBlockBorderWrapper"] > div {
-                padding: 6px 10px !important; 
+                padding: 8px 10px !important; 
             }
 
-            /* 2. MOBILE-FIRST GRID: Identity + compact trend box */
-            .action-card-grid {
-                display: grid !important;
-                grid-template-columns: minmax(0, 1fr) fit-content(220px) !important;
-                align-items: center !important;
-                width: 100%;
-                gap: 6px !important;
-            }
-
-            /* 3. TIGHTEN TEXT: Reduce vertical space between lines */
-            .metric-identity {
-                line-height: 1.2 !important;
-                min-width: 0;
-            }
-
-            .truncate-text {
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                min-width: 0;
-            }
-
-            .trend-head {
+            /* 2. OVERVIEW CARD: stable vertical layout */
+            .overview-title-row {
                 display: flex;
                 align-items: baseline;
-                justify-content: space-between;
                 gap: 8px;
-                margin-bottom: 1px;
+                flex-wrap: wrap;
                 min-width: 0;
+                line-height: 1.15;
+                margin-bottom: 6px;
             }
 
-            .spark-stack {
-                width: 192px;
-                display: flex;
-                flex-direction: column;
-                align-items: flex-end;
-                gap: 2px;
-                transform: translateY(30px);
+            .overview-cat {
+                font-size: 0.65rem;
+                color: #FF4B4B;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                white-space: nowrap;
             }
 
-            .spark-stack > svg {
+            .overview-name {
+                min-width: 0;
+                flex: 1 1 auto;
+                font-size: 0.95rem;
+                font-weight: 900;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: normal;
+                display: -webkit-box;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2;
+            }
+
+            .overview-spark-wrap {
+                position: relative;
+                width: 100%;
+            }
+
+            .overview-spark-wrap > svg {
+                width: 100% !important;
                 display: block;
             }
 
+            .overview-target {
+                position: absolute;
+                top: 0px;
+                left: 0px;
+                padding: 1px 2px;
+                font-size: 0.58rem;
+                font-weight: 900;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                opacity: 0.9;
+                pointer-events: none;
+            }
+
             .spark-caption {
-                width: 192px;
                 display: flex;
                 flex-direction: column;
                 align-items: flex-end;
                 line-height: 1.0;
                 font-variant-numeric: tabular-nums;
+                margin-top: 4px;
             }
 
             .spark-caption-value {
-                max-width: 192px;
                 font-size: 0.72rem;
                 font-weight: 900;
                 opacity: 0.92;
@@ -226,7 +237,6 @@ def apply_landing_grid_css():
             }
 
             .spark-caption-date {
-                max-width: 192px;
                 margin-top: 1px;
                 font-size: 0.60rem;
                 font-weight: 700;
@@ -256,30 +266,10 @@ def apply_landing_grid_css():
                 margin-bottom: 3px;
             }
 
-            .value-box {
-                justify-self: end; 
-                padding-left: 0px;
-                line-height: 1.0;
-                text-align: left;
-                min-width: 0;
-                align-self: end;
-            }
-
             div[data-testid="stPills"] { 
                 margin-top: 4px !important; 
                 display: flex;
                 justify-content: flex-end;
-            }
-
-            @media (max-width: 640px) {
-                .action-card-grid {
-                    grid-template-columns: minmax(0, 1fr) fit-content(200px) !important;
-                    gap: 4px !important;
-                }
-
-                .value-box {
-                    padding-left: 6px !important;
-                }
             }
         </style>
     """, unsafe_allow_html=True)

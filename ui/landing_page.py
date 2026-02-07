@@ -147,118 +147,90 @@ def _render_action_card(metric, cat_map, stats, target=None):
         if latest_value_str not in (None, "", "—") and stats and stats.get("count", 0) > 0
         else ""
     )
-    spark_caption = "\n".join([s for s in (latest_label_value, last_date_str) if s])
-
-    # --- NEW: Badge Logic ---
-    badge_html = ""
+    target_html = ""
     if target:
-        # Define colors for your specific actions
         color_map = {
-            "Increase": "#e6f4ea", # Light Green bg
-            "text_Increase": "#137333", # Dark Green text
-            "Reduce": "#fce8e6",   # Light Red
-            "text_Reduce": "#c5221f", 
-            "Stay": "#e8f0fe",     # Light Blue
-            "text_Stay": "#1967d2",
-            "Pause": "#f1f3f4",    # Grey
-            "text_Pause": "#3c4043"
+            "Increase": "#137333",
+            "Reduce": "#c5221f",
+            "Stay": "#1967d2",
+            "Pause": "#3c4043",
         }
-        
-        bg = color_map.get(target, "#f1f3f4")
-        tx = color_map.get(f"text_{target}", "#3c4043")
-        
-        badge_html = f"""
-        <span style="
-            background-color: {bg}; 
-            color: {tx}; 
-            padding: 2px 6px; 
-            border-radius: 4px; 
-            font-size: 0.6rem; 
-            font-weight: 700; 
-            margin-left: 8px; 
-            text-transform: uppercase; 
-            vertical-align: middle;">
-            {target}
-        </span>
-        """
-    # ------------------------
+        tx = color_map.get(target, "#3c4043")
+        target_html = f'<div class="overview-target" style="color:{tx};">{str(target).upper()}</div>'
 
     with st.container(border=True):
-        col_main = st.columns([1])[0] 
+        sparkline_svg = _render_sparkline(
+            stats.get("spark_values", []),
+            trend_color,
+            kind=kind,
+            higher_is_better=metric.get("higher_is_better", True),
+            range_start=metric.get("range_start"),
+            range_end=metric.get("range_end"),
+        )
 
-        with col_main:
-            sparkline_svg = _render_sparkline(
-                stats.get("spark_values", []),
-                trend_color,
-                kind=kind,
-                higher_is_better=metric.get("higher_is_better", True),
-                range_start=metric.get("range_start"),
-                range_end=metric.get("range_end"),
+        caption_html = ""
+        if latest_label_value or last_date_str:
+            caption_value_html = (
+                f'<div class="spark-caption-value" title="{latest_label_value}">{latest_label_value}</div>'
+                if latest_label_value
+                else ""
             )
-            if latest_label_value or last_date_str:
-                caption_value_html = (
-                    f'<div class="spark-caption-value" title="{latest_label_value}">{latest_label_value}</div>'
-                    if latest_label_value
-                    else ""
-                )
-                caption_date_html = (
-                    f'<div class="spark-caption-date" title="{last_date_str}">{last_date_str}</div>'
-                    if last_date_str
-                    else ""
-                )
-                sparkline_html = "\n".join([
-                    '<div class="spark-stack">',
-                    f'  <div class="spark-caption" title="{spark_caption}">',
-                    f'    {caption_value_html}',
-                    f'    {caption_date_html}',
-                    '  </div>',
-                    f'  {sparkline_svg}',
-                    '</div>',
-                ])
-            else:
-                sparkline_html = f'<div class="spark-stack">{sparkline_svg}</div>'
-            card_html = "\n".join([
-                '<div class="action-card-grid">',
-                '  <div class="metric-identity">',
-                f'    <span style="font-size: 0.65rem; color: #FF4B4B; font-weight: 700;">{cat_name.upper()}</span><br>',
-                # Updated line below to include badge_html
-                f'    <div class="truncate-text" style="font-size: 0.95rem; font-weight: 800;">{m_name}{badge_html}</div>',
-                '  </div>',
-                '  <div class="value-box">',
-                f'    <div style="display: flex; align-items: flex-end; justify-content: flex-end;">{sparkline_html}</div>',
-                '  </div>',
+            caption_date_html = (
+                f'<div class="spark-caption-date" title="{last_date_str}">{last_date_str}</div>'
+                if last_date_str
+                else ""
+            )
+            caption_html = "\n".join([
+                '<div class="spark-caption">',
+                caption_value_html,
+                caption_date_html,
                 '</div>',
-                '<div style="height: 8px;"></div>'
             ])
-            st.markdown(card_html, unsafe_allow_html=True)
-            choice = st.pills(f"act_{mid}", options=["➕", "📊", "⚙️"], 
-                              key=f"p_{mid}", 
-                              label_visibility="collapsed",
-                              help=description)
-            
-            if choice == "➕":
-                st.session_state["last_active_mid"] = mid
-                st.session_state["tracker_view_selector"] = "Record"
+
+        card_parts = [
+            '<div class="overview-card">',
+            '<div class="overview-title-row">',
+            f'<span class="overview-cat">{cat_name.upper()}</span>',
+            f'<span class="overview-name" title="{m_name}">{m_name}</span>',
+            '</div>',
+            '<div class="overview-spark-wrap">',
+            target_html,
+            sparkline_svg,
+            '</div>',
+            caption_html,
+            '</div>',
+        ]
+        card_html = "\n".join([p for p in card_parts if p])
+        st.markdown(card_html, unsafe_allow_html=True)
+
+        choice = st.pills(
+            f"act_{mid}",
+            options=["➕", "📊", "⚙️"],
+            key=f"p_{mid}",
+            label_visibility="collapsed",
+            help=description,
+        )
+
+        if choice == "➕":
+            st.session_state["last_active_mid"] = mid
+            st.session_state["tracker_view_selector"] = "Record"
+            st.rerun()
+        elif choice == "📊":
+            st.session_state["last_active_mid"] = mid
+            st.session_state["tracker_view_selector"] = "Analytics"
+            st.rerun()
+        elif choice == "⚙️":
+            st.session_state["last_active_mid"] = mid
+            st.session_state["config_tab_selection"] = "📊 Edit Metric"
+
+            nav_pages = st.session_state.get("nav_pages", [])
+            config_page = next((p for p in nav_pages if p.title == "Configure"), None)
+
+            if config_page:
+                st.switch_page(config_page)
                 st.rerun()
-            elif choice == "📊":
-                st.session_state["last_active_mid"] = mid
-                st.session_state["tracker_view_selector"] = "Analytics"
-                st.rerun()
-            elif choice == "⚙️":
-                # 1. Set the metric focus and tab selection
-                st.session_state["last_active_mid"] = mid
-                st.session_state["config_tab_selection"] = "📊 Edit Metric"
-                
-                # 2. Find the "Configure" page object from the navigation list
-                nav_pages = st.session_state.get("nav_pages", [])
-                config_page = next((p for p in nav_pages if p.title == "Configure"), None)
-                
-                if config_page:
-                    st.switch_page(config_page)
-                    st.rerun()
-                else:
-                    # Fallback if page object isn't found
-                    st.error("Configure page not found in navigation.")
+            else:
+                st.error("Configure page not found in navigation.")
 
 def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=True, range_start=None, range_end=None):
     if not values:
@@ -314,7 +286,7 @@ def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=Tr
                 f'<circle cx="{last_cx:.2f}" cy="{last_cy:.2f}" r="2.6" fill="{color}" stroke="white" stroke-width="1.2"/>'
             )
         return (
-            f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
+            f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
             f'preserveAspectRatio="none" aria-hidden="true">{"".join(rects)}{lollipop}</svg>'
         )
 
@@ -370,7 +342,7 @@ def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=Tr
                 f'stroke="white" stroke-width="1.2"/>'
             )
         return (
-            f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
+            f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
             f'preserveAspectRatio="none" aria-hidden="true">{"".join(rects)}{lollipop}</svg>'
         )
 
@@ -389,7 +361,7 @@ def _render_sparkline(values, color, *, kind="quantitative", higher_is_better=Tr
         points = " ".join(pts)
 
     return (
-        f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
+        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
         f'preserveAspectRatio="none" aria-hidden="true">'
         f'<line x1="{last_x:.2f}" x2="{last_x:.2f}" y1="{last_y:.2f}" y2="{pad:.2f}" '
         f'stroke="rgba(0,0,0,0.16)" stroke-width="1"/>'
