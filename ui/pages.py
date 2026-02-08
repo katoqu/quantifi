@@ -1,7 +1,7 @@
 import streamlit as st
 import models
 import utils
-from ui import manage_lookups, capture, metrics, data_editor, importer, landing_page
+from ui import manage_lookups, capture, metrics, data_editor, importer, landing_page, changes
 from ui import admin_page as admin_page_ui
 
 def tracker_page():
@@ -30,7 +30,7 @@ def tracker_page():
 
     # --- 4. NAVIGATION HEADER ---
     st.header('Quantif👁')
-    view_options = ["Overview", "Record", "Analytics", "Edit"]
+    view_options = ["Overview", "Record", "Changes", "Analytics", "Edit"]
     st.segmented_control(
             "Navigation", 
             options=view_options, 
@@ -57,7 +57,7 @@ def tracker_page():
     # --- 5. METRIC SELECTION (Only for sub-views) ---
 
     selected_metric = None
-    if view_mode != "Overview":
+    if view_mode not in ("Overview", "Changes"):
         active_id = st.session_state.get("last_active_mid")
         selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
         
@@ -71,6 +71,9 @@ def tracker_page():
         
     elif view_mode == "Record" and selected_metric:
         capture.show_tracker_suite(selected_metric)
+
+    elif view_mode == "Changes":
+        changes.show_changes()
 
     elif view_mode == "Analytics" and selected_metric:
         landing_page.show_advanced_analytics_view(selected_metric)

@@ -34,6 +34,21 @@ def get_metrics(include_archived=False):
     res = _safe_execute(query, "Failed to fetch metrics")
     return res.data if res else []
 
+@st.cache_data(ttl=60)
+def get_change_events(limit: int = 200):
+    """
+    Fetches lifestyle change events (with category label when available),
+    newest first.
+    """
+    res = _safe_execute(
+        sb.table("change_events")
+        .select("id, title, notes, recorded_at, created_at, category_id, categories(name)")
+        .order("recorded_at", desc=True)
+        .limit(limit),
+        "Failed to fetch change events",
+    )
+    return res.data if res else []
+
 def get_entries(metric_id=None):
     """Fetches data entries, optionally filtered by metric."""
     query = sb.table("entries").select("*")
@@ -155,6 +170,9 @@ def create_metric(payload: dict):
 def create_entry(payload: dict):
     return _safe_execute(sb.table("entries").insert(payload), "Failed to save entry")
 
+def create_change_event(payload: dict):
+    return _safe_execute(sb.table("change_events").insert(payload), "Failed to create change event")
+
 # --- UPDATE OPERATIONS ---
 
 def update_entry(entry_id, payload: dict):
@@ -178,6 +196,12 @@ def delete_metric(metric_id: str):
 def delete_category(cat_id: str):
     """UPDATED: Added for complete category management capability."""
     return _safe_execute(sb.table("categories").delete().eq("id", cat_id), "Failed to delete category")
+
+def delete_change_event(change_event_id: str):
+    return _safe_execute(
+        sb.table("change_events").delete().eq("id", change_event_id),
+        "Failed to delete change event",
+    )
 
 # --- DATA EXPORT & LIFECYCLE ---
 
@@ -222,6 +246,7 @@ def get_flat_export_data():
 
 def wipe_user_data():
     """Wipes all data for the authenticated user."""
+    _safe_execute(sb.table("change_events").delete().neq("id", "00000000-0000-0000-0000-000000000000"), "Error wiping change events")
     _safe_execute(sb.table("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000"), "Error wiping entries")
     _safe_execute(sb.table("metrics").delete().neq("id", "00000000-0000-0000-0000-000000000000"), "Error wiping metrics")
     _safe_execute(sb.table("categories").delete().neq("id", "00000000-0000-0000-0000-000000000000"), "Error wiping categories")

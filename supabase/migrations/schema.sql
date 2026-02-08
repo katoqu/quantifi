@@ -53,17 +53,31 @@ create table entries (
   created_at timestamptz default now()
 );
 
+create table change_events (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  notes text,
+  recorded_at timestamp not null default now(),
+  category_id uuid references categories(id) on delete set null,
+  user_id uuid not null references auth.users default auth.uid(),
+  created_at timestamptz default now()
+);
+
 -- 3. INDEXES
 create unique index categories_name_user_idx on categories (lower(name), user_id);
 create index entries_metric_id_idx on entries (metric_id);
 create index entries_recorded_at_idx on entries (recorded_at);
 create index metrics_category_id_idx on metrics (category_id);
 create index idx_active_metrics on metrics (user_id) where is_archived = false;
+create index change_events_user_id_idx on change_events (user_id);
+create index change_events_recorded_at_idx on change_events (recorded_at);
+create index change_events_category_id_idx on change_events (category_id);
 
 -- 4. SECURITY (RLS)
 alter table categories enable row level security;
 alter table metrics enable row level security;
 alter table entries enable row level security;
+alter table change_events enable row level security;
 
 -- 5. POLICIES
 create policy "Users can manage their own categories" on categories
@@ -73,6 +87,9 @@ create policy "Users can manage their own metrics" on metrics
   for all to authenticated using (auth.uid() = user_id);
 
 create policy "Users can manage their own entries" on entries
+  for all to authenticated using (auth.uid() = user_id);
+
+create policy "Users can manage their own change events" on change_events
   for all to authenticated using (auth.uid() = user_id);
 
 -- 6. VALIDATION TRIGGER
