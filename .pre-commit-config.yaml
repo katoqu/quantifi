@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: update-test-docs
+        name: Update docs/TESTING.md from test docstrings
+        entry: python3 scripts/update_test_docs.py
+        language: system
+        pass_filenames: false
+        files: ^(tests/test_.*\.py|docs/TESTING\.md|scripts/update_test_docs\.py)$
+

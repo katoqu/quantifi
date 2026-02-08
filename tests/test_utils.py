@@ -12,15 +12,18 @@ from utils import (  # noqa: E402
 
 
 def test_normalize_name_strips_and_lowercases():
+    """Name normalization is stable (trim + lowercase)."""
     assert normalize_name("  Sleep  ") == "sleep"
 
 
 def test_format_metric_label_includes_unit_and_archived():
+    """Label includes unit name and archived marker."""
     metric = {"name": "sleep", "unit_name": "quality", "is_archived": True}
     assert format_metric_label(metric) == "Sleep (Quality) (Archived)"
 
 
 def test_to_datetz_midday():
+    """Date converts to tz-aware midday datetime."""
     import datetime as dt
 
     d = dt.date(2026, 2, 7)

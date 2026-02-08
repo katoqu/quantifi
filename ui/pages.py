@@ -19,10 +19,7 @@ def tracker_page():
         st.session_state["nav_to_record_trigger"] = False 
 
     # --- 2. DATA LOADING & STATE ---
-    all_metrics = models.get_metrics(include_archived=True)
-    if not all_metrics:
-#        st.info("No active metrics. Restore archived metrics in Settings or create a new one.")
-        return
+    all_metrics = models.get_metrics(include_archived=True) or []
 
     if "tracker_view_selector" not in st.session_state:
         st.session_state["tracker_view_selector"] = "Overview"

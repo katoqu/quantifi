@@ -4,6 +4,14 @@ import auth
 import models
 from ui import visualize, pages
 
+def _switch_to_new_metric():
+    st.session_state["config_tab_selection"] = "✨ New Metric"
+    nav_pages = st.session_state.get("nav_pages", [])
+    target_page = next((p for p in nav_pages if getattr(p, "title", None) == "Configure"), None)
+    if target_page:
+        st.switch_page(target_page)
+    st.rerun()
+
 def _normalize_metric_kind(metric_kind, unit_type):
     if metric_kind in ("quantitative", "count", "score"):
         return metric_kind
@@ -40,10 +48,9 @@ def show_landing_page(metrics_list, all_entries):
     user_display = user.email.split('@')[0].capitalize() if user else "User"
     
     if not metrics_list:
-        st.info("No metrics found. Let's start tracking!")
+        st.info("No metrics yet. Create your first metric to start tracking.")
         if st.button("✨ Create Your First Metric", use_container_width=True, type="primary"):
-            st.session_state["tracker_view_selector"] = "Manage Metrics"
-            st.rerun()
+            _switch_to_new_metric()
         return
     render_metric_grid(metrics_list, cats, all_entries)
 

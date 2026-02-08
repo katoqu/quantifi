@@ -25,18 +25,34 @@ python3 -m pytest
 
 ### Current tests (overview)
 
+<!-- TESTS:START -->
 | File | Test | Purpose |
 |---|---|---|
-| `tests/test_capture_helpers.py` | `test_infer_float_step_and_format_integer` | Integer input → step/format are correct. |
-| `tests/test_capture_helpers.py` | `test_infer_float_step_and_format_decimal` | Decimal input → step/format are correct. |
-| `tests/test_capture_helpers.py` | `test_round_down_respects_decimals` | Rounding-down behaves as expected. |
+| `tests/test_capture_helpers.py` | `test_infer_float_step_and_format_integer` | Integer input infers step=1 and 0-decimal format. |
+| `tests/test_capture_helpers.py` | `test_infer_float_step_and_format_decimal` | Decimal input infers small step and 2-decimal format. |
+| `tests/test_capture_helpers.py` | `test_round_down_respects_decimals` | Rounding down respects the requested decimal precision. |
 | `tests/test_capture_helpers.py` | `test_infer_from_history_returns_reasonable_step` | History-based step inference returns a positive step and a format. |
-| `tests/test_utils.py` | `test_normalize_name_strips_and_lowercases` | Name normalization is stable. |
-| `tests/test_utils.py` | `test_format_metric_label_includes_unit_and_archived` | Label includes unit and archived marker. |
-| `tests/test_utils.py` | `test_to_datetz_midday` | Date → midday datetime conversion. |
-| `tests/test_pages_smoke.py` | `test_tracker_page_renders_overview` | `tracker_page()` runs in Streamlit AppTest with DB calls mocked. |
-| `tests/test_visualize_stats.py` | `test_get_metric_stats_excludes_not_measured_but_keeps_zero` | NULL/blank values don’t affect aggregates; numeric `0` remains a valid measurement. |
+| `tests/test_pages_smoke.py` | `test_tracker_page_renders_overview` | Tracker page renders and calls the landing view (happy path). |
+| `tests/test_pages_smoke.py` | `test_tracker_page_renders_overview_with_no_metrics` | Regression: new users with no metrics still see a landing-state screen. |
+| `tests/test_utils.py` | `test_normalize_name_strips_and_lowercases` | Name normalization is stable (trim + lowercase). |
+| `tests/test_utils.py` | `test_format_metric_label_includes_unit_and_archived` | Label includes unit name and archived marker. |
+| `tests/test_utils.py` | `test_to_datetz_midday` | Date converts to tz-aware midday datetime. |
+| `tests/test_visualize_stats.py` | `test_get_metric_stats_excludes_not_measured_but_keeps_zero` | NULL/blank values don’t affect aggregates; numeric 0 remains a valid measurement. |
 | `tests/test_visualize_stats.py` | `test_get_metric_stats_all_not_measured_returns_no_data` | All-NULL/blank series reports “No Data” (not zero). |
+<!-- TESTS:END -->
+
+This table is auto-generated from test function docstrings. Update it with:
+
+```bash
+python3 scripts/update_test_docs.py
+```
+
+To keep it updated automatically on commits, enable the optional pre-commit hook:
+
+```bash
+python3 -m pip install pre-commit
+pre-commit install
+```
 
 ## Running tests
 
@@ -71,6 +87,7 @@ Use `streamlit.testing.v1.AppTest` for a “does it render” check. These tests
 3. Keep UI tests minimal:
    - assert “no exception” and/or basic state routing
    - mock data access
+4. Add a 1-line docstring to each `test_*` function (used to generate the table above).
 
 ## Notes / troubleshooting
 

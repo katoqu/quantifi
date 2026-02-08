@@ -10,6 +10,7 @@ from ui.visualize import get_metric_stats  # noqa: E402
 
 
 def test_get_metric_stats_excludes_not_measured_but_keeps_zero():
+    """NULL/blank values don’t affect aggregates; numeric 0 remains a valid measurement."""
     df = pd.DataFrame(
         {
             "recorded_at": [
@@ -28,6 +29,7 @@ def test_get_metric_stats_excludes_not_measured_but_keeps_zero():
 
 
 def test_get_metric_stats_all_not_measured_returns_no_data():
+    """All-NULL/blank series reports “No Data” (not zero)."""
     df = pd.DataFrame(
         {"recorded_at": ["2026-02-01T12:00:00Z", "2026-02-02T12:00:00Z"], "value": [None, ""]}
     )
@@ -36,4 +38,3 @@ def test_get_metric_stats_all_not_measured_returns_no_data():
     assert stats["avg"] is None
     assert stats["latest"] is None
     assert stats["last_date"] == "No Data"
-
