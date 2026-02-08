@@ -7,6 +7,106 @@ import time
 import auth
 from datetime import datetime
 
+ALLOWED_TYPES = ["float", "integer", "integer_range"]
+ALLOWED_KINDS = ["quantitative", "count", "score"]
+
+
+def parse_import_frames(df_import: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Splits an import CSV into:
+    - df_entries: metric entry rows (RowType='entry')
+    - df_changes: lifestyle change rows (RowType='change')
+
+    Backward compatible: if RowType is missing, all rows are treated as entries.
+    """
+    df = df_import.copy()
+    if "RowType" not in df.columns:
+        df["RowType"] = "entry"
+    df["RowType"] = (
+        df["RowType"]
+        .fillna("entry")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .replace({"": "entry"})
+    )
+    df_entries = df[df["RowType"] == "entry"].copy()
+    df_changes = df[df["RowType"] == "change"].copy()
+    return df_entries, df_changes
+
+
+def validate_import_frames(df_entries: pd.DataFrame, df_changes: pd.DataFrame) -> list[str]:
+    """
+    Validates entry/change rows without touching Streamlit or Supabase.
+    Returns a list of human-readable error strings.
+    """
+    errors: list[str] = []
+
+    if df_entries is not None and not df_entries.empty:
+        required_cols = ["Metric", "Value", "Date", "Type", "Archived"]
+        missing = [c for c in required_cols if c not in df_entries.columns]
+        if missing:
+            errors.append(f"Missing mandatory columns for entries: {', '.join(missing)}")
+        else:
+            for idx, row in df_entries.iterrows():
+                row_num = idx + 2
+                m_name = str(row.get("Metric", "Unknown"))
+
+                m_type = str(row.get("Type")).strip().lower()
+                if m_type not in ALLOWED_TYPES:
+                    errors.append(
+                        f"Row {row_num}: Invalid Type '{m_type}'. Must be one of {ALLOWED_TYPES}"
+                    )
+
+                if "Kind" in df_entries.columns and pd.notna(row.get("Kind")):
+                    m_kind = str(row.get("Kind")).strip().lower()
+                    if m_kind and m_kind not in ALLOWED_KINDS:
+                        errors.append(
+                            f"Row {row_num}: Invalid Kind '{m_kind}'. Must be one of {ALLOWED_KINDS}"
+                        )
+
+                if m_type == "integer_range":
+                    try:
+                        v_min = float(row["Min"]) if pd.notna(row.get("Min")) else None
+                        v_max = float(row["Max"]) if pd.notna(row.get("Max")) else None
+                        if v_min is None or v_max is None:
+                            errors.append(
+                                f"Row {row_num}: Metric '{m_name}' is a range but missing Min/Max."
+                            )
+                        elif v_min >= v_max:
+                            errors.append(
+                                f"Row {row_num}: Min ({v_min}) must be less than Max ({v_max})."
+                            )
+                    except ValueError:
+                        errors.append(
+                            f"Row {row_num}: Min/Max for '{m_name}' must be numbers."
+                        )
+
+                v = row.get("Value")
+                if pd.notna(v) and str(v).strip() != "":
+                    try:
+                        float(v)
+                    except (TypeError, ValueError):
+                        errors.append(f"Row {row_num}: Value '{v}' is not a valid number.")
+
+    if df_changes is not None and not df_changes.empty:
+        required_cols = ["Title", "Date"]
+        missing = [c for c in required_cols if c not in df_changes.columns]
+        if missing:
+            errors.append(f"Missing mandatory columns for changes: {', '.join(missing)}")
+        else:
+            for idx, row in df_changes.iterrows():
+                row_num = idx + 2
+                title = str(row.get("Title") or "").strip()
+                if not title:
+                    errors.append(f"Row {row_num}: Change Title cannot be empty.")
+                raw_date = row.get("Date")
+                if pd.isna(raw_date) or str(raw_date).strip() == "":
+                    errors.append(f"Row {row_num}: Change Date cannot be empty.")
+
+    return errors
+
+
 @st.fragment
 def show_data_lifecycle_management():
     st.header("Backup & Recovery")
@@ -47,56 +147,13 @@ def show_data_lifecycle_management():
 def _handle_import_logic(uploaded_file, wipe_first):
     try:
         df_import = pd.read_csv(uploaded_file)
-        st.caption(f"Found {len(df_import)} entries in CSV.")
+        df_entries, df_changes = parse_import_frames(df_import)
+        st.caption(
+            f"Found {len(df_import)} rows: {len(df_entries)} entries, {len(df_changes)} changes."
+        )
         
         # --- 1. PRE-VALIDATION / DRY RUN ---
-        errors = []
-        ALLOWED_TYPES = ['float', 'integer', 'integer_range']  # Added strict whitelist
-        ALLOWED_KINDS = ['quantitative', 'count', 'score']
-        
-        # Check for mandatory columns
-        required_cols = ['Metric', 'Value', 'Date', 'Type', 'Archived']
-        missing = [c for c in required_cols if c not in df_import.columns]
-        if missing:
-            errors.append(f"Missing mandatory columns: {', '.join(missing)}")
-        
-        if not errors:
-            for idx, row in df_import.iterrows():
-                row_num = idx + 2 # Header + 0-index offset
-                m_name = str(row.get('Metric', 'Unknown'))
-
-                # A. Validate Type Whitelist
-                m_type = str(row.get('Type')).strip().lower()
-                if m_type not in ALLOWED_TYPES:
-                    errors.append(f"Row {row_num}: Invalid Type '{m_type}'. Must be one of {ALLOWED_TYPES}")
-
-                # A2. Validate Kind Whitelist (optional)
-                if "Kind" in df_import.columns and pd.notna(row.get("Kind")):
-                    m_kind = str(row.get("Kind")).strip().lower()
-                    if m_kind not in ALLOWED_KINDS:
-                        errors.append(f"Row {row_num}: Invalid Kind '{m_kind}'. Must be one of {ALLOWED_KINDS}")
-
-                # B. Validate integer_range specific logic
-                if m_type == 'integer_range':
-                    try:
-                        v_min = float(row['Min']) if pd.notna(row['Min']) else None
-                        v_max = float(row['Max']) if pd.notna(row['Max']) else None
-                        
-                        if v_min is None or v_max is None:
-                            errors.append(f"Row {row_num}: Metric '{m_name}' is a range but missing Min/Max.")
-                        elif v_min >= v_max:
-                            errors.append(f"Row {row_num}: Min ({v_min}) must be less than Max ({v_max}).")
-                    except ValueError:
-                        errors.append(f"Row {row_num}: Min/Max for '{m_name}' must be numbers.")
-
-                # C. Validate Value column (ensure it's numeric)
-                v = row.get("Value")
-                # Allow blank/NULL as "not measured" (distinct from numeric 0).
-                if pd.notna(v) and str(v).strip() != "":
-                    try:
-                        float(v)
-                    except (TypeError, ValueError):
-                        errors.append(f"Row {row_num}: Value '{v}' is not a valid number.")
+        errors = validate_import_frames(df_entries, df_changes)
 
         if errors:
             st.error("❌ **Dry Run Failed: Import Aborted.**")
@@ -117,13 +174,15 @@ def _handle_import_logic(uploaded_file, wipe_first):
                 log.write("✅ Database cleared.")
                 time.sleep(1)
 
-            log.write("🏗️ **Syncing Schema...**")
+            if not df_entries.empty:
+                log.write("🏗️ **Syncing Schema...**")
             schema_cols = ['Metric', 'Description', 'Unit', 'Category', 'Type', 'Min', 'Max', 'Archived']
             # Fill missing metadata with defaults
             for col in ['Description', 'Unit', 'Category', 'Min', 'Max', 'Archived', 'Kind', 'HigherIsBetter']:
-                if col not in df_import.columns: df_import[col] = None
+                if col not in df_entries.columns:
+                    df_entries[col] = None
             
-            unique_metrics = df_import[schema_cols].drop_duplicates()
+            unique_metrics = df_entries[schema_cols].drop_duplicates() if not df_entries.empty else pd.DataFrame()
             
             for i, (_, row) in enumerate(unique_metrics.iterrows()):
                 met_name = str(row['Metric']).strip().lower()
@@ -160,32 +219,56 @@ def _handle_import_logic(uploaded_file, wipe_first):
                         st.error(f"Failed to create metric: {met_name}. Aborting.")
                         return 
 
-            log.write("📝 **Importing Entries...**")
-            all_metrics = models.get_metrics()
-            metrics_lookup = {m['name'].lower().strip(): m['id'] for m in all_metrics}
-            
-            success_count = 0
-            for i, (_, row) in enumerate(df_import.iterrows()):
-                m_id = metrics_lookup.get(str(row['Metric']).strip().lower())
-                if m_id:
-                    formatted_date = pd.to_datetime(row['Date']).isoformat()
-                    raw_val = row.get("Value")
-                    if pd.isna(raw_val) or str(raw_val).strip() == "":
-                        val = None
-                    else:
-                        val = float(raw_val)
-                    models.create_entry({
-                        "metric_id": m_id,
-                        "value": val,
-                        "recorded_at": formatted_date
-                    })
-                    success_count += 1
-                progress_bar.progress(0.3 + (i / len(df_import) * 0.7))
+            success_entries = 0
+            success_changes = 0
+            total_rows = max(1, len(df_entries) + len(df_changes))
+
+            if not df_entries.empty:
+                log.write("📝 **Importing Entries...**")
+                all_metrics = models.get_metrics()
+                metrics_lookup = {m['name'].lower().strip(): m['id'] for m in all_metrics}
+
+                for i, (_, row) in enumerate(df_entries.iterrows()):
+                    m_id = metrics_lookup.get(str(row["Metric"]).strip().lower())
+                    if m_id:
+                        formatted_date = pd.to_datetime(row["Date"]).isoformat()
+                        raw_val = row.get("Value")
+                        if pd.isna(raw_val) or str(raw_val).strip() == "":
+                            val = None
+                        else:
+                            val = float(raw_val)
+                        payload = {"metric_id": m_id, "value": val, "recorded_at": formatted_date}
+                        if "Target" in df_entries.columns and pd.notna(row.get("Target")) and str(row.get("Target")).strip():
+                            payload["target_action"] = str(row.get("Target")).strip()
+                        models.create_entry(payload)
+                        success_entries += 1
+                    progress_bar.progress((i + 1) / total_rows)
+
+            if not df_changes.empty:
+                log.write("📝 **Importing Changes...**")
+                for j, (_, row) in enumerate(df_changes.iterrows()):
+                    formatted_date = pd.to_datetime(row["Date"]).isoformat()
+                    title = str(row.get("Title") or "").strip()
+                    notes = str(row.get("Notes") or "").strip()
+                    cat_name = row.get("Category")
+                    cat_id = None
+                    if pd.notna(cat_name) and str(cat_name).strip():
+                        cat_id = utils.ensure_category_id("NEW_CAT", str(cat_name))
+                    models.create_change_event(
+                        {
+                            "title": title,
+                            "notes": (notes if notes else None),
+                            "category_id": cat_id,
+                            "recorded_at": formatted_date,
+                        }
+                    )
+                    success_changes += 1
+                    progress_bar.progress((len(df_entries) + j + 1) / total_rows)
             
 
             # Use the mobile-optimized toast and refresh from utils
             utils.finalize_action(
-                message=f"Rebuild complete: {success_count} entries synced.",
+                message=f"Rebuild complete: {success_entries} entries, {success_changes} changes synced.",
                 icon="🚀",
                 delay=2 # Slightly longer delay to let the user read the count
             )
@@ -207,6 +290,7 @@ def _render_template_downloader():
             # We fetch category name via models/utils if needed, 
             # or just use None for a blank template.
             template_rows.append({
+                "RowType": "entry",
                 "Metric": m['name'],
                 "Description": m.get('description', ''),
                 "Archived": m.get('is_archived', False),
@@ -220,6 +304,8 @@ def _render_template_downloader():
                 "Max": m.get('range_end', '')
                 ,
                 "HigherIsBetter": m.get("higher_is_better", True),
+                "Title": "",
+                "Notes": "",
             })
         
         df_template = pd.DataFrame(template_rows)

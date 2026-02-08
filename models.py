@@ -216,39 +216,86 @@ def get_flat_export_data():
     MODIFIED: Fetches flattened dataset including metric metadata 
     (Type, Min, Max) for a complete round-trip backup.
     """
-    # 1. Update query to include metadata columns from the metrics table
-    query = _safe_execute(
+    entries_res = _safe_execute(
         sb.table("entries").select(
             "recorded_at, value, target_action, metrics(name, description, unit_name, unit_type, metric_kind, higher_is_better, range_start, range_end, is_archived, categories(name))"
         ),
         "Failed to fetch export data"
     )
-    if not query: return []
-    
-    rows = []
-    for entry in query.data:
-        ts = pd.to_datetime(entry["recorded_at"], format='ISO8601', utc=True)
-        
-        m_meta = entry.get("metrics", {})
+    if not entries_res:
+        return []
 
-        # 2. Append the new metadata keys matching the new importer expectations
-        rows.append({
-            "Date": ts.strftime('%Y-%m-%d %H:%M:%S'),
-            "Metric": m_meta.get("name", "Unknown"),
-            "Description": m_meta.get("description", ""),
-            # FIX: Pull the actual boolean value from the database
-            "Archived": m_meta.get("is_archived", False), 
-            "Value": entry["value"],
-            "Unit": m_meta.get("unit_name", ""),
-            "Category": m_meta.get("categories", {}).get("name") if m_meta.get("categories") else "None",
-            "Type": m_meta.get("unit_type", "float"),
-            "Kind": m_meta.get("metric_kind"),
-            "Min": m_meta.get("range_start"),
-            "Max": m_meta.get("range_end"),
-            "HigherIsBetter": m_meta.get("higher_is_better", True),
-            "Target": entry.get("target_action", "")
-        })
-    return rows
+    changes_res = _safe_execute(
+        sb.table("change_events").select("recorded_at, title, notes, categories(name)"),
+        "Failed to fetch change events for export",
+    )
+    changes_data = changes_res.data if changes_res and changes_res.data else []
+    
+    return build_export_rows(entries_res.data or [], changes_data)
+
+
+def build_export_rows(entries_data: list[dict], change_events_data: list[dict]) -> list[dict]:
+    """
+    Builds a single CSV-friendly row list containing both:
+    - Metric entries (RowType='entry')
+    - Lifestyle changes (RowType='change')
+
+    This is pure formatting logic and is safe to unit test without Supabase.
+    """
+    rows: list[dict] = []
+
+    for entry in entries_data:
+        ts = pd.to_datetime(entry["recorded_at"], format="ISO8601", utc=True)
+        m_meta = entry.get("metrics", {})
+        rows.append(
+            {
+                "RowType": "entry",
+                "Date": ts.strftime("%Y-%m-%d %H:%M:%S"),
+                "Category": m_meta.get("categories", {}).get("name") if m_meta.get("categories") else "None",
+                "Metric": m_meta.get("name", "Unknown"),
+                "Description": m_meta.get("description", ""),
+                "Archived": m_meta.get("is_archived", False),
+                "Value": entry.get("value"),
+                "Unit": m_meta.get("unit_name", ""),
+                "Type": m_meta.get("unit_type", "float"),
+                "Kind": m_meta.get("metric_kind"),
+                "Min": m_meta.get("range_start"),
+                "Max": m_meta.get("range_end"),
+                "HigherIsBetter": m_meta.get("higher_is_better", True),
+                "Target": entry.get("target_action", ""),
+                "Title": "",
+                "Notes": "",
+            }
+        )
+
+    for ev in change_events_data:
+        ts = pd.to_datetime(ev["recorded_at"], format="ISO8601", utc=True)
+        rows.append(
+            {
+                "RowType": "change",
+                "Date": ts.strftime("%Y-%m-%d %H:%M:%S"),
+                "Category": (ev.get("categories", {}) or {}).get("name") if ev.get("categories") else "None",
+                "Metric": "",
+                "Description": "",
+                "Archived": "",
+                "Value": "",
+                "Unit": "",
+                "Type": "",
+                "Kind": "",
+                "Min": "",
+                "Max": "",
+                "HigherIsBetter": "",
+                "Target": "",
+                "Title": ev.get("title", ""),
+                "Notes": ev.get("notes", "") or "",
+            }
+        )
+
+    def _sort_key(row: dict):
+        # Stable sort: newest first, changes/entries interleaved by timestamp.
+        return row.get("Date", "")
+
+    return sorted(rows, key=_sort_key, reverse=True)
 
 def wipe_user_data():
     """Wipes all data for the authenticated user."""

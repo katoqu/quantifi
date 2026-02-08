@@ -34,6 +34,9 @@ python3 -m pytest
 | `tests/test_capture_helpers.py` | `test_infer_from_history_returns_reasonable_step` | History-based step inference returns a positive step and a format. |
 | `tests/test_changes_ui.py` | `test_changes_can_create_event` | Creating a change event calls the model with category + title + notes. |
 | `tests/test_changes_ui.py` | `test_changes_can_edit_event` | Editing a change event calls the model update with new fields. |
+| `tests/test_import_export.py` | `test_build_export_rows_includes_entries_and_changes` | Export builder emits RowType='entry' and RowType='change' rows. |
+| `tests/test_import_export.py` | `test_parse_import_frames_backward_compatible_without_rowtype` | Importer treats legacy CSVs (no RowType column) as entry-only. |
+| `tests/test_import_export.py` | `test_validate_import_frames_reports_entry_and_change_errors` | Importer validation flags invalid entry types and missing change titles. |
 | `tests/test_pages_smoke.py` | `test_tracker_page_renders_overview` | Tracker page renders and calls the landing view (happy path). |
 | `tests/test_pages_smoke.py` | `test_tracker_page_renders_overview_with_no_metrics` | Regression: new users with no metrics still see a landing-state screen. |
 | `tests/test_pages_smoke.py` | `test_tracker_page_renders_changes` | Tracker page can route to the Changes view without selecting a metric. |
