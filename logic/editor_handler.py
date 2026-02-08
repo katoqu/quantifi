@@ -139,8 +139,13 @@ def execute_save(mid, state_key, editor_key):
     # 2. Process Updates
     for _, row in df[df["Change Log"] == "🟡"].iterrows():
         if pd.notna(row.get("id")):
+            raw_val = row.get("value")
+            if raw_val is None or (isinstance(raw_val, float) and pd.isna(raw_val)) or (isinstance(raw_val, str) and raw_val.strip() == ""):
+                db_val = None  # "not measured"
+            else:
+                db_val = float(raw_val)
             models.update_entry(row["id"], {
-                "value": float(row["value"]), 
+                "value": db_val,
                 "recorded_at": pd.to_datetime(row["recorded_at"]).isoformat()
             })
             

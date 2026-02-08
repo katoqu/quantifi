@@ -54,8 +54,8 @@ def build_hierarchical_annotations(plot_df, freq, range_choice=None):
 def get_metric_stats(df):
     if df is None or df.empty:
         return {
-            "latest": 0.0, "ma7": None, "change": 0.0,
-            "avg": 0.0, "count": 0, "last_date": "No Data"
+            "latest": None, "ma7": None, "change": None,
+            "avg": None, "count": 0, "last_date": "No Data"
         }
 
     if not pd.api.types.is_datetime64_any_dtype(df['recorded_at']):
@@ -65,22 +65,30 @@ def get_metric_stats(df):
     
     df = df.sort_values("recorded_at")
 
-    clean_series = df["value"].dropna()
+    # Treat NULL/blank as "not measured" (excluded from stats), but keep numeric 0 as valid.
+    clean_series = pd.to_numeric(df["value"], errors="coerce").dropna()
     if clean_series.empty:
-        return { "latest": 0.0, "ma7": None, "change": 0.0, "avg": 0.0, "count": 0, "last_date": "No Data" }
+        return {
+            "latest": None,
+            "ma7": None,
+            "change": None,
+            "avg": None,
+            "count": 0,
+            "last_date": "No Data",
+        }
 
     latest_val = float(clean_series.iloc[-1])
     
     ma7 = clean_series.rolling(window=7).mean().iloc[-1] if len(clean_series) >= 7 else None
     change = float(clean_series.iloc[-1] - clean_series.iloc[-2]) if len(clean_series) >= 2 else 0.0
-    last_ts = df['recorded_at'].iloc[-1]
+    last_ts = df.loc[clean_series.index[-1], 'recorded_at']
         
     return {
         "latest": latest_val,
         "ma7": ma7,
         "change": change,
         "avg": float(clean_series.mean()),
-        "count": len(df),
+        "count": int(clean_series.shape[0]),
         "last_date": last_ts.strftime('%d %b') 
     }
 
@@ -89,7 +97,10 @@ def render_stat_row(stats, mode="compact"):
         return
 
     if mode == "compact":
-        st.metric(label=stats['last_date'], value=f"{stats['latest']:.1f}")
+        if stats.get("count", 0) <= 0 or stats.get("latest") is None:
+            st.metric(label=stats.get("last_date") or "—", value="—")
+        else:
+            st.metric(label=stats['last_date'], value=f"{stats['latest']:.1f}")
     
     elif mode == "advanced":
         ma7_val = f"{stats['ma7']:.1f}" if stats['ma7'] is not None else "—"
@@ -229,25 +240,31 @@ def show_visualizations(
     is_ordinal_score = kind == "score"
     is_count = kind == "count"
 
+    # Normalize values: blanks/NULLs -> NaN, numeric 0 preserved.
+    filtered_df["value"] = pd.to_numeric(filtered_df["value"], errors="coerce")
+
     if is_ordinal_score:
         agg_func = "median"
     elif is_count:
-        agg_func = "sum"
+        # Avoid turning "all missing" buckets into 0.
+        agg_func = lambda s: s.sum(min_count=1)
     else:
         agg_func = "mean"
 
-    if is_ordinal_score:
-        baseline_label = "Median"
-        baseline_val = float(filtered_df["value"].median())
-        baseline_val_str = f"{baseline_val:.0f}"
-    elif is_count:
-        baseline_label = "Avg"
-        baseline_val = float(filtered_df["value"].mean())
-        baseline_val_str = f"{baseline_val:.0f}"
-    else:
-        baseline_label = "Avg"
-        baseline_val = float(filtered_df["value"].mean())
-        baseline_val_str = f"{baseline_val:.1f}"
+    baseline_label = "Median" if is_ordinal_score else "Avg"
+    baseline_val = None
+    baseline_val_str = None
+    baseline_series = filtered_df["value"].dropna()
+    if not baseline_series.empty:
+        if is_ordinal_score:
+            baseline_val = float(baseline_series.median())
+            baseline_val_str = f"{baseline_val:.0f}"
+        elif is_count:
+            baseline_val = float(baseline_series.mean())
+            baseline_val_str = f"{baseline_val:.0f}"
+        else:
+            baseline_val = float(baseline_series.mean())
+            baseline_val_str = f"{baseline_val:.1f}"
 
     plot_df = (
         filtered_df
@@ -335,25 +352,26 @@ def show_visualizations(
     if trend is not None:
         fig.add_trace(go.Scatter(x=plot_df["recorded_at"], y=trend, mode="lines", line=dict(color="rgba(31, 119, 180, 0.3)", width=2), name="Trend", hoverinfo="skip"))
 
-    fig.add_shape(
-        type="line",
-        x0=plot_df["recorded_at"].min(),
-        x1=plot_df["recorded_at"].max(),
-        y0=baseline_val,
-        y1=baseline_val,
-        line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"),
-    )
-    fig.add_annotation(
-        x=0.99,
-        xref="paper",
-        xanchor="right",
-        y=baseline_val,
-        yref="y",
-        yanchor="bottom",
-        text=f"{baseline_label} {baseline_val_str} {m_unit}".strip(),
-        showarrow=False,
-        font=dict(size=10, color="rgba(255, 75, 75, 0.55)"),
-    )
+    if baseline_val is not None and pd.notna(baseline_val):
+        fig.add_shape(
+            type="line",
+            x0=plot_df["recorded_at"].min(),
+            x1=plot_df["recorded_at"].max(),
+            y0=baseline_val,
+            y1=baseline_val,
+            line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"),
+        )
+        fig.add_annotation(
+            x=0.99,
+            xref="paper",
+            xanchor="right",
+            y=baseline_val,
+            yref="y",
+            yanchor="bottom",
+            text=f"{baseline_label} {baseline_val_str} {m_unit}".strip(),
+            showarrow=False,
+            font=dict(size=10, color="rgba(255, 75, 75, 0.55)"),
+        )
 
     fig.update_layout(
         yaxis_title=m_unit, 

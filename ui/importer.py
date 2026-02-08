@@ -90,10 +90,13 @@ def _handle_import_logic(uploaded_file, wipe_first):
                         errors.append(f"Row {row_num}: Min/Max for '{m_name}' must be numbers.")
 
                 # C. Validate Value column (ensure it's numeric)
-                try:
-                    float(row['Value'])
-                except ValueError:
-                    errors.append(f"Row {row_num}: Value '{row['Value']}' is not a valid number.")
+                v = row.get("Value")
+                # Allow blank/NULL as "not measured" (distinct from numeric 0).
+                if pd.notna(v) and str(v).strip() != "":
+                    try:
+                        float(v)
+                    except (TypeError, ValueError):
+                        errors.append(f"Row {row_num}: Value '{v}' is not a valid number.")
 
         if errors:
             st.error("❌ **Dry Run Failed: Import Aborted.**")
@@ -166,9 +169,14 @@ def _handle_import_logic(uploaded_file, wipe_first):
                 m_id = metrics_lookup.get(str(row['Metric']).strip().lower())
                 if m_id:
                     formatted_date = pd.to_datetime(row['Date']).isoformat()
+                    raw_val = row.get("Value")
+                    if pd.isna(raw_val) or str(raw_val).strip() == "":
+                        val = None
+                    else:
+                        val = float(raw_val)
                     models.create_entry({
                         "metric_id": m_id,
-                        "value": float(row['Value']),
+                        "value": val,
                         "recorded_at": formatted_date
                     })
                     success_count += 1
@@ -202,7 +210,7 @@ def _render_template_downloader():
                 "Metric": m['name'],
                 "Description": m.get('description', ''),
                 "Archived": m.get('is_archived', False),
-                "Value": 0.0,
+                "Value": "",
                 "Date": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "Unit": m.get('unit_name', ''),
                 "Category": "", # User fills this or we look up cat name

@@ -71,7 +71,10 @@ def render_metric_grid(metrics_list, cats, all_entries):
 
     if not all_df.empty:
         all_df['recorded_at'] = pd.to_datetime(all_df['recorded_at'], format='mixed', utc=True)
-        latest_by_metric = all_df.groupby('metric_id')['recorded_at'].max()
+        # "Not measured" (NULL/blank) should not make a metric appear "recent".
+        all_df["_value_num"] = pd.to_numeric(all_df.get("value"), errors="coerce")
+        measured_df = all_df[pd.notna(all_df["_value_num"])].copy()
+        latest_by_metric = measured_df.groupby('metric_id')['recorded_at'].max() if not measured_df.empty else pd.Series(dtype='datetime64[ns, UTC]')
         grouped_by_metric = {mid: df for mid, df in all_df.groupby('metric_id')}
     else:
         latest_by_metric = pd.Series(dtype='datetime64[ns, UTC]')
@@ -92,7 +95,8 @@ def render_metric_grid(metrics_list, cats, all_entries):
         # --- FIX END ---
 
         if not m_df.empty:
-            spark_values = list(m_df.sort_values("recorded_at")["value"].tail(12))
+            v = pd.to_numeric(m_df.sort_values("recorded_at")["value"], errors="coerce")
+            spark_values = list(v.dropna().tail(12))
         else:
             spark_values = []
         stats["spark_values"] = spark_values
