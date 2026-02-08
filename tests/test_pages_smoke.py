@@ -66,3 +66,33 @@ pages.tracker_page()
 
     assert len(at.exception) == 0
     assert any(el.value == "landing-empty-ok" for el in at.text)
+
+
+def test_tracker_page_renders_changes(monkeypatch):
+    """Tracker page can route to the Changes view without selecting a metric."""
+    import logging
+
+    logging.getLogger(
+        "streamlit.runtime.scriptrunner_utils.script_run_context"
+    ).setLevel(logging.ERROR)
+
+    script = """
+import streamlit as st
+from ui import pages
+
+pages.models.get_metrics = lambda include_archived=True: [{"id": "m1", "name": "x"}]
+
+def _fake_show_changes():
+    st.text("changes-ok")  # sentinel
+
+pages.changes.show_changes = _fake_show_changes
+
+pages.tracker_page()
+"""
+
+    at = AppTest.from_string(script)
+    at.session_state["tracker_view_selector"] = "Changes"
+    at.run()
+
+    assert len(at.exception) == 0
+    assert any(el.value == "changes-ok" for el in at.text)

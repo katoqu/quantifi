@@ -173,6 +173,12 @@ def create_entry(payload: dict):
 def create_change_event(payload: dict):
     return _safe_execute(sb.table("change_events").insert(payload), "Failed to create change event")
 
+def update_change_event(change_event_id: str, payload: dict):
+    return _safe_execute(
+        sb.table("change_events").update(payload).eq("id", change_event_id),
+        "Failed to update change event",
+    )
+
 # --- UPDATE OPERATIONS ---
 
 def update_entry(entry_id, payload: dict):

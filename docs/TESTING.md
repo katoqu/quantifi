@@ -32,8 +32,11 @@ python3 -m pytest
 | `tests/test_capture_helpers.py` | `test_infer_float_step_and_format_decimal` | Decimal input infers small step and 2-decimal format. |
 | `tests/test_capture_helpers.py` | `test_round_down_respects_decimals` | Rounding down respects the requested decimal precision. |
 | `tests/test_capture_helpers.py` | `test_infer_from_history_returns_reasonable_step` | History-based step inference returns a positive step and a format. |
+| `tests/test_changes_ui.py` | `test_changes_can_create_event` | Creating a change event calls the model with category + title + notes. |
+| `tests/test_changes_ui.py` | `test_changes_can_edit_event` | Editing a change event calls the model update with new fields. |
 | `tests/test_pages_smoke.py` | `test_tracker_page_renders_overview` | Tracker page renders and calls the landing view (happy path). |
 | `tests/test_pages_smoke.py` | `test_tracker_page_renders_overview_with_no_metrics` | Regression: new users with no metrics still see a landing-state screen. |
+| `tests/test_pages_smoke.py` | `test_tracker_page_renders_changes` | Tracker page can route to the Changes view without selecting a metric. |
 | `tests/test_utils.py` | `test_normalize_name_strips_and_lowercases` | Name normalization is stable (trim + lowercase). |
 | `tests/test_utils.py` | `test_format_metric_label_includes_unit_and_archived` | Label includes unit name and archived marker. |
 | `tests/test_utils.py` | `test_to_datetz_midday` | Date converts to tz-aware midday datetime. |
