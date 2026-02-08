@@ -1,7 +1,15 @@
 import streamlit as st
-from supabase_config import sb
+from supabase_config import sb, sb_admin
 
 class AuthEngine:
+    @staticmethod
+    def _secrets_truthy(value) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
     @staticmethod
     def normalize_input(text):
         """Standardizes input and handles iOS smart punctuation for stability."""
@@ -28,6 +36,8 @@ class AuthEngine:
     @staticmethod
     def sign_up(email, password):
         """Creates a new user account with normalized credentials."""
+        if AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False)):
+            return None, "Sign-ups are disabled. Ask an admin for an invite."
         try:
             email_clean = email.strip().lower()
             pwd_clean = AuthEngine.normalize_input(password)
@@ -55,6 +65,23 @@ class AuthEngine:
             # Fetches redirect URL from secrets; vital for PKCE redirect stability
             url = st.secrets.get("REDIRECT_URL", "http://localhost:8501").strip()
             sb.auth.reset_password_for_email(email.strip(), {"redirect_to": url})
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    @staticmethod
+    def invite_user(email):
+        """
+        Sends a Supabase Auth invite email (admin-only).
+
+        Note: this is different from Streamlit Community Cloud app sharing invites.
+        """
+        try:
+            email_clean = (email or "").strip().lower()
+            if not email_clean:
+                return False, "Email is required."
+            url = st.secrets.get("REDIRECT_URL", "http://localhost:8501").strip()
+            sb_admin.auth.admin.invite_user_by_email(email_clean, {"redirect_to": url})
             return True, None
         except Exception as e:
             return False, str(e)

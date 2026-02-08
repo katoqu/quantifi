@@ -30,6 +30,10 @@ my_pages = [
     st.Page(pages.configure_page, title="Configure", icon="⚙️"),
 ]
 
+# Optional admin page (invite users, etc.)
+if auth.is_admin():
+    my_pages.append(st.Page(pages.admin_page, title="Admin", icon="🛡️"))
+
 # Store them in session state so they can be accessed anywhere
 st.session_state["nav_pages"] = my_pages
 

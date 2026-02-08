@@ -82,3 +82,35 @@ Specific regression tests:
 ```bash
 python3 -m pytest tests/test_visualize_stats.py
 ```
+
+## Inviting users (Streamlit vs Supabase)
+
+There are **two different “invite” concepts** that can look similar:
+
+- **Streamlit Community Cloud sharing invite** (adds someone as a viewer/collaborator for a *private* app)  
+  This requires the user to **log in to Streamlit** before they can even reach your app.
+- **Supabase Auth invite** (creates an *app account* in Supabase and emails the user an invite link)  
+  This is what `auth.py` / `auth_engine.py` implement for in-app sign-in and user identity.
+
+### Recommended setup (single login)
+
+If you want users to only authenticate once (via Supabase):
+
+1. Set the deployed Streamlit app visibility to **Public/Unlisted** (not Private).
+2. Use Supabase Auth for sign-in/sign-up (the UI in this repo).
+
+### Invite-only access (optional)
+
+If you want invite-only:
+
+- Set the Streamlit app visibility to **Public/Unlisted** (so users don’t need a Streamlit account).
+- Disable self-signups in **Supabase Auth** settings (so only invited users can create accounts).
+- Set `INVITE_ONLY = true` in Streamlit secrets (this hides the Sign Up UI and blocks sign-ups in code).
+- Set `ADMIN_EMAILS` in Streamlit secrets (comma-separated) to enable the **Admin** page.
+- Use the app’s **Admin → Send Invite** to send a Supabase Auth invite email.
+- The login screen shows a **Request access** button (mailto) when `INVITE_ONLY = true` and `ADMIN_EMAILS` is set.
+
+Secrets used:
+- `REDIRECT_URL`: where Supabase will redirect after email links (password recovery / invite / verification).
+- `ADMIN_EMAILS`: comma-separated list of admin emails (e.g. `"you@example.com,other@example.com"`).
+- `INVITE_ONLY`: boolean (`true`/`false`) to disable self sign-ups in the app UI/logic.

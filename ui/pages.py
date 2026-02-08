@@ -2,6 +2,7 @@ import streamlit as st
 import models
 import utils
 from ui import manage_lookups, capture, metrics, data_editor, importer, landing_page
+from ui import admin_page as admin_page_ui
 
 def tracker_page():
     """Main dashboard controller optimized for mobile."""
@@ -161,3 +162,6 @@ def configure_page():
         last_ts = models.get_last_backup_timestamp()
         st.caption(f"🛡️ Last local backup: **{last_ts}**")
         importer.show_data_lifecycle_management()
+
+def admin_page():
+    admin_page_ui.render_admin_page()
