@@ -76,3 +76,9 @@ Testing:
 ```bash
 python3 -m pytest
 ```
+
+Specific regression tests:
+
+```bash
+python3 -m pytest tests/test_visualize_stats.py
+```

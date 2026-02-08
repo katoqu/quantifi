@@ -20,6 +20,7 @@ python3 -m pytest
 | Area | What to test | Where |
 |---|---|---|
 | Pure helpers | formatting, rounding, labeling | `tests/test_capture_helpers.py`, `tests/test_utils.py` |
+| Data semantics | “not measured” vs `0` behavior | `tests/test_visualize_stats.py` |
 | UI smoke | page renders without crashing | `tests/test_pages_smoke.py` |
 
 ### Current tests (overview)
@@ -34,11 +35,14 @@ python3 -m pytest
 | `tests/test_utils.py` | `test_format_metric_label_includes_unit_and_archived` | Label includes unit and archived marker. |
 | `tests/test_utils.py` | `test_to_datetz_midday` | Date → midday datetime conversion. |
 | `tests/test_pages_smoke.py` | `test_tracker_page_renders_overview` | `tracker_page()` runs in Streamlit AppTest with DB calls mocked. |
+| `tests/test_visualize_stats.py` | `test_get_metric_stats_excludes_not_measured_but_keeps_zero` | NULL/blank values don’t affect aggregates; numeric `0` remains a valid measurement. |
+| `tests/test_visualize_stats.py` | `test_get_metric_stats_all_not_measured_returns_no_data` | All-NULL/blank series reports “No Data” (not zero). |
 
 ## Running tests
 
 - All tests: `python3 -m pytest`
 - One file: `python3 -m pytest tests/test_utils.py`
+- Metric stats semantics: `python3 -m pytest tests/test_visualize_stats.py`
 - One test: `python3 -m pytest -k to_datetz_midday`
 
 ## Patterns used in this repo
