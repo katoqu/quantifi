@@ -134,6 +134,29 @@ class AuthEngine:
                 session = res.get("session") or session
             return user, session, None
         except Exception as e:
+            # If access token is expired, try a refresh-token-based restore.
+            try:
+                refresh = getattr(sb.auth, "refresh_session", None)
+                if callable(refresh):
+                    try:
+                        refreshed = refresh(refresh_token)
+                    except TypeError:
+                        refreshed = refresh()
+                    new_session = getattr(refreshed, "session", None) if refreshed else None
+                    if new_session is None and isinstance(refreshed, dict):
+                        new_session = refreshed.get("session")
+                    payload = AuthEngine.session_to_payload(new_session)
+                    if payload and hasattr(sb.auth, "set_session"):
+                        res = sb.auth.set_session(payload["access_token"], payload["refresh_token"])
+                        user = getattr(res, "user", None) if res else None
+                        session = getattr(res, "session", None) if res else None
+                        if isinstance(res, dict):
+                            user = res.get("user") or user
+                            session = res.get("session") or session
+                        return user, session, None
+            except Exception:
+                pass
+
             return None, None, str(e)
 
     @staticmethod
