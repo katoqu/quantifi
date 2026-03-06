@@ -15,6 +15,21 @@ def _capture_fragment(selected_metric):
 
 @st.fragment
 def _viz_fragment(selected_metric):
+    mid = selected_metric.get("id")
+    show_key = f"show_add_chart_{mid}"
+    if show_key not in st.session_state:
+        # Default off for snappy mobile interactions; user can enable per-metric.
+        st.session_state[show_key] = False
+
+    show_chart = st.toggle(
+        "Show chart",
+        key=show_key,
+        help="Charts can be slow on mobile. Turn this on when you want to review trends.",
+    )
+    if not show_chart:
+        st.caption("Chart hidden for performance.")
+        return
+
     dfe, m_unit, m_name = utils.collect_data(selected_metric)
     if dfe is not None and not dfe.empty:
         visualize.show_visualizations(
