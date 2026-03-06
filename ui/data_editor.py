@@ -3,6 +3,7 @@ import pandas as pd
 import utils
 from ui import visualize
 from logic import editor_handler
+from metric_policy import resolve_metric_policy
 
 @st.dialog("Confirm Changes")
 def _confirm_save_dialog(mid, editor_key, state_key):
@@ -153,7 +154,12 @@ def show_data_management_suite(selected_metric):
             range_end=selected_metric.get("range_end"),
             higher_is_better=selected_metric.get("higher_is_better", True),
             show_pills=False, 
-            external_range=selection
+            external_range=selection,
+            policy=resolve_metric_policy(
+                selected_metric.get("name"),
+                metric_id=str(selected_metric["id"]) if selected_metric.get("id") else None,
+            ),
+            metric_id=str(selected_metric["id"]) if selected_metric.get("id") else None,
         )
     else:
         st.info("No data available to visualize.")

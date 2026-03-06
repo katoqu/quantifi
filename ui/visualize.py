@@ -3,6 +3,67 @@ import plotly.graph_objects as go
 import pandas as pd
 import math
 
+from metric_policy import DEFAULT_POLICY, MetricPolicy, resolve_metric_policy, set_missing_is_zero_override
+
+
+def _ensure_recorded_at_utc(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    if not pd.api.types.is_datetime64_any_dtype(df["recorded_at"]):
+        df["recorded_at"] = pd.to_datetime(df["recorded_at"], format="mixed", utc=True)
+    elif df["recorded_at"].dt.tz is None:
+        df["recorded_at"] = df["recorded_at"].dt.tz_localize("UTC")
+    return df
+
+
+def _collapse_to_daily(df: pd.DataFrame, daily_agg: str) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=["recorded_at", "value"])
+
+    df = df.sort_values("recorded_at").copy()
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df["_day"] = df["recorded_at"].dt.floor("D")
+
+    if daily_agg == "mean":
+        agg_func = "mean"
+    elif daily_agg == "last":
+        agg_func = lambda s: s.dropna().iloc[-1] if s.dropna().shape[0] else float("nan")
+    elif daily_agg == "max":
+        agg_func = "max"
+    elif daily_agg == "min":
+        agg_func = "min"
+    else:
+        agg_func = lambda s: s.sum(min_count=1)
+
+    daily = (
+        df.groupby("_day", as_index=False)["value"]
+        .agg(agg_func)
+        .rename(columns={"_day": "recorded_at"})
+    )
+    return daily[["recorded_at", "value"]]
+
+
+def _apply_missing_policy_daily(
+    daily_df: pd.DataFrame, *, start_ts: pd.Timestamp, end_ts: pd.Timestamp, missing_policy: str
+) -> pd.DataFrame:
+    if missing_policy != "missing_is_zero":
+        return daily_df
+
+    start_day = start_ts.floor("D")
+    end_day = end_ts.floor("D")
+    if pd.isna(start_day) or pd.isna(end_day) or start_day > end_day:
+        return daily_df
+
+    all_days = pd.date_range(start=start_day, end=end_day, freq="D", tz="UTC")
+    filled = (
+        daily_df.set_index("recorded_at")["value"]
+        .reindex(all_days)
+        .fillna(0.0)
+        .rename_axis("recorded_at")
+        .reset_index()
+    )
+    return filled[["recorded_at", "value"]]
+
 def build_hierarchical_annotations(plot_df, freq, range_choice=None):
     month_annotations = []
     month_dividers = [] 
@@ -51,22 +112,22 @@ def build_hierarchical_annotations(plot_df, freq, range_choice=None):
             
     return month_annotations, month_dividers, year_annotations
 
-def get_metric_stats(df):
+def get_metric_stats(df, *, policy: MetricPolicy | None = None):
     if df is None or df.empty:
         return {
             "latest": None, "ma7": None, "change": None,
             "avg": None, "count": 0, "last_date": "No Data"
         }
 
-    if not pd.api.types.is_datetime64_any_dtype(df['recorded_at']):
-        df['recorded_at'] = pd.to_datetime(df['recorded_at'], format='mixed', utc=True)
-    elif df['recorded_at'].dt.tz is None:
-        df['recorded_at'] = df['recorded_at'].dt.tz_localize('UTC')
+    policy = policy or DEFAULT_POLICY
+    df = df.copy()
+    df = _ensure_recorded_at_utc(df)
     
     df = df.sort_values("recorded_at")
 
     # Treat NULL/blank as "not measured" (excluded from stats), but keep numeric 0 as valid.
-    clean_series = pd.to_numeric(df["value"], errors="coerce").dropna()
+    raw_numeric = pd.to_numeric(df["value"], errors="coerce")
+    clean_series = raw_numeric.dropna()
     if clean_series.empty:
         return {
             "latest": None,
@@ -77,17 +138,32 @@ def get_metric_stats(df):
             "last_date": "No Data",
         }
 
-    latest_val = float(clean_series.iloc[-1])
-    
-    ma7 = clean_series.rolling(window=7).mean().iloc[-1] if len(clean_series) >= 7 else None
-    change = float(clean_series.iloc[-1] - clean_series.iloc[-2]) if len(clean_series) >= 2 else 0.0
-    last_ts = df.loc[clean_series.index[-1], 'recorded_at']
+    last_ts = df.loc[clean_series.index[-1], "recorded_at"]
+
+    if policy.missing_policy == "missing_is_zero":
+        start_ts = df["recorded_at"].min()
+        end_ts = df["recorded_at"].max()
+        daily_df = _collapse_to_daily(df, policy.daily_agg)
+        daily_df = _apply_missing_policy_daily(
+            daily_df, start_ts=start_ts, end_ts=end_ts, missing_policy=policy.missing_policy
+        )
+        series = pd.to_numeric(daily_df["value"], errors="coerce").fillna(0.0)
+
+        latest_val = float(series.iloc[-1])
+        ma7 = series.rolling(window=7).mean().iloc[-1] if series.shape[0] >= 7 else None
+        change = float(series.iloc[-1] - series.iloc[-2]) if series.shape[0] >= 2 else 0.0
+        avg_val = float(series.mean())
+    else:
+        latest_val = float(clean_series.iloc[-1])
+        ma7 = clean_series.rolling(window=7).mean().iloc[-1] if len(clean_series) >= 7 else None
+        change = float(clean_series.iloc[-1] - clean_series.iloc[-2]) if len(clean_series) >= 2 else 0.0
+        avg_val = float(clean_series.mean())
         
     return {
         "latest": latest_val,
         "ma7": ma7,
         "change": change,
-        "avg": float(clean_series.mean()),
+        "avg": avg_val,
         "count": int(clean_series.shape[0]),
         "last_date": last_ts.strftime('%d %b') 
     }
@@ -145,6 +221,8 @@ def show_visualizations(
     higher_is_better=True,
     show_pills=True,
     external_range="Month",
+    policy: MetricPolicy | None = None,
+    metric_id: str | None = None,
 ):
     """
     Renders the metric trend chart with adaptive scaling and safe range selection.
@@ -153,11 +231,11 @@ def show_visualizations(
         st.info("No data recorded for this metric yet.")
         return
 
+    policy = policy or resolve_metric_policy(m_name, metric_id=metric_id) or DEFAULT_POLICY
+    dfe = dfe.copy()
+
     # 1. TIMEZONE & TYPE SANITY CHECK
-    if not pd.api.types.is_datetime64_any_dtype(dfe['recorded_at']):
-        dfe['recorded_at'] = pd.to_datetime(dfe['recorded_at'], format='mixed', utc=True)
-    elif dfe['recorded_at'].dt.tz is None:
-        dfe['recorded_at'] = dfe['recorded_at'].dt.tz_localize('UTC')
+    dfe = _ensure_recorded_at_utc(dfe)
 
     # 2. CALCULATE DATA SPAN FOR SMART RANGE OPTIONS
     min_date = dfe["recorded_at"].min()
@@ -186,6 +264,23 @@ def show_visualizations(
         )
     else:
         range_choice = external_range
+
+    # Missing-value policy toggle (session-only)
+    missing_key = (metric_id or str(m_name)).strip()
+    if show_pills and missing_key:
+        initial_missing_is_zero = policy.missing_policy == "missing_is_zero"
+        missing_is_zero = st.checkbox(
+            "Treat missing days as 0",
+            value=bool(initial_missing_is_zero),
+            key=f"missing_is_zero_{missing_key}",
+            help="Useful for habits (e.g. yoga minutes). Leave off for measurements (e.g. sleep score).",
+        )
+        set_missing_is_zero_override(metric_name=m_name, metric_id=metric_id, enabled=missing_is_zero)
+        if bool(missing_is_zero) != bool(initial_missing_is_zero):
+            policy = MetricPolicy(
+                missing_policy="missing_is_zero" if missing_is_zero else "ignore_missing",
+                daily_agg=policy.daily_agg,
+            )
 
     last_ts = dfe["recorded_at"].max()
     
@@ -220,7 +315,8 @@ def show_visualizations(
              hover_date_fmt = "%b %Y"
 
     # 4. FILTERING & DATA GUARD
-    mask = (dfe["recorded_at"] >= start_ts)
+    end_ts = last_ts
+    mask = (dfe["recorded_at"] >= start_ts) & (dfe["recorded_at"] <= end_ts)
     filtered_df = dfe.loc[mask].copy().sort_values("recorded_at")
     
     if filtered_df.empty:
@@ -242,6 +338,10 @@ def show_visualizations(
 
     # Normalize values: blanks/NULLs -> NaN, numeric 0 preserved.
     filtered_df["value"] = pd.to_numeric(filtered_df["value"], errors="coerce")
+    daily_df = _collapse_to_daily(filtered_df, policy.daily_agg)
+    daily_df = _apply_missing_policy_daily(
+        daily_df, start_ts=start_ts, end_ts=end_ts, missing_policy=policy.missing_policy
+    )
 
     if is_ordinal_score:
         agg_func = "median"
@@ -254,7 +354,7 @@ def show_visualizations(
     baseline_label = "Median" if is_ordinal_score else "Avg"
     baseline_val = None
     baseline_val_str = None
-    baseline_series = filtered_df["value"].dropna()
+    baseline_series = pd.to_numeric(daily_df["value"], errors="coerce").dropna()
     if not baseline_series.empty:
         if is_ordinal_score:
             baseline_val = float(baseline_series.median())
@@ -267,8 +367,7 @@ def show_visualizations(
             baseline_val_str = f"{baseline_val:.1f}"
 
     plot_df = (
-        filtered_df
-        .set_index("recorded_at")
+        daily_df.set_index("recorded_at")
         .resample(freq)[["value"]]
         .agg(agg_func)
         .dropna(subset=["value"])

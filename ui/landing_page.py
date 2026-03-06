@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import html
+from metric_policy import resolve_metric_policy
 import auth
 import models
 from ui import visualize, pages
@@ -138,7 +139,13 @@ def render_metric_grid(metrics_list, cats, all_entries):
     scored_metrics = []
     for m in metrics_list:
         m_df = grouped_by_metric.get(m['id'], pd.DataFrame())
-        stats = visualize.get_metric_stats(m_df)
+        stats = visualize.get_metric_stats(
+            m_df,
+            policy=resolve_metric_policy(
+                m.get("name"),
+                metric_id=str(m["id"]) if m.get("id") else None,
+            ),
+        )
         
         latest_target = _extract_latest_target(m_df)
         stats["spark_values"] = _compute_spark_values(m_df, n=12)
@@ -439,4 +446,9 @@ def show_advanced_analytics_view(metric):
         range_start=metric.get("range_start"),
         range_end=metric.get("range_end"),
         higher_is_better=metric.get("higher_is_better", True),
+        policy=resolve_metric_policy(
+            metric.get("name"),
+            metric_id=str(metric["id"]) if metric.get("id") else None,
+        ),
+        metric_id=str(metric["id"]) if metric.get("id") else None,
     )

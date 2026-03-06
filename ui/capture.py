@@ -5,6 +5,7 @@ import datetime as dt
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from ui import visualize
 from logic import editor_handler
+from metric_policy import resolve_metric_policy
 
 @st.fragment
 def show_tracker_suite(selected_metric):
@@ -29,6 +30,11 @@ def show_tracker_suite(selected_metric):
             range_end=selected_metric.get("range_end"),
             higher_is_better=selected_metric.get("higher_is_better", True),
             show_pills=True,
+            policy=resolve_metric_policy(
+                selected_metric.get("name"),
+                metric_id=str(selected_metric["id"]) if selected_metric.get("id") else None,
+            ),
+            metric_id=str(selected_metric["id"]) if selected_metric.get("id") else None,
         )
     else:
         st.info("No data recorded for this metric yet. Add your first entry above.")
