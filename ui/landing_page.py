@@ -5,6 +5,53 @@ import auth
 import models
 from ui import visualize, pages
 
+def _extract_latest_target(m_df: pd.DataFrame):
+    """
+    Extracts the most recent `target_action` label from a metric's entry dataframe.
+    Returns None when missing or blank.
+    """
+    if m_df is None or m_df.empty or "target_action" not in m_df.columns:
+        return None
+    try:
+        latest_entry = m_df.sort_values("recorded_at").iloc[-1]
+    except Exception:
+        return None
+    val = latest_entry.get("target_action")
+    if pd.isna(val):
+        return None
+    s = str(val).strip()
+    return s if s else None
+
+
+def _compute_spark_values(m_df: pd.DataFrame, *, n: int = 12) -> list:
+    """
+    Returns the last N numeric values (excluding NaN) for sparkline rendering.
+    """
+    if m_df is None or m_df.empty or "value" not in m_df.columns:
+        return []
+    try:
+        v = pd.to_numeric(m_df.sort_values("recorded_at")["value"], errors="coerce")
+        return list(v.dropna().tail(int(n)))
+    except Exception:
+        return []
+
+
+def _select_recent_metrics(scored_metrics, *, limit: int = 5):
+    """
+    Filters + sorts the scored metrics for the "Recent" view (newest first),
+    excluding archived metrics.
+    """
+    recent = [
+        (ts, m, stats, target)
+        for ts, m, stats, target in scored_metrics
+        if ts is not None
+        and ts != pd.Timestamp.min.tz_localize("UTC")
+        and not m.get("is_archived", False)
+    ]
+    recent.sort(key=lambda x: x[0], reverse=True)
+    return recent[: int(limit)]
+
+
 def _switch_to_new_metric():
     st.session_state["config_tab_selection"] = "✨ New Metric"
     nav_pages = st.session_state.get("nav_pages", [])
@@ -93,36 +140,15 @@ def render_metric_grid(metrics_list, cats, all_entries):
         m_df = grouped_by_metric.get(m['id'], pd.DataFrame())
         stats = visualize.get_metric_stats(m_df)
         
-        # --- FIX START: Extract Target ---
-        latest_target = None
-        if not m_df.empty and "target_action" in m_df.columns:
-            # Sort by date to ensure we get the absolute latest
-            latest_entry = m_df.sort_values("recorded_at").iloc[-1]
-            if pd.notna(latest_entry.get("target_action")):
-                latest_target = latest_entry["target_action"]
-        # --- FIX END ---
-
-        if not m_df.empty:
-            v = pd.to_numeric(m_df.sort_values("recorded_at")["value"], errors="coerce")
-            spark_values = list(v.dropna().tail(12))
-        else:
-            spark_values = []
-        stats["spark_values"] = spark_values
+        latest_target = _extract_latest_target(m_df)
+        stats["spark_values"] = _compute_spark_values(m_df, n=12)
         latest_ts = latest_by_metric.get(m['id'], pd.Timestamp.min.tz_localize('UTC'))
         
         # --- FIX: Append 4 items instead of 3 ---
         scored_metrics.append((latest_ts, m, stats, latest_target)) 
 
     if current_filter == "Recent":
-        recent = [
-            (ts, m, stats, target)
-            for ts, m, stats, target in scored_metrics
-            if ts is not None
-            and ts != pd.Timestamp.min.tz_localize('UTC')
-            and not m.get("is_archived", False)
-        ]
-        recent.sort(key=lambda x: x[0], reverse=True)
-        recent = recent[:5]
+        recent = _select_recent_metrics(scored_metrics, limit=5)
         if not recent:
             st.info("No recent metrics yet — add an entry to see them here.")
             return

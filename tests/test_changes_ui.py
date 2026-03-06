@@ -7,11 +7,57 @@ st = pytest.importorskip("streamlit")
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
 
 
+def _widget_label(widget) -> str:
+    return str(
+        getattr(widget, "label", None)
+        or getattr(widget, "value", None)
+        or getattr(widget, "name", None)
+        or ""
+    )
+
+
+def _widget_key(widget):
+    return getattr(widget, "key", None)
+
+
+def _find_widget(widgets, *, label: str | None = None, key: str | None = None):
+    for w in widgets:
+        if label is not None and _widget_label(w) != label:
+            continue
+        if key is not None and _widget_key(w) != key:
+            continue
+        return w
+    raise AssertionError(f"Widget not found (label={label!r}, key={key!r}).")
+
+
+def _click_button(at: AppTest, *, label: str | None = None, key: str | None = None):
+    btn = _find_widget(at.button, label=label, key=key)
+    btn.click()
+
+
+def _input_text(at: AppTest, *, label: str | None = None, key: str | None = None, value: str):
+    w = _find_widget(at.text_input, label=label, key=key)
+    w.input(value)
+
+
+def _input_area(at: AppTest, *, label: str | None = None, key: str | None = None, value: str):
+    w = _find_widget(at.text_area, label=label, key=key)
+    w.input(value)
+
+
+def _session_get(at: AppTest, key: str, default):
+    try:
+        return at.session_state[key]
+    except Exception:
+        return default
+
+
 def test_changes_can_create_event():
     """Creating a change event calls the model with category + title + notes."""
     script = """
 import streamlit as st
 from ui import changes
+import datetime as dt
 
 EVENTS_KEY = "__events"
 CATS_KEY = "__cats"
@@ -50,18 +96,24 @@ changes.models.create_change_event = _create_change_event
 changes.models.delete_change_event = lambda _id: None
 changes.models.update_change_event = lambda _id, payload: None
 
+# Streamlit testing can be sensitive to some newer widgets; keep this test focused.
+# In particular, some Streamlit versions have issues serializing `st.pills` state under AppTest.
+changes.st.pills = lambda *a, **k: "Today"
+changes.st.date_input = lambda *a, **k: dt.date.today()
+changes.st.time_input = lambda *a, **k: dt.datetime.now().time().replace(second=0, microsecond=0)
+
 changes.show_changes()
 """
 
     at = AppTest.from_string(script)
     at.run()
 
-    at.text_input[0].input("Started vegetarian nutrition")
-    at.text_area[0].input("No meat, fish ok.")
-    at.form_submit_button[0].click()
+    _input_text(at, label="Title", value="Started vegetarian nutrition")
+    _input_area(at, label="Notes", value="No meat, fish ok.")
+    _click_button(at, label="Add Change")
     at.run()
 
-    calls = at.session_state.get("__create_calls", [])
+    calls = _session_get(at, "__create_calls", [])
     assert len(calls) == 1
     assert calls[0]["title"] == "Started vegetarian nutrition"
     assert calls[0]["notes"] == "No meat, fish ok."
@@ -74,6 +126,7 @@ def test_changes_can_edit_event():
     script = """
 import streamlit as st
 from ui import changes
+import datetime as dt
 
 EVENTS_KEY = "__events"
 CATS_KEY = "__cats"
@@ -115,22 +168,30 @@ changes.models.create_change_event = lambda payload: None
 changes.models.delete_change_event = lambda _id: None
 changes.models.update_change_event = _update_change_event
 
+# Streamlit testing can be sensitive to some newer widgets; keep this test focused.
+# In particular, some Streamlit versions have issues serializing `st.pills` state under AppTest.
+changes.st.pills = lambda *a, **k: "Today"
+changes.st.date_input = lambda *a, **k: dt.date(2026, 2, 1)
+changes.st.time_input = lambda *a, **k: dt.time(12, 0)
+
 changes.show_changes()
 """
 
     at = AppTest.from_string(script)
     at.run()
 
-    at.button[0].click()  # Edit
+    try:
+        _click_button(at, key="edit_change_e1")
+    except AssertionError:
+        _click_button(at, label="Edit")
     at.run()
 
-    # text_input[0] = create form title, text_input[1] = edit form title
-    at.text_input[1].input("New title")
-    at.text_area[1].input("New notes")
-    at.form_submit_button[1].click()  # Save Changes
+    _input_text(at, key="edit_change_title_e1", value="New title")
+    _input_area(at, key="edit_change_notes_e1", value="New notes")
+    _click_button(at, label="Save Changes")
     at.run()
 
-    calls = at.session_state.get("__update_calls", [])
+    calls = _session_get(at, "__update_calls", [])
     assert len(calls) == 1
     event_id, payload = calls[0]
     assert event_id == "e1"

@@ -2,6 +2,40 @@ import streamlit as st
 import models
 import utils
 
+def _reconcile_create_notice(existing_notice, notice_name, new_cat_name):
+    """
+    Clears the "already exists" notice when the user changes the input.
+
+    Returns: (notice, notice_name)
+    """
+    norm_input = utils.normalize_name(new_cat_name) if new_cat_name else ""
+    if existing_notice and (not norm_input or (notice_name and norm_input != notice_name)):
+        return None, None
+    return existing_notice, notice_name
+
+
+def _handle_create_category_submit(*, new_cat_name: str, get_category_by_name, create_category):
+    """
+    Pure-ish controller for create-category submit. Dependency-injected for tests.
+
+    Returns a dict with:
+    - status: "empty" | "exists" | "created"
+    - norm_name: str (when non-empty)
+    - existing/created: dict (when available)
+    """
+    norm_name = utils.normalize_name(new_cat_name)
+    if not norm_name:
+        return {"status": "empty", "norm_name": ""}
+
+    existing = get_category_by_name(norm_name)
+    if existing:
+        return {"status": "exists", "norm_name": norm_name, "existing": existing}
+
+    create_category(norm_name)
+    created = get_category_by_name(norm_name)
+    return {"status": "created", "norm_name": norm_name, "created": created}
+
+
 def show_manage_lookups():
     """
     Refactored Category Management: Uses the sticky 'Focus' pattern 
@@ -19,36 +53,42 @@ def show_manage_lookups():
             )
             existing_notice = st.session_state.get("manage_cat_notice")
             notice_name = st.session_state.get("manage_cat_notice_name")
-            norm_input = utils.normalize_name(new_cat_name) if new_cat_name else ""
-            if existing_notice and (not norm_input or (notice_name and norm_input != notice_name)):
-                st.session_state["manage_cat_notice"] = None
-                st.session_state["manage_cat_notice_name"] = None
-                existing_notice = None
+            existing_notice, notice_name = _reconcile_create_notice(
+                existing_notice, notice_name, new_cat_name
+            )
+            st.session_state["manage_cat_notice"] = existing_notice
+            st.session_state["manage_cat_notice_name"] = notice_name
             if existing_notice:
                 st.info(existing_notice)
             submitted = st.form_submit_button("✨ Create Category", use_container_width=True)
         if submitted:
-            norm_name = utils.normalize_name(new_cat_name)
-            if not norm_name:
+            res = _handle_create_category_submit(
+                new_cat_name=new_cat_name,
+                get_category_by_name=models.get_category_by_name,
+                create_category=models.create_category,
+            )
+            if res["status"] == "empty":
                 st.warning("Please enter a category name.")
-            else:
-                existing = models.get_category_by_name(norm_name)
-                if existing:
-                    st.session_state["manage_cat_notice"] = (
-                        f"Category already exists: {existing['name'].title()}"
-                    )
-                    st.session_state["manage_cat_notice_name"] = norm_name
+                return
+
+            if res["status"] == "exists":
+                existing = res.get("existing") or {}
+                norm_name = res.get("norm_name") or ""
+                st.session_state["manage_cat_notice"] = (
+                    f"Category already exists: {str(existing.get('name','')).title()}"
+                )
+                st.session_state["manage_cat_notice_name"] = norm_name
+                if existing.get("id"):
                     st.session_state["last_active_cat_id"] = existing["id"]
-                    st.rerun()
-                else:
-                    models.create_category(norm_name)
-                    created = models.get_category_by_name(norm_name)
-                    if created:
-                        st.session_state["last_active_cat_id"] = created["id"]
-                    st.session_state["manage_cat_notice"] = None
-                    st.session_state["manage_cat_notice_name"] = None
-                    utils.finalize_action(f"Created: {norm_name.title()}")
-                    st.rerun()
+                st.rerun()
+
+            created = res.get("created") or {}
+            if created.get("id"):
+                st.session_state["last_active_cat_id"] = created["id"]
+            st.session_state["manage_cat_notice"] = None
+            st.session_state["manage_cat_notice_name"] = None
+            utils.finalize_action(f"Created: {str(res.get('norm_name','')).title()}")
+            st.rerun()
 
     # 1. Fetch Categories
     cats = models.get_categories() or []

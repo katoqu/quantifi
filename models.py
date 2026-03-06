@@ -196,6 +196,15 @@ def get_latest_entry_only(metric_id):
         _current_user_id(), cache_control.get_buster(), str(metric_id)
     )
 
+
+# Compatibility: some UI code calls `.clear()` on these functions.
+# The wrappers above are not decorated, so we forward `.clear` to the cached impls.
+get_categories.clear = _get_categories_cached.clear  # type: ignore[attr-defined]
+get_metrics.clear = _get_metrics_cached.clear  # type: ignore[attr-defined]
+get_change_events.clear = _get_change_events_cached.clear  # type: ignore[attr-defined]
+get_all_entries_bulk.clear = _get_all_entries_bulk_cached.clear  # type: ignore[attr-defined]
+get_latest_entry_only.clear = _get_latest_entry_only_cached.clear  # type: ignore[attr-defined]
+
 # --- WRITE OPERATIONS ---
 
 def create_category(name: str):

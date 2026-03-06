@@ -22,6 +22,8 @@ python3 -m pytest
 | Pure helpers | formatting, rounding, labeling | `tests/test_capture_helpers.py`, `tests/test_utils.py` |
 | Data semantics | “not measured” vs `0` behavior | `tests/test_visualize_stats.py` |
 | UI smoke | page renders without crashing | `tests/test_pages_smoke.py` |
+| Auth persistence | SID cookie + server-side session store | `tests/test_persistent_login.py` |
+| UI helpers | low-level UI helper functions | `tests/test_ui_low_coverage_helpers.py` |
 
 ### Current tests (overview)
 
@@ -65,6 +67,7 @@ pre-commit install
 - All tests: `python3 -m pytest`
 - One file: `python3 -m pytest tests/test_utils.py`
 - Metric stats semantics: `python3 -m pytest tests/test_visualize_stats.py`
+- Persistent login: `python3 -m pytest tests/test_persistent_login.py`
 - One test: `python3 -m pytest -k to_datetz_midday`
 
 ## Patterns used in this repo

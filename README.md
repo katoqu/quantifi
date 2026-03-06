@@ -177,3 +177,12 @@ Setup:
    - `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 
 Disable persistent login by setting `PERSIST_LOGIN = false`.
+
+## Testing persistent login (SID cookie)
+
+Unit tests for the cookie + server-side session store live in `tests/test_persistent_login.py`.
+
+- `pytest -q tests/test_persistent_login.py`
+- Included in the full suite: `pytest -q`
+
+These tests use lightweight stubs for Streamlit, cookies, and Supabase admin calls, so they run without network access.

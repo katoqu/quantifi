@@ -1,4 +1,10 @@
-import streamlit as st
+import os
+
+try:
+    import streamlit as st  # type: ignore
+except Exception:  # pragma: no cover
+    st = None
+
 from supabase import create_client, ClientOptions
 
 _SB_CACHE_KEY = "supabase_client"
@@ -7,7 +13,26 @@ _SB_ADMIN_CACHE_KEY = "supabase_admin_client"
 _sb_fallback = None
 _sb_admin_fallback = None
 
+def get_secret(key: str, *, default=None, required: bool = False):
+    """
+    Reads a config value from Streamlit secrets when available, else falls back
+    to environment variables (useful for CLI scripts and IDE tooling).
+    """
+    val = None
+    if st is not None:
+        try:
+            val = st.secrets.get(key, None)
+        except Exception:
+            val = None
+    if val is None:
+        val = os.environ.get(key, default)
+    if required and (val is None or str(val).strip() == ""):
+        raise KeyError(f"Missing required secret/env var: {key}")
+    return val
+
 def _can_use_session_state() -> bool:
+    if st is None:
+        return False
     try:
         _ = st.session_state
         return True
@@ -29,8 +54,8 @@ def get_supabase():
                 flow_type="pkce",
             )
             st.session_state[_SB_CACHE_KEY] = create_client(
-                st.secrets["SUPABASE_URL"],
-                st.secrets["SUPABASE_KEY"],
+                get_secret("SUPABASE_URL", required=True),
+                get_secret("SUPABASE_KEY", required=True),
                 options=options,
             )
         return st.session_state[_SB_CACHE_KEY]
@@ -42,8 +67,8 @@ def get_supabase():
             flow_type="pkce",
         )
         _sb_fallback = create_client(
-            st.secrets["SUPABASE_URL"],
-            st.secrets["SUPABASE_KEY"],
+            get_secret("SUPABASE_URL", required=True),
+            get_secret("SUPABASE_KEY", required=True),
             options=options,
         )
     return _sb_fallback
@@ -54,15 +79,15 @@ def get_supabase_admin():
     if _can_use_session_state():
         if _SB_ADMIN_CACHE_KEY not in st.session_state:
             st.session_state[_SB_ADMIN_CACHE_KEY] = create_client(
-                st.secrets["SUPABASE_URL"],
-                st.secrets["SUPABASE_SERVICE_ROLE_KEY"],
+                get_secret("SUPABASE_URL", required=True),
+                get_secret("SUPABASE_SERVICE_ROLE_KEY", required=True),
             )
         return st.session_state[_SB_ADMIN_CACHE_KEY]
 
     if _sb_admin_fallback is None:
         _sb_admin_fallback = create_client(
-            st.secrets["SUPABASE_URL"],
-            st.secrets["SUPABASE_SERVICE_ROLE_KEY"],
+            get_secret("SUPABASE_URL", required=True),
+            get_secret("SUPABASE_SERVICE_ROLE_KEY", required=True),
         )
     return _sb_admin_fallback
 

@@ -6,18 +6,24 @@ Usage:
   python manage_db.py --purge --users a@b.com # Wipe specific users
 """
 import argparse
-import psycopg2
 from urllib.parse import urlparse
-import streamlit as st
 from datetime import datetime, timedelta
-from supabase_config import sb_admin
+from supabase_config import sb_admin, get_secret
+
+try:
+    import psycopg2  # type: ignore
+except Exception:  # pragma: no cover
+    psycopg2 = None
 
 # 1. Configuration & Connection
 def get_db_connection():
     try:
-        url = st.secrets["SUPABASE_URL"]
+        if psycopg2 is None:
+            raise RuntimeError("psycopg2 is not installed. Install `psycopg2-binary`.")
+
+        url = get_secret("SUPABASE_URL", required=True)
         project_ref = urlparse(url).hostname.split('.')[0]
-        password = st.secrets["DB_PASSWORD"]
+        password = get_secret("DB_PASSWORD", required=True)
         db_url = f"postgresql://postgres:{password}@db.{project_ref}.supabase.co:5432/postgres"
         return psycopg2.connect(db_url)
     except Exception as e:
