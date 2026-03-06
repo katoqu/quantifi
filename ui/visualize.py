@@ -16,6 +16,42 @@ def _ensure_recorded_at_utc(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _stable_metric_key(metric_id: str | None, metric_name: str | None) -> str:
+    if metric_id:
+        return str(metric_id).strip()
+    return (metric_name or "").strip().lower()
+
+
+def _today_utc_end() -> pd.Timestamp:
+    # End-of-today (UTC) so day-bucketed charts include the current day.
+    today = pd.Timestamp.now(tz="UTC").floor("D")
+    return today + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+
+
+def _format_value_for_metric(val: float | None, *, kind: str) -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return "—"
+    if kind == "count":
+        try:
+            return f"{int(round(float(val)))}"
+        except Exception:
+            return str(val)
+    try:
+        return f"{float(val):.1f}"
+    except Exception:
+        return str(val)
+
+
+def _score_resample_agg(*, missing_policy: str) -> str:
+    return "mean" if missing_policy == "missing_is_zero" else "median"
+
+
+def _score_yaxis_range(*, range_start: int, range_end: int, missing_policy: str) -> tuple[float, float]:
+    if missing_policy == "missing_is_zero":
+        range_start = min(int(range_start), 0)
+    return (float(range_start) - 0.5, float(range_end) + 0.5)
+
+
 def _collapse_to_daily(df: pd.DataFrame, daily_agg: str) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame(columns=["recorded_at", "value"])
@@ -237,50 +273,47 @@ def show_visualizations(
     # 1. TIMEZONE & TYPE SANITY CHECK
     dfe = _ensure_recorded_at_utc(dfe)
 
-    # 2. CALCULATE DATA SPAN FOR SMART RANGE OPTIONS
+    # 2. CALCULATE DATA SPAN
     min_date = dfe["recorded_at"].min()
     max_date = dfe["recorded_at"].max()
     days_diff = (max_date - min_date).days
 
+    # Stable per-metric keys (avoid casing/page differences breaking widget state).
+    widget_key = _stable_metric_key(metric_id, str(m_name))
+
     if show_pills:
-        options = ["Week"]
-        if days_diff > 7:
-            options.append("Month")
-        if days_diff > 180:
-            options.append("Year")
-        options.append("All")
+        period_options = ["Week", "Month", "6M", "Year", "All"]
+        default_val = "Month"
 
-        default_val = "Month" if "Month" in options else "All"
+        range_key = f"viz_period_{widget_key}"
+        zeros_key = f"viz_zeros_{widget_key}"
 
-        range_key = f"viz_range_{m_name}"
-        if range_key in st.session_state and st.session_state[range_key] not in options:
-            del st.session_state[range_key]
-
-        range_choice = st.segmented_control(
-            label="",
-            options=options,
-            default=default_val,
-            key=range_key,
-        )
+        c1, c2 = st.columns([5, 1], vertical_alignment="center")
+        with c1:
+            if range_key in st.session_state and st.session_state[range_key] not in period_options:
+                del st.session_state[range_key]
+            range_choice = st.segmented_control(
+                label="",
+                options=period_options,
+                default=default_val,
+                key=range_key,
+            )
+        with c2:
+            initial_missing_is_zero = policy.missing_policy == "missing_is_zero"
+            missing_is_zero = st.toggle(
+                "Zeros",
+                value=bool(initial_missing_is_zero),
+                key=zeros_key,
+                help="Fill missing days as 0 (best for habits/totals). Leave off for measurements.",
+            )
+            set_missing_is_zero_override(metric_name=m_name, metric_id=metric_id, enabled=missing_is_zero)
+            if bool(missing_is_zero) != bool(initial_missing_is_zero):
+                policy = MetricPolicy(
+                    missing_policy="missing_is_zero" if missing_is_zero else "ignore_missing",
+                    daily_agg=policy.daily_agg,
+                )
     else:
         range_choice = external_range
-
-    # Missing-value policy toggle (session-only)
-    missing_key = (metric_id or str(m_name)).strip()
-    if show_pills and missing_key:
-        initial_missing_is_zero = policy.missing_policy == "missing_is_zero"
-        missing_is_zero = st.checkbox(
-            "Treat missing days as 0",
-            value=bool(initial_missing_is_zero),
-            key=f"missing_is_zero_{missing_key}",
-            help="Useful for habits (e.g. yoga minutes). Leave off for measurements (e.g. sleep score).",
-        )
-        set_missing_is_zero_override(metric_name=m_name, metric_id=metric_id, enabled=missing_is_zero)
-        if bool(missing_is_zero) != bool(initial_missing_is_zero):
-            policy = MetricPolicy(
-                missing_policy="missing_is_zero" if missing_is_zero else "ignore_missing",
-                daily_agg=policy.daily_agg,
-            )
 
     last_ts = dfe["recorded_at"].max()
     
@@ -289,16 +322,22 @@ def show_visualizations(
     # Default hover date format (includes day)
     hover_date_fmt = "%d %b %Y"
 
+    end_ts = _today_utc_end() if show_pills else last_ts
+
     if range_choice == "Week":
-        start_ts = last_ts - pd.Timedelta(days=7)
+        start_ts = end_ts - pd.Timedelta(days=7)
         freq, tickformat, hover_label = "D", "%a", "Value"
         
     elif range_choice in ["Month"]:
-        start_ts = last_ts - pd.Timedelta(days=31)
+        start_ts = end_ts - pd.Timedelta(days=31)
         freq, tickformat, hover_label = "D", "%d", "Daily Value"
+
+    elif range_choice in ["6M", "6m", "Last 6 months", "Last 6 Months"]:
+        start_ts = end_ts - pd.DateOffset(months=6)
+        freq, tickformat, hover_label = "W", "%d %b", "Weekly Avg"
         
     elif range_choice == "Year":
-        start_ts = last_ts - pd.DateOffset(months=12)
+        start_ts = end_ts - pd.DateOffset(months=12)
         freq, tickformat, hover_label = "W", "%b", "Weekly Avg"        
     else: # "All" or "Custom"
         start_ts = dfe["recorded_at"].min()
@@ -315,12 +354,11 @@ def show_visualizations(
              hover_date_fmt = "%b %Y"
 
     # 4. FILTERING & DATA GUARD
-    end_ts = last_ts
     mask = (dfe["recorded_at"] >= start_ts) & (dfe["recorded_at"] <= end_ts)
     filtered_df = dfe.loc[mask].copy().sort_values("recorded_at")
     
-    if filtered_df.empty:
-        st.warning(f"No data found for the {range_choice} range.")
+    if filtered_df.empty and policy.missing_policy != "missing_is_zero":
+        st.info("No measurements recorded in this period.")
         return
 
     # 5. RESAMPLING
@@ -344,21 +382,24 @@ def show_visualizations(
     )
 
     if is_ordinal_score:
-        agg_func = "median"
+        # If missing days are filled as 0, median tends to collapse toward 0 for sparse series
+        # (and can hide real recordings in long "All" ranges). Mean preserves signal while
+        # still reflecting "zeros" semantics.
+        agg_func = _score_resample_agg(missing_policy=policy.missing_policy)
     elif is_count:
         # Avoid turning "all missing" buckets into 0.
         agg_func = lambda s: s.sum(min_count=1)
     else:
         agg_func = "mean"
 
-    baseline_label = "Median" if is_ordinal_score else "Avg"
+    baseline_label = "Median" if (is_ordinal_score and agg_func == "median") else "Avg"
     baseline_val = None
     baseline_val_str = None
     baseline_series = pd.to_numeric(daily_df["value"], errors="coerce").dropna()
     if not baseline_series.empty:
         if is_ordinal_score:
-            baseline_val = float(baseline_series.median())
-            baseline_val_str = f"{baseline_val:.0f}"
+            baseline_val = float(baseline_series.mean() if agg_func == "mean" else baseline_series.median())
+            baseline_val_str = f"{baseline_val:.1f}" if agg_func == "mean" else f"{baseline_val:.0f}"
         elif is_count:
             baseline_val = float(baseline_series.mean())
             baseline_val_str = f"{baseline_val:.0f}"
@@ -377,6 +418,28 @@ def show_visualizations(
     if plot_df.empty:
         st.info("Insufficient data points in this range to display a chart.")
         return
+
+    # Apple-like summary: primary stat for the selected period + latest value.
+    summary_series = pd.to_numeric(daily_df["value"], errors="coerce")
+    if policy.missing_policy != "missing_is_zero":
+        summary_series = summary_series.dropna()
+    if not summary_series.empty:
+        if kind == "count":
+            primary_label = "Total"
+            primary_val = float(summary_series.sum())
+        else:
+            primary_label = "Average"
+            primary_val = float(summary_series.mean())
+
+        latest_val = float(summary_series.iloc[-1])
+        unit = (m_unit or "").strip()
+        unit_suffix = f" {unit}" if unit else ""
+
+        s1, s2 = st.columns(2)
+        with s1:
+            st.metric(primary_label, f"{_format_value_for_metric(primary_val, kind=kind)}{unit_suffix}")
+        with s2:
+            st.metric("Latest", f"{_format_value_for_metric(latest_val, kind=kind)}{unit_suffix}")
 
     if range_choice in ["Last 6 months", "Last year"] and len(plot_df) < 8:
          tickformat = "%d %b"
@@ -419,10 +482,15 @@ def show_visualizations(
                     showscale=False,
                     line=dict(color="rgba(255,255,255,0.9)", width=1),
                 ),
-                hovertemplate=f"<b>{hover_label}: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>",
+                hovertemplate=(
+                    f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
+                    if agg_func == "mean"
+                    else f"<b>{hover_label}: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
+                ),
             )
         )
-        fig.update_yaxes(range=[rs - 0.5, re + 0.5], dtick=1)
+        y0, y1 = _score_yaxis_range(range_start=int(rs), range_end=int(re), missing_policy=policy.missing_policy)
+        fig.update_yaxes(range=[y0, y1], dtick=1)
         fig.update_layout(bargap=0.25)
     elif is_count:
         fig.add_trace(
