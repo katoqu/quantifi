@@ -21,8 +21,11 @@ def get_db_connection():
         if psycopg2 is None:
             raise RuntimeError("psycopg2 is not installed. Install `psycopg2-binary`.")
 
-        url = get_secret("SUPABASE_URL", required=True)
-        project_ref = urlparse(url).hostname.split('.')[0]
+        url = str(get_secret("SUPABASE_URL", required=True))
+        hostname = urlparse(url).hostname
+        if not hostname:
+            raise ValueError("SUPABASE_URL is missing a hostname.")
+        project_ref = hostname.split(".")[0]
         password = get_secret("DB_PASSWORD", required=True)
         db_url = f"postgresql://postgres:{password}@db.{project_ref}.supabase.co:5432/postgres"
         return psycopg2.connect(db_url)

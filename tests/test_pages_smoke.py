@@ -29,7 +29,7 @@ pages.tracker_page()
 """
 
     at = AppTest.from_string(script)
-    at.session_state["tracker_view_selector"] = "Overview"
+    at.session_state["tracker_view_selector"] = "Home"
     at.run()
 
     assert len(at.exception) == 0
@@ -61,7 +61,7 @@ pages.tracker_page()
 """
 
     at = AppTest.from_string(script)
-    at.session_state["tracker_view_selector"] = "Overview"
+    at.session_state["tracker_view_selector"] = "Home"
     at.run()
 
     assert len(at.exception) == 0
@@ -91,7 +91,7 @@ pages.tracker_page()
 """
 
     at = AppTest.from_string(script)
-    at.session_state["tracker_view_selector"] = "Changes"
+    at.session_state["tracker_view_selector"] = "Log"
     at.run()
 
     assert len(at.exception) == 0

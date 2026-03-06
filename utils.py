@@ -139,7 +139,7 @@ def apply_mobile_table_css():
         </style>
     """, unsafe_allow_html=True)
 
-def render_back_button(target_page_title="Tracker", target_tab="Overview"):
+def render_back_button(target_page_title="Tracker", target_tab="Home"):
     """
     Renders a simple native Streamlit pill as a 'Back to Start' button.
     """

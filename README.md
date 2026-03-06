@@ -9,7 +9,7 @@ A minimal Streamlit app for manual metric tracking using Supabase (Postgres + Au
 ## Features
 
 - Supabase Auth sign-in + row-level security (RLS)
-- Mobile-friendly tracker UI (overview / record / analytics / edit)
+- Mobile-friendly tracker UI (home / add / log / stats / edit)
 - Invite-only mode (optional) with in-app admin invites
 - Import/export + basic DB admin tooling (`manage_db.py`)
 
@@ -25,6 +25,8 @@ A minimal Streamlit app for manual metric tracking using Supabase (Postgres + Au
 python3 -m venv .venv
 source .venv/bin/activate
 ```
+
+If your IDE shows import resolution errors (e.g. `streamlit` / `pandas`), point it at `.venv/bin/python` (VS Code also picks this up from `.vscode/settings.json`).
 
 2) Install dependencies
 

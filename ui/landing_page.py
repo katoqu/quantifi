@@ -128,7 +128,8 @@ def render_metric_grid(metrics_list, cats, all_entries):
     if not all_df.empty:
         all_df['recorded_at'] = pd.to_datetime(all_df['recorded_at'], format='mixed', utc=True)
         # "Not measured" (NULL/blank) should not make a metric appear "recent".
-        all_df["_value_num"] = pd.to_numeric(all_df.get("value"), errors="coerce")
+        value_series = all_df["value"] if "value" in all_df.columns else pd.Series(index=all_df.index, dtype="object")
+        all_df["_value_num"] = pd.to_numeric(value_series, errors="coerce")
         measured_df = all_df[pd.notna(all_df["_value_num"])].copy()
         latest_by_metric = measured_df.groupby('metric_id')['recorded_at'].max() if not measured_df.empty else pd.Series(dtype='datetime64[ns, UTC]')
         grouped_by_metric = {mid: df for mid, df in all_df.groupby('metric_id')}
@@ -264,11 +265,11 @@ def _render_action_card(metric, cat_map, stats, target=None):
 
         if choice == "➕":
             st.session_state["last_active_mid"] = mid
-            st.session_state["tracker_view_selector"] = "Record"
+            st.session_state["tracker_view_selector"] = "Add"
             st.rerun()
         elif choice == "📊":
             st.session_state["last_active_mid"] = mid
-            st.session_state["tracker_view_selector"] = "Analytics"
+            st.session_state["tracker_view_selector"] = "Stats"
             st.rerun()
         elif choice == "⚙️":
             st.session_state["last_active_mid"] = mid
