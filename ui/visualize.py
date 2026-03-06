@@ -6,6 +6,9 @@ import math
 from metric_policy import DEFAULT_POLICY, MetricPolicy, resolve_metric_policy, set_missing_is_zero_override
 
 
+from dataclasses import dataclass
+
+
 def _ensure_recorded_at_utc(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
@@ -50,6 +53,113 @@ def _score_yaxis_range(*, range_start: int, range_end: int, missing_policy: str)
     if missing_policy == "missing_is_zero":
         range_start = min(int(range_start), 0)
     return (float(range_start) - 0.5, float(range_end) + 0.5)
+
+
+@dataclass(frozen=True)
+class _PeriodSpec:
+    start_ts: pd.Timestamp
+    end_ts: pd.Timestamp
+    freq: str
+    tickformat: str
+    hover_label: str
+    hover_date_fmt: str
+
+
+def _resolve_period(
+    range_choice: str,
+    *,
+    min_ts: pd.Timestamp,
+    max_ts: pd.Timestamp,
+    anchor_end_ts: pd.Timestamp,
+) -> _PeriodSpec:
+    """
+    Pure helper: map a period selection to filtering bounds + resample config.
+
+    `anchor_end_ts` decides whether "Week/Month/6M/Year" is trailing-to-today or trailing-to-last-point.
+    """
+    choice = (range_choice or "").strip()
+    if choice in {"6m", "6 M"}:
+        choice = "6M"
+
+    # Default hover date format (includes day)
+    hover_date_fmt = "%d %b %Y"
+
+    end_ts = anchor_end_ts
+
+    if choice == "Week":
+        start_ts = end_ts - pd.Timedelta(days=7)
+        freq, tickformat, hover_label = "D", "%a", "Value"
+    elif choice == "Month":
+        start_ts = end_ts - pd.Timedelta(days=31)
+        freq, tickformat, hover_label = "D", "%d", "Daily Value"
+    elif choice == "6M":
+        start_ts = end_ts - pd.DateOffset(months=6)
+        freq, tickformat, hover_label = "W", "%d %b", "Weekly Avg"
+    elif choice == "Year":
+        start_ts = end_ts - pd.DateOffset(months=12)
+        freq, tickformat, hover_label = "W", "%b", "Weekly Avg"
+    else:
+        # "All" or "Custom"
+        start_ts = min_ts
+        days_diff = (max_ts - min_ts).days if pd.notna(max_ts) and pd.notna(min_ts) else 0
+        if days_diff <= 31:
+            freq, tickformat, hover_label = "D", "%d %b", "Daily Value"
+        elif days_diff <= 150:
+            freq, tickformat, hover_label = "W", "%d %b", "Weekly Avg"
+        else:
+            freq, tickformat, hover_label = "MS", "%b '%y", "Monthly Avg"
+            hover_date_fmt = "%b %Y"
+
+    return _PeriodSpec(
+        start_ts=pd.Timestamp(start_ts).tz_convert("UTC") if pd.Timestamp(start_ts).tzinfo else pd.Timestamp(start_ts, tz="UTC"),
+        end_ts=pd.Timestamp(end_ts).tz_convert("UTC") if pd.Timestamp(end_ts).tzinfo else pd.Timestamp(end_ts, tz="UTC"),
+        freq=freq,
+        tickformat=tickformat,
+        hover_label=hover_label,
+        hover_date_fmt=hover_date_fmt,
+    )
+
+
+def _resample_to_plot_df(
+    daily_df: pd.DataFrame,
+    *,
+    freq: str,
+    kind: str,
+    missing_policy: str,
+) -> tuple[pd.DataFrame, str]:
+    """
+    Pure helper: resample daily values into the plot series.
+    Returns (plot_df, agg_kind) where agg_kind is one of {"mean","median","sum"}.
+    """
+    if daily_df is None or daily_df.empty:
+        return pd.DataFrame(columns=["recorded_at", "value"]), "mean"
+
+    df = daily_df.copy()
+    df["recorded_at"] = pd.to_datetime(df["recorded_at"], utc=True, format="mixed")
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+
+    if kind == "score":
+        agg_kind = _score_resample_agg(missing_policy=missing_policy)
+    elif kind == "count":
+        agg_kind = "sum"
+    else:
+        agg_kind = "mean"
+
+    g = df.set_index("recorded_at")["value"].resample(freq)
+    if agg_kind == "sum":
+        s = g.sum(min_count=1)
+    elif agg_kind == "median":
+        s = g.median()
+    else:
+        s = g.mean()
+
+    plot_df = (
+        s.dropna()
+        .rename("value")
+        .rename_axis("recorded_at")
+        .reset_index()
+    )
+    return plot_df[["recorded_at", "value"]], agg_kind
 
 
 def _collapse_to_daily(df: pd.DataFrame, daily_agg: str) -> pd.DataFrame:
@@ -276,7 +386,6 @@ def show_visualizations(
     # 2. CALCULATE DATA SPAN
     min_date = dfe["recorded_at"].min()
     max_date = dfe["recorded_at"].max()
-    days_diff = (max_date - min_date).days
 
     # Stable per-metric keys (avoid casing/page differences breaking widget state).
     widget_key = _stable_metric_key(metric_id, str(m_name))
@@ -317,41 +426,14 @@ def show_visualizations(
 
     last_ts = dfe["recorded_at"].max()
     
-    # 3. DYNAMIC CONFIGURATION
-    
-    # Default hover date format (includes day)
-    hover_date_fmt = "%d %b %Y"
-
     end_ts = _today_utc_end() if show_pills else last_ts
-
-    if range_choice == "Week":
-        start_ts = end_ts - pd.Timedelta(days=7)
-        freq, tickformat, hover_label = "D", "%a", "Value"
-        
-    elif range_choice in ["Month"]:
-        start_ts = end_ts - pd.Timedelta(days=31)
-        freq, tickformat, hover_label = "D", "%d", "Daily Value"
-
-    elif range_choice in ["6M", "6m", "Last 6 months", "Last 6 Months"]:
-        start_ts = end_ts - pd.DateOffset(months=6)
-        freq, tickformat, hover_label = "W", "%d %b", "Weekly Avg"
-        
-    elif range_choice == "Year":
-        start_ts = end_ts - pd.DateOffset(months=12)
-        freq, tickformat, hover_label = "W", "%b", "Weekly Avg"        
-    else: # "All" or "Custom"
-        start_ts = dfe["recorded_at"].min()
-        
-        # Adaptive Resampling for All Time based on span
-        if days_diff <= 31:
-             freq, tickformat, hover_label = "D", "%d %b", "Daily Value"
-        elif days_diff <= 150:
-             freq, tickformat, hover_label = "W", "%d %b", "Weekly Avg"
-        else:
-             # --- CHANGED: Use 'MS' (Month Start) to align to 1st of month ---
-             freq, tickformat, hover_label = "MS", "%b '%y", "Monthly Avg"
-             # --- CHANGED: Explicitly hide day in formatting ---
-             hover_date_fmt = "%b %Y"
+    period = _resolve_period(range_choice, min_ts=min_date, max_ts=max_date, anchor_end_ts=end_ts)
+    start_ts = period.start_ts
+    end_ts = period.end_ts
+    freq = period.freq
+    tickformat = period.tickformat
+    hover_label = period.hover_label
+    hover_date_fmt = period.hover_date_fmt
 
     # 4. FILTERING & DATA GUARD
     mask = (dfe["recorded_at"] >= start_ts) & (dfe["recorded_at"] <= end_ts)
@@ -381,25 +463,21 @@ def show_visualizations(
         daily_df, start_ts=start_ts, end_ts=end_ts, missing_policy=policy.missing_policy
     )
 
-    if is_ordinal_score:
-        # If missing days are filled as 0, median tends to collapse toward 0 for sparse series
-        # (and can hide real recordings in long "All" ranges). Mean preserves signal while
-        # still reflecting "zeros" semantics.
-        agg_func = _score_resample_agg(missing_policy=policy.missing_policy)
-    elif is_count:
-        # Avoid turning "all missing" buckets into 0.
-        agg_func = lambda s: s.sum(min_count=1)
-    else:
-        agg_func = "mean"
+    plot_df, agg_kind = _resample_to_plot_df(
+        daily_df,
+        freq=freq,
+        kind=str(kind),
+        missing_policy=policy.missing_policy,
+    )
 
-    baseline_label = "Median" if (is_ordinal_score and agg_func == "median") else "Avg"
+    baseline_label = "Median" if (is_ordinal_score and agg_kind == "median") else "Avg"
     baseline_val = None
     baseline_val_str = None
     baseline_series = pd.to_numeric(daily_df["value"], errors="coerce").dropna()
     if not baseline_series.empty:
         if is_ordinal_score:
-            baseline_val = float(baseline_series.mean() if agg_func == "mean" else baseline_series.median())
-            baseline_val_str = f"{baseline_val:.1f}" if agg_func == "mean" else f"{baseline_val:.0f}"
+            baseline_val = float(baseline_series.mean() if agg_kind == "mean" else baseline_series.median())
+            baseline_val_str = f"{baseline_val:.1f}" if agg_kind == "mean" else f"{baseline_val:.0f}"
         elif is_count:
             baseline_val = float(baseline_series.mean())
             baseline_val_str = f"{baseline_val:.0f}"
@@ -407,19 +485,12 @@ def show_visualizations(
             baseline_val = float(baseline_series.mean())
             baseline_val_str = f"{baseline_val:.1f}"
 
-    plot_df = (
-        daily_df.set_index("recorded_at")
-        .resample(freq)[["value"]]
-        .agg(agg_func)
-        .dropna(subset=["value"])
-        .reset_index()
-    )
-
     if plot_df.empty:
         st.info("Insufficient data points in this range to display a chart.")
         return
 
-    # Apple-like summary: primary stat for the selected period + latest value.
+    # Compact Apple-like summary integrated into the chart header (mobile-friendly).
+    summary_title = None
     summary_series = pd.to_numeric(daily_df["value"], errors="coerce")
     if policy.missing_policy != "missing_is_zero":
         summary_series = summary_series.dropna()
@@ -434,12 +505,9 @@ def show_visualizations(
         latest_val = float(summary_series.iloc[-1])
         unit = (m_unit or "").strip()
         unit_suffix = f" {unit}" if unit else ""
-
-        s1, s2 = st.columns(2)
-        with s1:
-            st.metric(primary_label, f"{_format_value_for_metric(primary_val, kind=kind)}{unit_suffix}")
-        with s2:
-            st.metric("Latest", f"{_format_value_for_metric(latest_val, kind=kind)}{unit_suffix}")
+        primary_str = f"{_format_value_for_metric(primary_val, kind=kind)}{unit_suffix}"
+        latest_str = f"{_format_value_for_metric(latest_val, kind=kind)}{unit_suffix}"
+        summary_title = f"{primary_label} {primary_str} · Latest {latest_str}"
 
     if range_choice in ["Last 6 months", "Last year"] and len(plot_df) < 8:
          tickformat = "%d %b"
@@ -484,7 +552,7 @@ def show_visualizations(
                 ),
                 hovertemplate=(
                     f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
-                    if agg_func == "mean"
+                    if agg_kind == "mean"
                     else f"<b>{hover_label}: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
                 ),
             )
@@ -540,16 +608,30 @@ def show_visualizations(
             font=dict(size=10, color="rgba(255, 75, 75, 0.55)"),
         )
 
+    top_margin = 52 if summary_title else 40
+
     fig.update_layout(
         yaxis_title=m_unit, 
         height=320, 
-        margin=dict(l=10, r=10, t=40, b=80),
+        margin=dict(l=10, r=10, t=top_margin, b=80),
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)', 
         showlegend=False,
         annotations=list(fig.layout.annotations) + month_annotations + year_annotations,
         hovermode="x",
-        dragmode="pan",
+        # On mobile, letting Plotly capture drag gestures prevents page scrolling.
+        # Keep the chart tappable (hover) but disable drag interactions.
+        dragmode=False,
+        title=(
+            dict(
+                text=summary_title,
+                x=0.0,
+                xanchor="left",
+                font=dict(size=12, color="rgba(0,0,0,0.55)"),
+            )
+            if summary_title
+            else None
+        ),
         xaxis=dict(
             tickformat=tickformat,
             nticks=8,
