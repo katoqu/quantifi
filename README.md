@@ -162,3 +162,18 @@ Secrets used:
 - `REDIRECT_URL`: where Supabase will redirect after email links (password recovery / invite / verification).
 - `ADMIN_EMAILS`: comma-separated list of admin emails (e.g. `"you@example.com,other@example.com"`).
 - `INVITE_ONLY`: boolean (`true`/`false`) to disable self sign-ups in the app UI/logic.
+- `PERSIST_LOGIN`: boolean (`true`/`false`) to enable cookie-based session restore (default: `true`).
+- `SESSION_ENC_KEY`: Fernet key used to encrypt Supabase tokens before storing them in `app_sessions` (required for persistent login).
+
+### Staying logged in (Streamlit Cloud)
+
+Streamlit reruns are normal, but **Streamlit Community Cloud can also restart/sleep** your app process or drop websocket sessions. When that happens, `st.session_state` resets and users can look like they were “logged out”.
+
+This repo uses an **opaque session id (SID)** cookie (via `extra-streamlit-components`) and stores the real Supabase tokens **encrypted server-side** in Supabase (`public.app_sessions`). That way the browser never stores refresh tokens, but the app can still restore sessions after reconnects/restarts.
+
+Setup:
+1. Apply the migration `supabase/migrations/20260306_app_sessions.sql`.
+2. Add `SESSION_ENC_KEY` to Streamlit secrets. Generate one locally with:
+   - `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
+Disable persistent login by setting `PERSIST_LOGIN = false`.

@@ -6,6 +6,7 @@ import utils
 import time
 import auth
 from datetime import datetime
+import cache_control
 
 ALLOWED_TYPES = ["float", "integer", "integer_range"]
 ALLOWED_KINDS = ["quantitative", "count", "score"]
@@ -164,7 +165,7 @@ def _handle_import_logic(uploaded_file, wipe_first):
 
         # --- 2. EXECUTION PHASE (Only reached if Dry Run passes) ---
         if st.button("🚀 Start Rebuild", type="primary", use_container_width=True):
-            st.cache_data.clear() 
+            cache_control.bump()
             log = st.container(height=300)
             progress_bar = st.progress(0)
             

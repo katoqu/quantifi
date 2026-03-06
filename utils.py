@@ -3,6 +3,7 @@ import models
 import datetime as dt
 import streamlit as st
 import time
+import cache_control
 
 
 def normalize_name(name: str):
@@ -107,7 +108,7 @@ def finalize_action(message, icon="✅", delay=1):
     The natural Streamlit rerun triggered by the button click 
     will handle the UI refresh without 'double-hopping'.
     """
-    st.cache_data.clear()
+    cache_control.bump()
     st.toast(f"{icon} {message}")
     time.sleep(delay)
 

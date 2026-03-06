@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime
 import pandas as pd
+import cache_control
 
 
 # --- HELPER ERROR WRAPPER ---
@@ -19,27 +20,47 @@ def _safe_execute(query_func, error_message="Database operation failed"):
 
 # --- READ OPERATIONS ---
 
+def _current_user_id() -> str:
+    user = st.session_state.get("user")
+    return str(getattr(user, "id", None) or "anon")
+
+
 @st.cache_data(ttl=60)
-def get_categories():
+def _get_categories_cached(user_id: str, cache_buster: int):
     """Fetches all categories for the authenticated user."""
+    _ = (user_id, cache_buster)  # cache key only
     res = _safe_execute(sb.table("categories").select("*"), "Failed to fetch categories")
     return res.data if res else []
 
+
+def get_categories():
+    return _get_categories_cached(_current_user_id(), cache_control.get_buster())
+
 @st.cache_data(ttl=60)
-def get_metrics(include_archived=False):
+def _get_metrics_cached(user_id: str, cache_buster: int, include_archived: bool):
     """Fetches metrics, filtering archived ones by default for speed."""
+    _ = (user_id, cache_buster)  # cache key only
     query = sb.table("metrics").select("*")
     if not include_archived:
         query = query.eq("is_archived", False)
     res = _safe_execute(query, "Failed to fetch metrics")
     return res.data if res else []
 
+
+def get_metrics(include_archived=False):
+    return _get_metrics_cached(
+        _current_user_id(),
+        cache_control.get_buster(),
+        bool(include_archived),
+    )
+
 @st.cache_data(ttl=60)
-def get_change_events(limit: int = 200):
+def _get_change_events_cached(user_id: str, cache_buster: int, limit: int):
     """
     Fetches lifestyle change events (with category label when available),
     newest first.
     """
+    _ = (user_id, cache_buster)  # cache key only
     res = _safe_execute(
         sb.table("change_events")
         .select("id, title, notes, recorded_at, created_at, category_id, categories(name)")
@@ -48,6 +69,10 @@ def get_change_events(limit: int = 200):
         "Failed to fetch change events",
     )
     return res.data if res else []
+
+
+def get_change_events(limit: int = 200):
+    return _get_change_events_cached(_current_user_id(), cache_control.get_buster(), int(limit))
 
 def get_entries(metric_id=None):
     """Fetches data entries, optionally filtered by metric."""
@@ -135,20 +160,26 @@ def get_category_by_name(name: str):
     return res.data[0] if res and res.data else None
 
 @st.cache_data(ttl=120)
-def get_all_entries_bulk():
+def _get_all_entries_bulk_cached(user_id: str, cache_buster: int):
+    _ = (user_id, cache_buster)  # cache key only
     res = _safe_execute(
         sb.table("entries")
         .select("*, metrics!inner(is_archived)")
-        .eq("metrics.is_archived", False), 
-        "Bulk fetch failed"
+        .eq("metrics.is_archived", False),
+        "Bulk fetch failed",
     )
     if res is None:
         return None  # Prevents showing '0 entries' flash
     return res.data
 
+
+def get_all_entries_bulk():
+    return _get_all_entries_bulk_cached(_current_user_id(), cache_control.get_buster())
+
 @st.cache_data(ttl=30) # Short TTL for active recording
-def get_latest_entry_only(metric_id):
+def _get_latest_entry_only_cached(user_id: str, cache_buster: int, metric_id: str):
     """Fetches ONLY the single most recent record for smart defaults."""
+    _ = (user_id, cache_buster)  # cache key only
     res = _safe_execute(
         sb.table("entries")
         .select("*")
@@ -158,6 +189,12 @@ def get_latest_entry_only(metric_id):
         "Failed to fetch latest entry"
     )
     return res.data[0] if res and res.data else None
+
+
+def get_latest_entry_only(metric_id):
+    return _get_latest_entry_only_cached(
+        _current_user_id(), cache_control.get_buster(), str(metric_id)
+    )
 
 # --- WRITE OPERATIONS ---
 

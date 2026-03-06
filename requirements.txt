@@ -1,5 +1,7 @@
 streamlit>=1.32
 streamlit-keyup
+extra-streamlit-components
+cryptography
 supabase
 pandas
 plotly

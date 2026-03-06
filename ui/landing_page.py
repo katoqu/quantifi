@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import html
 import auth
 import models
 from ui import visualize, pages
@@ -158,6 +159,12 @@ def _render_action_card(metric, cat_map, stats, target=None):
         if latest_value_str not in (None, "", "—") and stats and stats.get("count", 0) > 0
         else ""
     )
+
+    safe_cat_name = html.escape(str(cat_name).upper())
+    safe_m_name = html.escape(str(m_name))
+    safe_latest_label_value = html.escape(str(latest_label_value)) if latest_label_value else ""
+    safe_last_date_str = html.escape(str(last_date_str)) if last_date_str else ""
+
     target_html = ""
     if target:
         color_map = {
@@ -167,7 +174,7 @@ def _render_action_card(metric, cat_map, stats, target=None):
             "Pause": "#3c4043",
         }
         tx = color_map.get(target, "#3c4043")
-        target_html = f'<div class="overview-target" style="color:{tx};">{str(target).upper()}</div>'
+        target_html = f'<div class="overview-target" style="color:{tx};">{html.escape(str(target).upper())}</div>'
 
     with st.container(border=True):
         sparkline_svg = _render_sparkline(
@@ -180,15 +187,15 @@ def _render_action_card(metric, cat_map, stats, target=None):
         )
 
         caption_html = ""
-        if latest_label_value or last_date_str:
+        if safe_latest_label_value or safe_last_date_str:
             caption_value_html = (
-                f'<div class="spark-caption-value" title="{latest_label_value}">{latest_label_value}</div>'
-                if latest_label_value
+                f'<div class="spark-caption-value" title="{safe_latest_label_value}">{safe_latest_label_value}</div>'
+                if safe_latest_label_value
                 else ""
             )
             caption_date_html = (
-                f'<div class="spark-caption-date" title="{last_date_str}">{last_date_str}</div>'
-                if last_date_str
+                f'<div class="spark-caption-date" title="{safe_last_date_str}">{safe_last_date_str}</div>'
+                if safe_last_date_str
                 else ""
             )
             caption_html = "\n".join([
@@ -201,8 +208,8 @@ def _render_action_card(metric, cat_map, stats, target=None):
         card_parts = [
             '<div class="overview-card">',
             '<div class="overview-title-row">',
-            f'<span class="overview-cat">{cat_name.upper()}</span>',
-            f'<span class="overview-name" title="{m_name}">{m_name}</span>',
+            f'<span class="overview-cat">{safe_cat_name}</span>',
+            f'<span class="overview-name" title="{safe_m_name}">{safe_m_name}</span>',
             '</div>',
             '<div class="overview-spark-wrap">',
             target_html,

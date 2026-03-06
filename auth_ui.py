@@ -2,6 +2,9 @@ import streamlit as st
 import time
 from urllib.parse import quote
 from auth_engine import AuthEngine
+import auth_persistence
+import cache_control
+import session_store
 
 class AuthUI:
     @staticmethod
@@ -52,10 +55,16 @@ class AuthUI:
             email = st.text_input("Email")
             pwd = st.text_input("Password", type="password")
             if st.form_submit_button("Sign In", use_container_width=True):
-                user, err = AuthEngine.sign_in(email, pwd)
+                user, session, err = AuthEngine.sign_in(email, pwd)
                 if user:
-                    # --- FIX: Clear cache so user-specific data loads immediately ---
-                    st.cache_data.clear() 
+                    payload = AuthEngine.session_to_payload(session)
+                    if payload and session_store.enabled():
+                        sid = session_store.create_session(user_id=str(getattr(user, "id", "")), session_payload=payload)
+                        if sid:
+                            st.session_state["auth_sid"] = sid
+                            auth_persistence.save_sid(sid)
+                    # Invalidate cached reads (per-session) so user-specific data loads immediately.
+                    cache_control.bump()
                     st.session_state.user = user
                     st.rerun()
                 else:
@@ -80,7 +89,7 @@ class AuthUI:
             conf = st.text_input("Confirm Password", type="password")
             if st.form_submit_button("Create Account", use_container_width=True):
                 if pwd == conf and pwd:
-                    user, err = AuthEngine.sign_up(email, pwd)
+                    user, _session, err = AuthEngine.sign_up(email, pwd)
                     if not err:
                         st.success("Account created! Please check your email for confirmation.")
                     else:
@@ -100,8 +109,7 @@ class AuthUI:
                 if new_p == conf_p and new_p:
                     success, err = AuthEngine.update_password(new_p)
                     if success:
-                        # --- FIX: Clear cache on successful recovery/login ---
-                        st.cache_data.clear() 
+                        cache_control.bump()
                         st.success("Updated! Redirecting to login...")
                         st.query_params.clear()
                         st.session_state.show_recovery_form = False
