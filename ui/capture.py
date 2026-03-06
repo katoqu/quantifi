@@ -8,17 +8,14 @@ from logic import editor_handler
 from metric_policy import resolve_metric_policy
 
 @st.fragment
-def show_tracker_suite(selected_metric):
-
-    # 1. Capture Form
+def _capture_fragment(selected_metric):
+    # Isolated fragment so adjusting inputs doesn't rerender charts on every interaction.
     show_capture(selected_metric)
-    
-    st.divider()
 
-    # 2. Local Data Fetch (Only within fragment scope)
+
+@st.fragment
+def _viz_fragment(selected_metric):
     dfe, m_unit, m_name = utils.collect_data(selected_metric)
-
-    # 3. Inline Visualization Update
     if dfe is not None and not dfe.empty:
         visualize.show_visualizations(
             dfe,
@@ -38,6 +35,12 @@ def show_tracker_suite(selected_metric):
         )
     else:
         st.info("No data recorded for this metric yet. Add your first entry above.")
+
+
+def show_tracker_suite(selected_metric):
+    _capture_fragment(selected_metric)
+    st.divider()
+    _viz_fragment(selected_metric)
 
 def _get_initial_datetime(mid):
     date_key = f"capture_date_{mid}"
@@ -112,17 +115,7 @@ def _round_down(value, decimals):
     return float(Decimal(str(value)).quantize(quant, rounding=ROUND_DOWN))
 
 def _get_recent_values(metric_id, limit=5):
-    entries = models.get_entries(metric_id)
-    if not entries:
-        return []
-    entries = sorted(entries, key=lambda row: row.get("recorded_at", ""))
-    values = []
-    for row in entries[-limit:]:
-        try:
-            values.append(float(row["value"]))
-        except (TypeError, ValueError):
-            continue
-    return values
+    return models.get_recent_numeric_values(str(metric_id), limit=limit)
 
 # In capture.py
 
@@ -221,6 +214,8 @@ def show_capture(selected_metric):
                     models.get_latest_entry_only.clear()
                 if hasattr(models.get_entries, "clear"):
                     models.get_entries.clear()
+                if hasattr(models.get_recent_numeric_values, "clear"):
+                    models.get_recent_numeric_values.clear()
                 
                 # CRITICAL: Clear the landing page cache so the badge appears instantly
                 models.get_all_entries_bulk.clear()
@@ -230,4 +225,5 @@ def show_capture(selected_metric):
                 # Small delay to let user see success message before reload
                 import time
                 time.sleep(0.5)
-                st.rerun(scope="fragment")
+                # Full rerun to ensure the visualization fragment updates.
+                st.rerun()

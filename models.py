@@ -205,6 +205,35 @@ def get_latest_entry_only(metric_id):
         _current_user_id(), cache_control.get_buster(), str(metric_id)
     )
 
+@st.cache_data(ttl=60)
+def _get_recent_numeric_values_cached(user_id: str, cache_buster: int, metric_id: str, limit: int):
+    _ = (user_id, cache_buster)  # cache key only
+    res = _safe_execute(
+        sb.table("entries")
+        .select("value, recorded_at")
+        .eq("metric_id", metric_id)
+        .order("recorded_at", desc=True)
+        .limit(limit),
+        "Failed to fetch recent values",
+    )
+    if not res or not res.data:
+        return []
+    out: list[float] = []
+    # Keep order oldest->newest for delta inference
+    rows = list(reversed(res.data))
+    for row in rows:
+        try:
+            out.append(float(row.get("value")))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def get_recent_numeric_values(metric_id: str, limit: int = 5) -> list[float]:
+    return _get_recent_numeric_values_cached(
+        _current_user_id(), cache_control.get_buster(), str(metric_id), int(limit)
+    )
+
 
 # Compatibility: some UI code calls `.clear()` on these functions.
 # The wrappers above are not decorated, so we forward `.clear` to the cached impls.
@@ -214,6 +243,7 @@ get_change_events.clear = _get_change_events_cached.clear  # type: ignore[attr-d
 get_entries.clear = _get_entries_cached.clear  # type: ignore[attr-defined]
 get_all_entries_bulk.clear = _get_all_entries_bulk_cached.clear  # type: ignore[attr-defined]
 get_latest_entry_only.clear = _get_latest_entry_only_cached.clear  # type: ignore[attr-defined]
+get_recent_numeric_values.clear = _get_recent_numeric_values_cached.clear  # type: ignore[attr-defined]
 
 # --- WRITE OPERATIONS ---
 
