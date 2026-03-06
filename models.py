@@ -76,9 +76,18 @@ def get_change_events(limit: int = 200):
 
 def get_entries(metric_id=None):
     """Fetches data entries, optionally filtered by metric."""
-    query = sb.table("entries").select("*")
+    # Avoid caching the unfiltered call (can be large / less predictable).
     if metric_id:
-        query = query.eq("metric_id", metric_id)
+        return _get_entries_cached(_current_user_id(), cache_control.get_buster(), str(metric_id))
+    query = sb.table("entries").select("*")
+    res = _safe_execute(query, "Failed to fetch entries")
+    return res.data if res else []
+
+
+@st.cache_data(ttl=30)
+def _get_entries_cached(user_id: str, cache_buster: int, metric_id: str):
+    _ = (user_id, cache_buster)  # cache key only
+    query = sb.table("entries").select("*").eq("metric_id", metric_id)
     res = _safe_execute(query, "Failed to fetch entries")
     return res.data if res else []
 
@@ -202,6 +211,7 @@ def get_latest_entry_only(metric_id):
 get_categories.clear = _get_categories_cached.clear  # type: ignore[attr-defined]
 get_metrics.clear = _get_metrics_cached.clear  # type: ignore[attr-defined]
 get_change_events.clear = _get_change_events_cached.clear  # type: ignore[attr-defined]
+get_entries.clear = _get_entries_cached.clear  # type: ignore[attr-defined]
 get_all_entries_bulk.clear = _get_all_entries_bulk_cached.clear  # type: ignore[attr-defined]
 get_latest_entry_only.clear = _get_latest_entry_only_cached.clear  # type: ignore[attr-defined]
 

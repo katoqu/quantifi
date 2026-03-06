@@ -219,6 +219,8 @@ def show_capture(selected_metric):
                 
                 if hasattr(models.get_latest_entry_only, "clear"):
                     models.get_latest_entry_only.clear()
+                if hasattr(models.get_entries, "clear"):
+                    models.get_entries.clear()
                 
                 # CRITICAL: Clear the landing page cache so the badge appears instantly
                 models.get_all_entries_bulk.clear()
