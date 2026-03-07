@@ -51,61 +51,59 @@ class AuthUI:
 
     @staticmethod
     def render_login_tab():
-        with st.form("login_form", border=False):
-            email = st.text_input("Email")
-            pwd = st.text_input("Password", type="password")
-            if st.form_submit_button("Sign In", use_container_width=True):
+        st.subheader("Sign in")
+
+        # Keep Email input outside forms. Streamlit forms only "commit" widget values on submit.
+        email = st.text_input("Email", key="auth_email")
+
+        with st.form("password_login_form", border=False):
+            pwd = st.text_input("Password", type="password", key="auth_password")
+            if st.form_submit_button("Sign in", use_container_width=True, type="primary"):
                 user, session, err = AuthEngine.sign_in(email, pwd)
                 if user:
                     payload = AuthEngine.session_to_payload(session)
                     if payload and session_store.enabled():
-                        sid = session_store.create_session(user_id=str(getattr(user, "id", "")), session_payload=payload)
+                        sid = session_store.create_session(
+                            user_id=str(getattr(user, "id", "")), session_payload=payload
+                        )
                         if sid:
                             st.session_state["auth_sid"] = sid
                             auth_persistence.save_sid(sid)
-                    # Invalidate cached reads (per-session) so user-specific data loads immediately.
                     cache_control.bump()
                     st.session_state.user = user
                     st.rerun()
                 else:
                     st.error(f"Login failed: {err}")
+
+        if st.button("Email me a sign-in link instead", use_container_width=True, type="secondary"):
+            ok, err = AuthEngine.send_magic_link(email)
+            if ok:
+                st.success("Check your email for a sign-in link.")
+            else:
+                st.error(err or "Could not send sign-in link.")
         
         if AuthUI._invite_only_enabled():
             AuthUI._render_request_access()
 
-        if st.button("Forgot Password?", type="secondary", icon="🔑"):
+        if st.button("Forgot password?", type="secondary"):
             st.session_state.show_password_reset = True
             st.rerun()
 
     @staticmethod
     def render_signup_tab():
+        # Deprecated UI: passwordless magic links handle sign-up when enabled in Supabase.
         if AuthUI._invite_only_enabled():
             st.info("Invite-only access is enabled. Ask an admin for an invite.")
             return
-
-        with st.form("signup_form", border=False):
-            email = st.text_input("Email")
-            pwd = st.text_input("Password", type="password")
-            conf = st.text_input("Confirm Password", type="password")
-            if st.form_submit_button("Create Account", use_container_width=True):
-                if pwd == conf and pwd:
-                    user, _session, err = AuthEngine.sign_up(email, pwd)
-                    if not err:
-                        st.success("Account created! Please check your email for confirmation.")
-                    else:
-                        st.error(err)
-                else:
-                    st.error("Passwords do not match.")
+        st.info("To create an account, enter your email above and request a sign-in link.")
 
     @staticmethod
     def render_recovery_form():
-        is_invite = st.session_state.get("recovery_type") == "invite"
-        st.title("Set Password" if is_invite else "Set New Password")
+        st.title("Set New Password")
         with st.container(border=True):
             new_p = st.text_input("New Password", type="password")
             conf_p = st.text_input("Confirm Password", type="password")
-            btn_label = "Accept Invite" if is_invite else "Update and Sign In"
-            if st.button(btn_label, type="primary", use_container_width=True):
+            if st.button("Update password", type="primary", use_container_width=True):
                 if new_p == conf_p and new_p:
                     success, err = AuthEngine.update_password(new_p)
                     if success:

@@ -175,43 +175,63 @@ def sign_out():
     
     st.rerun()
 
+def handle_link_tokens() -> bool:
+    """
+    Handles Supabase email deep-link tokens (magic link / invite / recovery / verification).
+
+    Returns True if a token was processed (successful or not), so the caller can
+    stop further rendering or trigger a rerun.
+    """
+    params = st.query_params
+    if "token_hash" not in params or "type" not in params:
+        return False
+
+    try:
+        token_type = str(params["type"]).strip()
+        res = sb.auth.verify_otp({"token_hash": params["token_hash"], "type": token_type})
+
+        # Clear query params so refreshes don't re-process the token.
+        st.query_params.clear()
+        cache_control.bump()  # Auth context changed
+
+        # Only password recovery should force a password prompt.
+        # Invites and magic links can complete sign-in without setting a password.
+        if token_type == "recovery":
+            st.session_state.recovery_type = token_type
+            st.session_state.show_recovery_form = True
+            return True
+
+        st.session_state.recovery_type = None
+        st.session_state.show_recovery_form = False
+
+        user = getattr(res, "user", None) if res else None
+        session = getattr(res, "session", None) if res else None
+        if isinstance(res, dict):
+            user = res.get("user") or user
+            session = res.get("session") or session
+        if user:
+            st.session_state.user = user
+
+        payload = AuthEngine.session_to_payload(session)
+        if payload and user and session_store.enabled():
+            sid = session_store.create_session(
+                user_id=str(getattr(user, "id", "")), session_payload=payload
+            )
+            if sid:
+                st.session_state["auth_sid"] = sid
+                auth_persistence.save_sid(sid)
+
+        return True
+    except Exception as e:
+        st.error(f"Link invalid or expired: {e}")
+        return True
+
 def auth_page():
     """Renders the authentication interface and handles deep-link tokens."""
-    # 1. Handle Link Tokens (Password recovery / Email verification)
-    params = st.query_params
-    if "token_hash" in params and "type" in params:
-        try:
-            token_type = str(params["type"]).strip()
-            res = sb.auth.verify_otp({"token_hash": params["token_hash"], "type": token_type})
-
-            st.query_params.clear()
-            cache_control.bump()  # Auth context changed
-
-            # Only recovery/invite flows should prompt for a new password.
-            if token_type in ("recovery", "invite"):
-                st.session_state.recovery_type = token_type
-                st.session_state.show_recovery_form = True
-            else:
-                st.session_state.recovery_type = None
-                st.session_state.show_recovery_form = False
-                user = getattr(res, "user", None) if res else None
-                session = getattr(res, "session", None) if res else None
-                if isinstance(res, dict):
-                    user = res.get("user") or user
-                    session = res.get("session") or session
-                if user:
-                    st.session_state.user = user
-                payload = AuthEngine.session_to_payload(session)
-                if payload and user and session_store.enabled():
-                    sid = session_store.create_session(
-                        user_id=str(getattr(user, "id", "")), session_payload=payload
-                    )
-                    if sid:
-                        st.session_state["auth_sid"] = sid
-                        auth_persistence.save_sid(sid)
-                st.rerun()
-        except Exception as e:
-            st.error(f"Link invalid or expired: {e}")
+    # 1. Handle Link Tokens (magic link / invite / recovery / verification)
+    if handle_link_tokens():
+        # Token state is now reflected in session_state; rerun to show next screen.
+        st.rerun()
 
     # 2. Debug Panel
     AuthUI.render_debug_panel()
@@ -242,8 +262,4 @@ def auth_page():
             st.caption("Invite-only access is enabled. Ask an admin for an invite.")
             AuthUI.render_login_tab()
         else:
-            t1, t2 = st.tabs(["Sign In", "Sign Up"])
-            with t1:
-                AuthUI.render_login_tab()
-            with t2:
-                AuthUI.render_signup_tab()
+            AuthUI.render_login_tab()

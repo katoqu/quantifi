@@ -36,6 +36,50 @@ class AuthEngine:
             return None, None, str(e)
 
     @staticmethod
+    def send_magic_link(email: str):
+        """
+        Sends a passwordless sign-in link (magic link / OTP email).
+
+        This works for both sign-in and sign-up when self-signups are enabled in Supabase.
+        """
+        try:
+            email_clean = (email or "").strip().lower()
+            if not email_clean:
+                return False, "Email is required."
+
+            url = st.secrets.get("REDIRECT_URL", "http://localhost:8501").strip()
+
+            fn = getattr(sb.auth, "sign_in_with_otp", None)
+            if not callable(fn):
+                return False, "Supabase client does not support OTP/magic links."
+
+            # Supabase Python client payload formats have varied; try a few compatible shapes.
+            attempts = [
+                {"email": email_clean, "options": {"email_redirect_to": url}},
+                {"email": email_clean, "email_redirect_to": url},
+                {"email": email_clean, "options": {"redirect_to": url}},
+                {"email": email_clean, "redirect_to": url},
+            ]
+            last_err: Exception | None = None
+            for payload in attempts:
+                try:
+                    fn(payload)
+                    last_err = None
+                    break
+                except TypeError as e:
+                    last_err = e
+                    continue
+                except Exception as e:
+                    last_err = e
+                    continue
+            if last_err is not None:
+                raise last_err
+
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    @staticmethod
     def sign_up(email, password):
         """Creates a new user account with normalized credentials."""
         if AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False)):
