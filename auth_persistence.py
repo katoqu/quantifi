@@ -1,13 +1,28 @@
+import datetime
 import base64
 import json
 from typing import Any
-
 import streamlit as st
 
-
+# Constants
 COOKIE_NAME = "quantifi_auth"
 _CM_KEY = "_quantifi_cookie_manager"
 
+def _cookie_manager():
+    """
+    Returns a stable extra_streamlit_components.CookieManager instance.
+    Stored in session_state to remain future-proof against caching deprecations.
+    """
+    try:
+        import extra_streamlit_components as stx  # type: ignore
+    except ImportError:
+        return None
+
+    # Initialize once per session using a strict key
+    if _CM_KEY not in st.session_state:
+        st.session_state[_CM_KEY] = stx.CookieManager(key="quantifi_cm_widget")
+        
+    return st.session_state[_CM_KEY]
 
 def _cookies_enabled() -> bool:
     raw = st.secrets.get("PERSIST_LOGIN", True)
@@ -17,79 +32,73 @@ def _cookies_enabled() -> bool:
         return raw
     return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
 
-
-def _cookie_manager():
-    """
-    Returns an `extra_streamlit_components.CookieManager` instance, or None if the
-    dependency isn't installed.
-    """
-    try:
-        import extra_streamlit_components as stx  # type: ignore
-    except Exception:
-        return None
-
-    if _CM_KEY not in st.session_state:
-        st.session_state[_CM_KEY] = stx.CookieManager()
-    return st.session_state[_CM_KEY]
-
+def mount():
+    """Forces the CookieManager component to render on the current page."""
+    if _cookies_enabled():
+        cm = _cookie_manager()
+        if cm is not None:
+            # Calling get_all() forces the HTML/JS to inject into the DOM
+            cm.get_all()
 
 def _encode(payload: dict[str, Any]) -> str:
-    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii")
-
 
 def _decode(value: str) -> dict[str, Any] | None:
     try:
-        raw = base64.urlsafe_b64decode((value or "").encode("ascii"))
+        val_str = str(value or "")
+        # Restore missing padding lost in browser transit
+        missing_padding = len(val_str) % 4
+        if missing_padding:
+            val_str += "=" * (4 - missing_padding)
+            
+        raw = base64.urlsafe_b64decode(val_str.encode("ascii"))
         data = json.loads(raw.decode("utf-8"))
         return data if isinstance(data, dict) else None
     except Exception:
         return None
 
-
-def load() -> str | dict[str, Any] | None:
-    """
-    Loads persisted auth material from a browser cookie.
-
-    Returns one of:
-    - `sid` (str): the opaque server-side session id (preferred)
-    - legacy payload (dict): contains `access_token` + `refresh_token` (migration only)
-    - None
-    """
+def load() -> dict[str, str] | None:
+    """Loads persisted Supabase access and refresh tokens from the browser cookie."""
     if not _cookies_enabled():
         return None
     cm = _cookie_manager()
     if cm is None:
         return None
+    
     value = cm.get(COOKIE_NAME)
     if not value:
         return None
 
-    decoded = _decode(value)
-    if isinstance(decoded, dict):
-        if isinstance(decoded.get("sid"), str) and decoded["sid"].strip():
-            return decoded["sid"].strip()
-        if decoded.get("access_token") and decoded.get("refresh_token"):
-            return decoded
-    # Support storing raw SID strings too.
-    return str(value).strip()
+    decoded = _decode(str(value))
+    if isinstance(decoded, dict) and decoded.get("access_token") and decoded.get("refresh_token"):
+        return decoded
+    return None
 
-
-def save_sid(sid: str, *, max_age_days: int = 30) -> bool:
+def save_tokens(access_token: str, refresh_token: str, max_age_days: int = 30) -> bool:
+    """Saves the Supabase tokens to the browser cookie."""
     if not _cookies_enabled():
         return False
     cm = _cookie_manager()
     if cm is None:
         return False
-    cm.set(COOKIE_NAME, _encode({"sid": sid}), expires_at_days=max_age_days)
+        
+    payload = {"access_token": access_token, "refresh_token": refresh_token}
+    expiration_date = datetime.datetime.now() + datetime.timedelta(days=max_age_days)
+    
+    cm.set(COOKIE_NAME, _encode(payload), expires_at=expiration_date)
     return True
 
-
 def clear() -> bool:
+    """Removes the authentication cookie."""
     if not _cookies_enabled():
         return False
     cm = _cookie_manager()
     if cm is None:
         return False
-    cm.delete(COOKIE_NAME)
+        
+    try:
+        cm.delete(COOKIE_NAME)
+    except KeyError:
+        pass 
     return True

@@ -79,10 +79,6 @@ def _fake_magic(email):
 auth_ui.AuthEngine.sign_in = staticmethod(_fake_sign_in)
 auth_ui.AuthEngine.send_magic_link = staticmethod(_fake_magic)
 
-# Avoid touching admin session persistence in this UI test
-auth_ui.session_store.enabled = lambda: False
-auth_ui.auth_persistence.save_sid = lambda *_a, **_k: False
-
 auth_ui.AuthUI.render_login_tab()
 """
 

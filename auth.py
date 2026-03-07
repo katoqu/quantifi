@@ -4,20 +4,17 @@ from auth_ui import AuthUI
 from auth_engine import AuthEngine
 import auth_persistence
 import cache_control
-import session_store
-
-def _secrets_truthy(value) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 def is_invite_only() -> bool:
-    return _secrets_truthy(st.secrets.get("INVITE_ONLY", False))
+    return AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False))
 
 def init_session_state():
     """Initializes the session state and synchronizes with Supabase auth."""
+    
+    # Force the CookieManager component to render on every page rerun
+    # This guarantees that queued saves from your login callback actually execute.
+    auth_persistence.mount()
+
     defaults = {
         "user": None, 
         "show_password_reset": False, 
@@ -25,12 +22,12 @@ def init_session_state():
         "recovery_type": None,
         "show_debug_panel": False,
         "auth_debug": [],
-        "use_time_sticky": False,          # Fixes the 'no key' error
-        "tracker_view_selector": "Home",   # Ensures smooth tab switching
-        "last_active_mid": None,           # For 'sticky' metric selection
-        "active_cat_filter": "All",        # For landing page filtering
-        "cache_buster": 0,                 # Per-session cache invalidation key
-        "auth_sid": None,                  # Opaque server-side session id
+        "use_time_sticky": False,          
+        "tracker_view_selector": "Home",   
+        "last_active_mid": None,           
+        "active_cat_filter": "All",        
+        "cache_buster": 0,
+        "_logout_pending": False,          # Ensures clean logouts by ignoring stale cookies
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
@@ -41,84 +38,40 @@ def init_session_state():
         new_session, err = AuthEngine.maybe_refresh_session()
         if err:
             st.session_state.auth_debug.append(f"Session refresh error: {err}")
-        payload = AuthEngine.session_to_payload(new_session)
-        if payload and session_store.enabled() and st.session_state.get("auth_sid"):
-            try:
-                session_store.update_session(sid=str(st.session_state.get("auth_sid")), session_payload=payload)
-            except Exception as e:
-                st.session_state.auth_debug.append(f"Session store update error: {e}")
 
     # Check if we already have a user in session; if not, attempt restore.
     if st.session_state.user is None:
         persisted = auth_persistence.load()
 
-        # 1) Preferred: opaque SID cookie -> encrypted tokens in Supabase.
-        if isinstance(persisted, str) and persisted and session_store.enabled():
-            sid = persisted
-            payload = None
-            try:
-                payload = session_store.load_session_payload(sid)
-            except Exception as e:
-                st.session_state.auth_debug.append(f"Session store load error: {e}")
+        # Robust Zombie Cookie Shield
+        if st.session_state.get("_logout_pending"):
+            if persisted:
+                # The frontend hasn't processed the cookie deletion yet. Keep the shield up.
+                return
+            else:
+                # The cookie is confirmed deleted. Drop the shield.
+                st.session_state["_logout_pending"] = False
+                return
 
-            if payload and payload.get("access_token") and payload.get("refresh_token"):
-                user, new_session, err = AuthEngine.restore_session(
-                    payload["access_token"], payload["refresh_token"]
-                )
-                if user:
-                    st.session_state.user = user
-                    st.session_state["auth_sid"] = sid
-                    cache_control.bump()
-                    return
-                if err:
-                    st.session_state.auth_debug.append(f"SID restore failed: {err}")
-            # If SID was invalid, clear it.
-            auth_persistence.clear()
-            st.session_state["auth_sid"] = None
-
-        # 2) Migration: legacy token cookie -> convert to SID store (if enabled).
-        if isinstance(persisted, dict) and session_store.enabled():
-            if persisted.get("access_token") and persisted.get("refresh_token"):
-                user, new_session, err = AuthEngine.restore_session(
-                    persisted["access_token"], persisted["refresh_token"]
-                )
-                if user:
-                    st.session_state.user = user
-                    payload = AuthEngine.session_to_payload(new_session) or persisted
-                    try:
-                        sid = session_store.create_session(
-                            user_id=str(getattr(user, "id", "")), session_payload=payload
-                        )
-                        if sid:
-                            st.session_state["auth_sid"] = sid
-                            auth_persistence.save_sid(sid)
-                    except Exception as e:
-                        st.session_state.auth_debug.append(f"Legacy migration store error: {e}")
-                    cache_control.bump()
-                    return
-                if err:
-                    st.session_state.auth_debug.append(f"Legacy cookie restore failed: {err}")
+        # Restore from token cookie directly
+        if isinstance(persisted, dict) and persisted.get("access_token") and persisted.get("refresh_token"):
+            user, new_session, err = AuthEngine.restore_session(
+                persisted["access_token"], persisted["refresh_token"]
+            )
+            if user:
+                st.session_state.user = user
+                cache_control.bump()
+                return
+            if err:
+                st.session_state.auth_debug.append(f"Cookie restore failed: {err}")
             auth_persistence.clear()
 
-        # 2) Fallback: in-memory Supabase auth state (same Streamlit session).
+        # Fallback: in-memory Supabase auth state
         try:
             res = sb.auth.get_user()
             user = getattr(res, "user", None) if res else None
             if user:
                 st.session_state.user = user
-                # If we can, persist this session as an opaque SID for future restarts.
-                if session_store.enabled() and not st.session_state.get("auth_sid"):
-                    payload = AuthEngine.get_session_payload()
-                    if payload:
-                        try:
-                            sid = session_store.create_session(
-                                user_id=str(getattr(user, "id", "")), session_payload=payload
-                            )
-                            if sid:
-                                st.session_state["auth_sid"] = sid
-                                auth_persistence.save_sid(sid)
-                        except Exception as e:
-                            st.session_state.auth_debug.append(f"Fallback SID store error: {e}")
         except Exception as e:
             st.session_state.auth_debug.append(f"Session init error: {str(e)}")
 
@@ -132,17 +85,11 @@ def get_current_user():
     """Safely retrieves the current user object."""
     return st.session_state.get("user")
 
-def _get_admin_emails() -> set[str]:
-    raw = (st.secrets.get("ADMIN_EMAILS", "") or "").strip()
-    if not raw:
-        return set()
-    return {e.strip().lower() for e in raw.split(",") if e.strip()}
-
 def is_admin() -> bool:
     user = get_current_user()
     if not user or not getattr(user, "email", None):
         return False
-    admins = _get_admin_emails()
+    admins = set(AuthUI._admin_emails())
     if not admins:
         return False
     return user.email.strip().lower() in admins
@@ -154,34 +101,20 @@ def sign_out():
     except Exception as e:
         st.session_state.auth_debug.append(f"Sign out error: {str(e)}")
 
-    if session_store.enabled() and st.session_state.get("auth_sid"):
-        try:
-            session_store.revoke_session(str(st.session_state.get("auth_sid")))
-        except Exception as e:
-            st.session_state.auth_debug.append(f"Revoke SID error: {e}")
-
+    # Queues the cookie for deletion
     auth_persistence.clear()
     
-    # 1. Clear session state user
+    # Clear session state user and put up the zombie shield
     st.session_state.user = None
-    st.session_state["auth_sid"] = None
-    
-    # 2. Invalidate per-session caches so the next view starts fresh.
+    st.session_state["_logout_pending"] = True
+
+    # Invalidate per-session caches and clean up UI states
     cache_control.bump()
-    
-    # 3. Clean up UI states
     st.session_state.show_recovery_form = False
     st.session_state.show_password_reset = False
     
-    st.rerun()
-
 def handle_link_tokens() -> bool:
-    """
-    Handles Supabase email deep-link tokens (magic link / invite / recovery / verification).
-
-    Returns True if a token was processed (successful or not), so the caller can
-    stop further rendering or trigger a rerun.
-    """
+    """Handles Supabase email deep-link tokens. Returns True if a token was processed."""
     params = st.query_params
     if "token_hash" not in params or "type" not in params:
         return False
@@ -192,10 +125,8 @@ def handle_link_tokens() -> bool:
 
         # Clear query params so refreshes don't re-process the token.
         st.query_params.clear()
-        cache_control.bump()  # Auth context changed
+        cache_control.bump() 
 
-        # Only password recovery should force a password prompt.
-        # Invites and magic links can complete sign-in without setting a password.
         if token_type == "recovery":
             st.session_state.recovery_type = token_type
             st.session_state.show_recovery_form = True
@@ -205,21 +136,10 @@ def handle_link_tokens() -> bool:
         st.session_state.show_recovery_form = False
 
         user = getattr(res, "user", None) if res else None
-        session = getattr(res, "session", None) if res else None
         if isinstance(res, dict):
             user = res.get("user") or user
-            session = res.get("session") or session
         if user:
             st.session_state.user = user
-
-        payload = AuthEngine.session_to_payload(session)
-        if payload and user and session_store.enabled():
-            sid = session_store.create_session(
-                user_id=str(getattr(user, "id", "")), session_payload=payload
-            )
-            if sid:
-                st.session_state["auth_sid"] = sid
-                auth_persistence.save_sid(sid)
 
         return True
     except Exception as e:
@@ -228,15 +148,11 @@ def handle_link_tokens() -> bool:
 
 def auth_page():
     """Renders the authentication interface and handles deep-link tokens."""
-    # 1. Handle Link Tokens (magic link / invite / recovery / verification)
     if handle_link_tokens():
-        # Token state is now reflected in session_state; rerun to show next screen.
         st.rerun()
 
-    # 2. Debug Panel
     AuthUI.render_debug_panel()
 
-    # 3. Routing logic based on session state
     if st.session_state.show_recovery_form:
         AuthUI.render_recovery_form()
     
@@ -262,4 +178,9 @@ def auth_page():
             st.caption("Invite-only access is enabled. Ask an admin for an invite.")
             AuthUI.render_login_tab()
         else:
-            AuthUI.render_login_tab()
+            # Render the tabbed interface for traditional authentication
+            tab1, tab2 = st.tabs(["Sign In", "Sign Up"])
+            with tab1:
+                AuthUI.render_login_tab()
+            with tab2:
+                AuthUI.render_signup_tab()

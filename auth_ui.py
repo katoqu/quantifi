@@ -2,9 +2,8 @@ import streamlit as st
 import time
 from urllib.parse import quote
 from auth_engine import AuthEngine
-import auth_persistence
 import cache_control
-import session_store
+import auth_persistence
 
 class AuthUI:
     @staticmethod
@@ -50,37 +49,74 @@ class AuthUI:
         st.link_button("Request access", mailto, use_container_width=True)
 
     @staticmethod
-    def render_login_tab():
-        st.subheader("Sign in")
+    def _handle_login():
+        """Callback to process login before the page re-renders."""
+        email = st.session_state.get("auth_login_email", "")
+        pwd = st.session_state.get("auth_login_password", "")
+        
+        user, session, err = AuthEngine.sign_in(email, pwd)
+        
+        if user:
+            access_token = None
+            refresh_token = None
+            if session:
+                if isinstance(session, dict):
+                    access_token = session.get("access_token")
+                    refresh_token = session.get("refresh_token")
+                else:
+                    access_token = getattr(session, "access_token", None)
+                    refresh_token = getattr(session, "refresh_token", None)
+            
+            if access_token and refresh_token:
+                auth_persistence.save_tokens(access_token, refresh_token)
 
-        # Keep Email input outside forms. Streamlit forms only "commit" widget values on submit.
-        email = st.text_input("Email", key="auth_email")
+            cache_control.bump()
+            st.session_state.user = user
+            st.session_state.login_error = None
+        else:
+            st.session_state.login_error = err
+
+    @staticmethod
+    def _handle_signup():
+        """Callback to process signups before the page re-renders."""
+        email = st.session_state.get("auth_signup_email", "")
+        pwd = st.session_state.get("auth_signup_password", "")
+        
+        user, session, err = AuthEngine.sign_up(email, pwd)
+        
+        if user:
+            access_token = None
+            refresh_token = None
+            if session:
+                if isinstance(session, dict):
+                    access_token = session.get("access_token")
+                    refresh_token = session.get("refresh_token")
+                else:
+                    access_token = getattr(session, "access_token", None)
+                    refresh_token = getattr(session, "refresh_token", None)
+            
+            if access_token and refresh_token:
+                auth_persistence.save_tokens(access_token, refresh_token)
+
+            cache_control.bump()
+            st.session_state.user = user
+            st.session_state.signup_error = None
+        else:
+            st.session_state.signup_error = err
+
+    @staticmethod
+    def render_login_tab():
+        st.subheader("Sign In")
+
+        email = st.text_input("Email", key="auth_login_email")
 
         with st.form("password_login_form", border=False):
-            pwd = st.text_input("Password", type="password", key="auth_password")
-            if st.form_submit_button("Sign in", use_container_width=True, type="primary"):
-                user, session, err = AuthEngine.sign_in(email, pwd)
-                if user:
-                    payload = AuthEngine.session_to_payload(session)
-                    if payload and session_store.enabled():
-                        sid = session_store.create_session(
-                            user_id=str(getattr(user, "id", "")), session_payload=payload
-                        )
-                        if sid:
-                            st.session_state["auth_sid"] = sid
-                            auth_persistence.save_sid(sid)
-                    cache_control.bump()
-                    st.session_state.user = user
-                    st.rerun()
-                else:
-                    st.error(f"Login failed: {err}")
-
-        if st.button("Email me a sign-in link instead", use_container_width=True, type="secondary"):
-            ok, err = AuthEngine.send_magic_link(email)
-            if ok:
-                st.success("Check your email for a sign-in link.")
-            else:
-                st.error(err or "Could not send sign-in link.")
+            pwd = st.text_input("Password", type="password", key="auth_login_password")
+            st.form_submit_button("Sign in", use_container_width=True, type="primary", on_click=AuthUI._handle_login)
+            
+        if st.session_state.get("login_error"):
+            st.error(f"Login failed: {st.session_state.login_error}")
+            st.session_state.login_error = None
         
         if AuthUI._invite_only_enabled():
             AuthUI._render_request_access()
@@ -91,11 +127,22 @@ class AuthUI:
 
     @staticmethod
     def render_signup_tab():
-        # Deprecated UI: passwordless magic links handle sign-up when enabled in Supabase.
         if AuthUI._invite_only_enabled():
             st.info("Invite-only access is enabled. Ask an admin for an invite.")
+            AuthUI._render_request_access()
             return
-        st.info("To create an account, enter your email above and request a sign-in link.")
+
+        st.subheader("Create an Account")
+        
+        email = st.text_input("Email", key="auth_signup_email")
+        
+        with st.form("password_signup_form", border=False):
+            pwd = st.text_input("Password", type="password", key="auth_signup_password")
+            st.form_submit_button("Sign up", use_container_width=True, type="primary", on_click=AuthUI._handle_signup)
+            
+        if st.session_state.get("signup_error"):
+            st.error(f"Sign up failed: {st.session_state.signup_error}")
+            st.session_state.signup_error = None
 
     @staticmethod
     def render_recovery_form():
