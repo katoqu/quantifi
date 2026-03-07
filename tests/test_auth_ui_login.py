@@ -1,8 +1,15 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+
 import pytest
 
 
 st = pytest.importorskip("streamlit")
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
+
+if TYPE_CHECKING:
+    from streamlit.testing.v1 import AppTest
 
 
 def _widget_label(widget) -> str:
@@ -18,7 +25,7 @@ def _widget_key(widget):
     return getattr(widget, "key", None)
 
 
-def _find_widget(widgets, *, label: str | None = None, key: str | None = None):
+def _find_widget(widgets, *, label: Optional[str] = None, key: Optional[str] = None):
     for w in widgets:
         if label is not None and _widget_label(w) != label:
             continue
@@ -28,27 +35,27 @@ def _find_widget(widgets, *, label: str | None = None, key: str | None = None):
     raise AssertionError(f"Widget not found (label={label!r}, key={key!r}).")
 
 
-def _click_button(at: AppTest, *, label: str | None = None, key: str | None = None):
+def _click_button(at: AppTest, *, label: Optional[str] = None, key: Optional[str] = None):  # type: ignore
     btn = _find_widget(at.button, label=label, key=key)
     btn.click()
 
 
-def _input_text(at: AppTest, *, label: str | None = None, key: str | None = None, value: str):
+def _input_text(at: AppTest, *, label: Optional[str] = None, key: Optional[str] = None, value: str):  # type: ignore
     w = _find_widget(at.text_input, label=label, key=key)
     w.input(value)
 
 
-def _session_get(at: AppTest, key: str, default):
+def _session_get(at: AppTest, key: str, default):  # type: ignore
     try:
         return at.session_state[key]
     except Exception:
         return default
 
 
-def test_login_ui_calls_password_sign_in_and_magic_link():
+def test_login_ui_calls_password_sign_in():
     """
-    Regression: Email must be available to both the password form and the magic link
-    button (avoids the "empty email" failure mode).
+    Test that the login form captures email and password, calls sign_in,
+    and sets user in session state on success.
     """
     script = """
 import streamlit as st
@@ -65,19 +72,14 @@ import auth_ui
 
 CALLS_KEY = "__auth_calls"
 if CALLS_KEY not in st.session_state:
-    st.session_state[CALLS_KEY] = {"sign_in": [], "magic": []}
+    st.session_state[CALLS_KEY] = {"sign_in": []}
 
 def _fake_sign_in(email, password):
     st.session_state[CALLS_KEY]["sign_in"].append((email, password))
     # return a minimal (user, session, err) triple
     return types.SimpleNamespace(id="u1", email=email), {"access_token": "a", "refresh_token": "r"}, None
 
-def _fake_magic(email):
-    st.session_state[CALLS_KEY]["magic"].append(email)
-    return True, None
-
 auth_ui.AuthEngine.sign_in = staticmethod(_fake_sign_in)
-auth_ui.AuthEngine.send_magic_link = staticmethod(_fake_magic)
 
 auth_ui.AuthUI.render_login_tab()
 """
@@ -89,7 +91,6 @@ auth_ui.AuthUI.render_login_tab()
     assert any(_widget_label(w) == "Email" for w in at.text_input)
     assert any(_widget_label(w) == "Password" for w in at.text_input)
     assert any(_widget_label(w) == "Sign in" for w in at.button)
-    assert any(_widget_label(w) == "Email me a sign-in link instead" for w in at.button)
 
     _input_text(at, label="Email", value="a@example.com")
     _input_text(at, label="Password", value="secret")
@@ -98,9 +99,4 @@ auth_ui.AuthUI.render_login_tab()
 
     calls = _session_get(at, "__auth_calls", {})
     assert calls["sign_in"] == [("a@example.com", "secret")]
-
-    _click_button(at, label="Email me a sign-in link instead")
-    at.run()
-
-    calls = _session_get(at, "__auth_calls", {})
-    assert calls["magic"] == ["a@example.com"]
+    assert _session_get(at, "user", None) is not None

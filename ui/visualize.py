@@ -181,11 +181,8 @@ def _collapse_to_daily(df: pd.DataFrame, daily_agg: str) -> pd.DataFrame:
     else:
         agg_func = lambda s: s.sum(min_count=1)
 
-    daily = (
-        df.groupby("_day", as_index=False)["value"]
-        .agg(agg_func)
-        .rename(columns={"_day": "recorded_at"})
-    )
+    daily_grouped = df.groupby("_day", as_index=True)["value"].agg(agg_func)
+    daily = daily_grouped.reset_index().rename(columns={"_day": "recorded_at"})
     return daily[["recorded_at", "value"]]
 
 
@@ -210,13 +207,45 @@ def _apply_missing_policy_daily(
     )
     return filled[["recorded_at", "value"]]
 
+
+def _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str):
+    """Helper: add horizontal reference line without label."""
+    if baseline_val is None:
+        return
+    fig.add_hline(
+        y=baseline_val,
+        line_dash="dash",
+        line_color="rgba(100, 100, 100, 0.2)",
+    )
+
+
+def _get_hover_template(hover_label, agg_kind, m_unit, hover_date_fmt, kind):
+    """Helper: construct aggregation-aware hover template."""
+    if kind == "score":
+        return (
+            f"<b>{hover_label} (avg): %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
+            if agg_kind == "mean"
+            else f"<b>{hover_label} (median): %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
+        )
+    elif kind == "count":
+        return f"<b>{hover_label} (sum): %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
+    else:
+        return f"<b>{hover_label} (avg): %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
+
+
 def build_hierarchical_annotations(plot_df, freq, range_choice=None):
+    """Build temporal annotations with dark-mode-safe colors."""
     month_annotations = []
     month_dividers = [] 
     year_annotations = []
     
     if plot_df is None or plot_df.empty:
         return month_annotations, month_dividers, year_annotations
+
+    # Dark-mode safe colors: lighter grays that work in both light and dark themes
+    divider_color = "rgba(100, 100, 100, 0.15)"
+    year_label_color = "rgba(140, 140, 140, 0.6)"
+    month_label_color = "rgba(160, 160, 160, 0.8)"
 
     # --- YEAR DIVIDERS & LABELS ---
     if range_choice in ["Year", "All", "Custom"]:
@@ -233,13 +262,13 @@ def build_hierarchical_annotations(plot_df, freq, range_choice=None):
                     month_dividers.append(dict(
                         type="line", x0=year_start, x1=year_start, y0=0, y1=1,
                         xref="x", yref="paper",
-                        line=dict(color="rgba(0,0,0,0.1)", width=1, dash="dot")
+                        line=dict(color=divider_color, width=1, dash="dot")
                     ))
 
                 mid_ts = y_data["recorded_at"].iloc[0] + (y_data["recorded_at"].iloc[-1] - y_data["recorded_at"].iloc[0]) / 2
                 year_annotations.append(dict(
-                    x=mid_ts, y=1.12, text=f"<b>{y}</b>", showarrow=False, xref="x", yref="paper",
-                    font=dict(size=11, color="rgba(0,0,0,0.4)"), xanchor="center"
+                    x=mid_ts, y=1.18, text=f"<b>{y}</b>", showarrow=False, xref="x", yref="paper",
+                    font=dict(size=11, color=year_label_color), xanchor="center"
                 ))
 
     # --- CENTERED MONTH LABEL (Last Month View) ---
@@ -253,7 +282,7 @@ def build_hierarchical_annotations(plot_df, freq, range_choice=None):
             month_annotations.append(dict(
                 x=mid_ts, y=-0.3, text=f"<b>{m_data['recorded_at'].iloc[0].strftime('%B')}</b>",
                 showarrow=False, xref="x", yref="paper",
-                font=dict(size=12, color="rgba(0,0,0,0.6)"), xanchor="center"
+                font=dict(size=12, color=month_label_color), xanchor="center"
             ))
             
     return month_annotations, month_dividers, year_annotations
@@ -284,7 +313,7 @@ def get_metric_stats(df, *, policy: MetricPolicy | None = None):
             "last_date": "No Data",
         }
 
-    last_ts = df.loc[clean_series.index[-1], "recorded_at"]
+    last_ts = df[df.index == clean_series.index[-1]]["recorded_at"].iloc[0]
 
     if policy.missing_policy == "missing_is_zero":
         start_ts = df["recorded_at"].min()
@@ -369,6 +398,7 @@ def show_visualizations(
     external_range="Month",
     policy: MetricPolicy | None = None,
     metric_id: str | None = None,
+    colorblind_safe=False,
 ):
     """
     Renders the metric trend chart with adaptive scaling and safe range selection.
@@ -427,7 +457,7 @@ def show_visualizations(
     last_ts = dfe["recorded_at"].max()
     
     end_ts = _today_utc_end() if show_pills else last_ts
-    period = _resolve_period(range_choice, min_ts=min_date, max_ts=max_date, anchor_end_ts=end_ts)
+    period = _resolve_period(range_choice or "Month", min_ts=min_date, max_ts=max_date, anchor_end_ts=end_ts)
     start_ts = period.start_ts
     end_ts = period.end_ts
     freq = period.freq
@@ -489,25 +519,44 @@ def show_visualizations(
         st.info("Insufficient data points in this range to display a chart.")
         return
 
-    # Compact Apple-like summary integrated into the chart header (mobile-friendly).
-    summary_title = None
+    # Two-level title: primary stats (main) + context (subtitle)
+    summary_main_title = None
+    summary_subtitle = None
     summary_series = pd.to_numeric(daily_df["value"], errors="coerce")
     if policy.missing_policy != "missing_is_zero":
         summary_series = summary_series.dropna()
     if not summary_series.empty:
-        if kind == "count":
-            primary_label = "Total"
-            primary_val = float(summary_series.sum())
-        else:
-            primary_label = "Average"
-            primary_val = float(summary_series.mean())
+        primary_label = "Average"
+        primary_val = float(summary_series.mean())
 
         latest_val = float(summary_series.iloc[-1])
         unit = (m_unit or "").strip()
         unit_suffix = f" {unit}" if unit else ""
         primary_str = f"{_format_value_for_metric(primary_val, kind=kind)}{unit_suffix}"
         latest_str = f"{_format_value_for_metric(latest_val, kind=kind)}{unit_suffix}"
-        summary_title = f"{primary_label} {primary_str} · Latest {latest_str}"
+        
+        # Primary title: just key stats
+        summary_main_title = f"{primary_label} {primary_str} · Latest {latest_str}"
+        
+        # Subtitle: context (date range, point count, coverage)
+        date_range_str = f"{start_ts.strftime('%d %b %Y')} → {end_ts.strftime('%d %b %Y')}"
+        data_point_count = len(plot_df)
+        granularity_label = {
+            "D": "daily",
+            "W": "weekly",
+            "MS": "monthly"
+        }.get(freq, "points")
+        
+        sparsity_note = ""
+        if policy.missing_policy != "missing_is_zero" and filtered_df is not None and not filtered_df.empty:
+            days_span = (end_ts - start_ts).days
+            actual_days = len(filtered_df["recorded_at"].dt.date.unique())
+            if days_span > 0:
+                coverage = (actual_days / days_span) * 100
+                if coverage < 80:
+                    sparsity_note = f" · {coverage:.0f}% coverage"
+        
+        summary_subtitle = f"{data_point_count} {granularity_label}{sparsity_note} · {date_range_str}"
 
     if range_choice in ["Last 6 months", "Last year"] and len(plot_df) < 8:
          tickformat = "%d %b"
@@ -535,7 +584,7 @@ def show_visualizations(
                 re = int(math.ceil(float(filtered_df["value"].max())))
             except Exception:
                 re = 5
-        colorscale = "RdYlGn" if bool(higher_is_better) else "RdYlGn_r"
+        colorscale = ("Viridis" if higher_is_better else "Viridis_r") if colorblind_safe else ("RdYlGn" if bool(higher_is_better) else "RdYlGn_r")
 
         fig.add_trace(
             go.Bar(
@@ -550,13 +599,12 @@ def show_visualizations(
                     showscale=False,
                     line=dict(color="rgba(255,255,255,0.9)", width=1),
                 ),
-                hovertemplate=(
-                    f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
-                    if agg_kind == "mean"
-                    else f"<b>{hover_label}: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
-                ),
+                hovertemplate=_get_hover_template(hover_label, agg_kind, m_unit, hover_date_fmt, "score"),
             )
         )
+        
+        _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str)
+        
         y0, y1 = _score_yaxis_range(range_start=int(rs), range_end=int(re), missing_policy=policy.missing_policy)
         fig.update_yaxes(range=[y0, y1], dtick=1)
         fig.update_layout(bargap=0.25)
@@ -567,9 +615,11 @@ def show_visualizations(
                 y=plot_df["value"],
                 name=m_name,
                 marker=dict(color="rgba(31, 119, 180, 0.85)", line=dict(color="rgba(255,255,255,0.9)", width=1)),
-                hovertemplate=f"<b>{hover_label}: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>",
+                hovertemplate=_get_hover_template(hover_label, "sum", m_unit, hover_date_fmt, "count"),
             )
         )
+        _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str)
+        
         fig.update_layout(bargap=0.25)
     else:
         fig.add_trace(
@@ -580,62 +630,115 @@ def show_visualizations(
                 line=dict(shape="spline", smoothing=0.8, color="#1f77b4", width=3),
                 marker=dict(size=6, color="#1f77b4", line=dict(color="white", width=1)),
                 name=m_name,
-                hovertemplate=f"<b>{hover_label}: %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>",
+                hovertemplate=_get_hover_template(hover_label, "mean", m_unit, hover_date_fmt, "quantitative"),
             )
         )
+        _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str)
 
     if trend is not None:
         fig.add_trace(go.Scatter(x=plot_df["recorded_at"], y=trend, mode="lines", line=dict(color="rgba(31, 119, 180, 0.3)", width=2), name="Trend", hoverinfo="skip"))
+    
+    # Add data sparsity indicator for sparse/missing data (when missing policy is ignore_missing)
+    # Skip for large time spans to avoid performance issues with hundreds of rectangles
+    if policy.missing_policy != "missing_is_zero" and filtered_df is not None and not filtered_df.empty:
+        days_span = (end_ts - start_ts).days
+        actual_days = len(filtered_df["recorded_at"].dt.date.unique())
+        
+        # Only show sparsity indicator for smaller time spans (< 100 days) to avoid performance issues
+        if days_span < 100 and days_span > 7 and actual_days < days_span * 0.6:
+            all_days = pd.date_range(start=start_ts.floor("D"), end=end_ts.floor("D"), freq="D", tz="UTC")
+            # Group consecutive missing days into fewer rectangles for performance
+            missing_days_set = set(filtered_df["recorded_at"].dt.date.unique())
+            current_gap_start = None
+            
+            for day in all_days:
+                day_date = day.date()
+                if day_date not in missing_days_set:
+                    if current_gap_start is None:
+                        current_gap_start = day
+                else:
+                    if current_gap_start is not None:
+                        # Draw a rectangle for the gap
+                        gap_end = day - pd.Timedelta(days=1)
+                        fig.add_vrect(
+                            x0=current_gap_start,
+                            x1=gap_end,
+                            fillcolor="rgba(200, 200, 200, 0.02)",
+                            line_width=0,
+                            layer="below"
+                        )
+                        current_gap_start = None
+            
+            # Handle gap at the end if it exists
+            if current_gap_start is not None:
+                fig.add_vrect(
+                    x0=current_gap_start,
+                    x1=end_ts,
+                    fillcolor="rgba(200, 200, 200, 0.02)",
+                    line_width=0,
+                    layer="below"
+                )
+    
+    # Add "now" indicator for trailing periods (non-All views)
+    if show_pills and range_choice != "All":
+        current_time = _today_utc_end()
+        if current_time > start_ts and current_time < end_ts:
+            fig.add_vline(
+                x=current_time,
+                line_dash="dot",
+                line_color="rgba(100, 100, 100, 0.25)",
+                line_width=1
+            )
+            fig.add_annotation(
+                x=current_time,
+                y=1.05,
+                text="Today →",
+                showarrow=False,
+                xref="x",
+                yref="paper",
+                font=dict(size=9, color="rgba(130, 130, 130, 0.5)"),
+                xanchor="right"
+            )
 
-    if baseline_val is not None and pd.notna(baseline_val):
-        fig.add_shape(
-            type="line",
-            x0=plot_df["recorded_at"].min(),
-            x1=plot_df["recorded_at"].max(),
-            y0=baseline_val,
-            y1=baseline_val,
-            line=dict(color="rgba(255, 75, 75, 0.4)", width=2, dash="dash"),
-        )
-        fig.add_annotation(
-            x=0.99,
-            xref="paper",
-            xanchor="right",
-            y=baseline_val,
-            yref="y",
-            yanchor="bottom",
-            text=f"{baseline_label} {baseline_val_str} {m_unit}".strip(),
-            showarrow=False,
-            font=dict(size=10, color="rgba(255, 75, 75, 0.55)"),
-        )
+    # Combine title and subtitle with line break if both exist
+    combined_title = summary_main_title
+    if summary_subtitle:
+        combined_title = f"{summary_main_title}<br><sub style='font-size: 9px; color: rgba(120, 120, 120, 0.7);'>{summary_subtitle}</sub>"
 
-    top_margin = 52 if summary_title else 40
+    # Increase top margin if year annotations are present (to avoid overlap with title)
+    top_margin = 60 if summary_main_title else 40
+    if year_annotations:
+        top_margin = 100
+
+    # Combine all annotations
+    all_annotations = month_annotations + year_annotations
 
     fig.update_layout(
         yaxis_title=m_unit, 
         height=320, 
-        margin=dict(l=10, r=10, t=top_margin, b=80),
+        margin=dict(l=10, r=120, t=top_margin, b=80),
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)', 
         showlegend=False,
-        annotations=list(fig.layout.annotations) + month_annotations + year_annotations,
         hovermode="x",
-        # On mobile, letting Plotly capture drag gestures prevents page scrolling.
-        # Keep the chart tappable (hover) but disable drag interactions.
         dragmode=False,
+        shapes=month_dividers,
+        annotations=all_annotations,
         title=(
             dict(
-                text=summary_title,
+                text=combined_title,
                 x=0.0,
                 xanchor="left",
-                font=dict(size=12, color="rgba(0,0,0,0.55)"),
+                font=dict(size=13, color="rgba(150, 150, 150, 0.9)"),
             )
-            if summary_title
+            if summary_main_title
             else None
         ),
         xaxis=dict(
             tickformat=tickformat,
             nticks=8,
             fixedrange=True,
+            tickfont=dict(color="rgba(140, 140, 140, 0.8)"),
         )
     )
 

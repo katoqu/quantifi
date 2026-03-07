@@ -32,32 +32,39 @@ def _install_streamlit_stub(monkeypatch, *, secrets: dict):
 
 def _install_cookie_manager_stub(monkeypatch):
     class CookieManager:
-        def __init__(self):
+        def __init__(self, key=None):
             self._cookies = {}
+            self.key = key
 
         def get(self, key):
             return self._cookies.get(key)
 
-        def set(self, key, value, expires_at_days=None):
-            _ = expires_at_days
+        def set(self, key, value, expires_at=None):
+            _ = expires_at
             self._cookies[key] = value
 
         def delete(self, key):
             self._cookies.pop(key, None)
+        
+        def get_all(self):
+            return self._cookies
 
     stx = types.SimpleNamespace(CookieManager=CookieManager)
     monkeypatch.setitem(sys.modules, "extra_streamlit_components", stx)
     return stx
 
 
-def test_auth_persistence_roundtrip_sid(monkeypatch):
+def test_auth_persistence_roundtrip_tokens(monkeypatch):
     _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
     _install_cookie_manager_stub(monkeypatch)
 
     auth_persistence = _import_fresh("auth_persistence")
 
-    assert auth_persistence.save_sid("sid-123", max_age_days=7) is True
-    assert auth_persistence.load() == "sid-123"
+    assert auth_persistence.save_tokens("access-token-123", "refresh-token-456", max_age_days=7) is True
+    loaded = auth_persistence.load()
+    assert loaded is not None
+    assert loaded["access_token"] == "access-token-123"
+    assert loaded["refresh_token"] == "refresh-token-456"
 
     assert auth_persistence.clear() is True
     assert auth_persistence.load() is None
@@ -71,7 +78,7 @@ def test_auth_persistence_loads_legacy_token_payload(monkeypatch):
 
     cm = auth_persistence._cookie_manager()
     legacy = {"access_token": "a", "refresh_token": "r", "expires_at": 123}
-    cm.set(auth_persistence.COOKIE_NAME, auth_persistence._encode(legacy), expires_at_days=30)
+    cm.set(auth_persistence.COOKIE_NAME, auth_persistence._encode(legacy), expires_at=30)
 
     out = auth_persistence.load()
     assert isinstance(out, dict)
