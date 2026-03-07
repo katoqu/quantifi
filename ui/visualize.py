@@ -443,7 +443,7 @@ def show_visualizations(
     fig.update_layout(
         yaxis_title=m_unit, 
         height=320, 
-        margin=dict(l=10, r=120, t=top_margin, b=80),
+        margin=dict(l=10, r=20, t=top_margin, b=80),
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)', 
         showlegend=False,
