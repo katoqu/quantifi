@@ -5,18 +5,17 @@ import math
 
 from metric_policy import DEFAULT_POLICY, MetricPolicy, resolve_metric_policy, set_missing_is_zero_override
 
-
-from dataclasses import dataclass
-
-
-def _ensure_recorded_at_utc(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-    if not pd.api.types.is_datetime64_any_dtype(df["recorded_at"]):
-        df["recorded_at"] = pd.to_datetime(df["recorded_at"], format="mixed", utc=True)
-    elif df["recorded_at"].dt.tz is None:
-        df["recorded_at"] = df["recorded_at"].dt.tz_localize("UTC")
-    return df
+from .chart_data import (
+    ensure_recorded_at_utc,
+    resolve_period,
+    resample_to_plot_df,
+    collapse_to_daily,
+    apply_missing_policy_daily,
+    score_resample_agg,
+    score_yaxis_range,
+)
+from .chart_annotations import build_hierarchical_annotations
+from .chart_stats import get_metric_stats
 
 
 def _stable_metric_key(metric_id: str | None, metric_name: str | None) -> str:
@@ -45,169 +44,6 @@ def _format_value_for_metric(val: float | None, *, kind: str) -> str:
         return str(val)
 
 
-def _score_resample_agg(*, missing_policy: str) -> str:
-    return "mean" if missing_policy == "missing_is_zero" else "median"
-
-
-def _score_yaxis_range(*, range_start: int, range_end: int, missing_policy: str) -> tuple[float, float]:
-    if missing_policy == "missing_is_zero":
-        range_start = min(int(range_start), 0)
-    return (float(range_start) - 0.5, float(range_end) + 0.5)
-
-
-@dataclass(frozen=True)
-class _PeriodSpec:
-    start_ts: pd.Timestamp
-    end_ts: pd.Timestamp
-    freq: str
-    tickformat: str
-    hover_label: str
-    hover_date_fmt: str
-
-
-def _resolve_period(
-    range_choice: str,
-    *,
-    min_ts: pd.Timestamp,
-    max_ts: pd.Timestamp,
-    anchor_end_ts: pd.Timestamp,
-) -> _PeriodSpec:
-    """
-    Pure helper: map a period selection to filtering bounds + resample config.
-
-    `anchor_end_ts` decides whether "Week/Month/6M/Year" is trailing-to-today or trailing-to-last-point.
-    """
-    choice = (range_choice or "").strip()
-    if choice in {"6m", "6 M"}:
-        choice = "6M"
-
-    # Default hover date format (includes day)
-    hover_date_fmt = "%d %b %Y"
-
-    end_ts = anchor_end_ts
-
-    if choice == "Week":
-        start_ts = end_ts - pd.Timedelta(days=7)
-        freq, tickformat, hover_label = "D", "%a", "Value"
-    elif choice == "Month":
-        start_ts = end_ts - pd.Timedelta(days=31)
-        freq, tickformat, hover_label = "D", "%d", "Daily Value"
-    elif choice == "6M":
-        start_ts = end_ts - pd.DateOffset(months=6)
-        freq, tickformat, hover_label = "W", "%d %b", "Weekly Avg"
-    elif choice == "Year":
-        start_ts = end_ts - pd.DateOffset(months=12)
-        freq, tickformat, hover_label = "W", "%b", "Weekly Avg"
-    else:
-        # "All" or "Custom"
-        start_ts = min_ts
-        days_diff = (max_ts - min_ts).days if pd.notna(max_ts) and pd.notna(min_ts) else 0
-        if days_diff <= 31:
-            freq, tickformat, hover_label = "D", "%d %b", "Daily Value"
-        elif days_diff <= 150:
-            freq, tickformat, hover_label = "W", "%d %b", "Weekly Avg"
-        else:
-            freq, tickformat, hover_label = "MS", "%b '%y", "Monthly Avg"
-            hover_date_fmt = "%b %Y"
-
-    return _PeriodSpec(
-        start_ts=pd.Timestamp(start_ts).tz_convert("UTC") if pd.Timestamp(start_ts).tzinfo else pd.Timestamp(start_ts, tz="UTC"),
-        end_ts=pd.Timestamp(end_ts).tz_convert("UTC") if pd.Timestamp(end_ts).tzinfo else pd.Timestamp(end_ts, tz="UTC"),
-        freq=freq,
-        tickformat=tickformat,
-        hover_label=hover_label,
-        hover_date_fmt=hover_date_fmt,
-    )
-
-
-def _resample_to_plot_df(
-    daily_df: pd.DataFrame,
-    *,
-    freq: str,
-    kind: str,
-    missing_policy: str,
-) -> tuple[pd.DataFrame, str]:
-    """
-    Pure helper: resample daily values into the plot series.
-    Returns (plot_df, agg_kind) where agg_kind is one of {"mean","median","sum"}.
-    """
-    if daily_df is None or daily_df.empty:
-        return pd.DataFrame(columns=["recorded_at", "value"]), "mean"
-
-    df = daily_df.copy()
-    df["recorded_at"] = pd.to_datetime(df["recorded_at"], utc=True, format="mixed")
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
-
-    if kind == "score":
-        agg_kind = _score_resample_agg(missing_policy=missing_policy)
-    elif kind == "count":
-        agg_kind = "sum"
-    else:
-        agg_kind = "mean"
-
-    g = df.set_index("recorded_at")["value"].resample(freq)
-    if agg_kind == "sum":
-        s = g.sum(min_count=1)
-    elif agg_kind == "median":
-        s = g.median()
-    else:
-        s = g.mean()
-
-    plot_df = (
-        s.dropna()
-        .rename("value")
-        .rename_axis("recorded_at")
-        .reset_index()
-    )
-    return plot_df[["recorded_at", "value"]], agg_kind
-
-
-def _collapse_to_daily(df: pd.DataFrame, daily_agg: str) -> pd.DataFrame:
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["recorded_at", "value"])
-
-    df = df.sort_values("recorded_at").copy()
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
-    df["_day"] = df["recorded_at"].dt.floor("D")
-
-    if daily_agg == "mean":
-        agg_func = "mean"
-    elif daily_agg == "last":
-        agg_func = lambda s: s.dropna().iloc[-1] if s.dropna().shape[0] else float("nan")
-    elif daily_agg == "max":
-        agg_func = "max"
-    elif daily_agg == "min":
-        agg_func = "min"
-    else:
-        agg_func = lambda s: s.sum(min_count=1)
-
-    daily_grouped = df.groupby("_day", as_index=True)["value"].agg(agg_func)
-    daily = daily_grouped.reset_index().rename(columns={"_day": "recorded_at"})
-    return daily[["recorded_at", "value"]]
-
-
-def _apply_missing_policy_daily(
-    daily_df: pd.DataFrame, *, start_ts: pd.Timestamp, end_ts: pd.Timestamp, missing_policy: str
-) -> pd.DataFrame:
-    if missing_policy != "missing_is_zero":
-        return daily_df
-
-    start_day = start_ts.floor("D")
-    end_day = end_ts.floor("D")
-    if pd.isna(start_day) or pd.isna(end_day) or start_day > end_day:
-        return daily_df
-
-    all_days = pd.date_range(start=start_day, end=end_day, freq="D", tz="UTC")
-    filled = (
-        daily_df.set_index("recorded_at")["value"]
-        .reindex(all_days)
-        .fillna(0.0)
-        .rename_axis("recorded_at")
-        .reset_index()
-    )
-    return filled[["recorded_at", "value"]]
-
-
 def _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str):
     """Helper: add horizontal reference line without label."""
     if baseline_val is None:
@@ -232,116 +68,6 @@ def _get_hover_template(hover_label, agg_kind, m_unit, hover_date_fmt, kind):
     else:
         return f"<b>{hover_label} (avg): %{{y:.1f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>"
 
-
-def build_hierarchical_annotations(plot_df, freq, range_choice=None):
-    """Build temporal annotations with dark-mode-safe colors."""
-    month_annotations = []
-    month_dividers = [] 
-    year_annotations = []
-    
-    if plot_df is None or plot_df.empty:
-        return month_annotations, month_dividers, year_annotations
-
-    # Dark-mode safe colors: lighter grays that work in both light and dark themes
-    divider_color = "rgba(100, 100, 100, 0.15)"
-    year_label_color = "rgba(140, 140, 140, 0.6)"
-    month_label_color = "rgba(160, 160, 160, 0.8)"
-
-    # --- YEAR DIVIDERS & LABELS ---
-    if range_choice in ["Year", "All", "Custom"]:
-        years = plot_df["recorded_at"].dt.year.unique()
-        
-        if len(years) > 1:
-            for y in years:
-                y_data = plot_df[plot_df["recorded_at"].dt.year == y]
-                if y_data.empty: continue
-                
-                year_start = pd.Timestamp(year=y, month=1, day=1, tz='UTC')
-                
-                if year_start > plot_df["recorded_at"].min() and year_start < plot_df["recorded_at"].max():
-                    month_dividers.append(dict(
-                        type="line", x0=year_start, x1=year_start, y0=0, y1=1,
-                        xref="x", yref="paper",
-                        line=dict(color=divider_color, width=1, dash="dot")
-                    ))
-
-                mid_ts = y_data["recorded_at"].iloc[0] + (y_data["recorded_at"].iloc[-1] - y_data["recorded_at"].iloc[0]) / 2
-                year_annotations.append(dict(
-                    x=mid_ts, y=1.18, text=f"<b>{y}</b>", showarrow=False, xref="x", yref="paper",
-                    font=dict(size=11, color=year_label_color), xanchor="center"
-                ))
-
-    # --- CENTERED MONTH LABEL (Last Month View) ---
-    if range_choice == "Month":
-        months = plot_df["recorded_at"].dt.to_period("M").unique()
-        for m in months:
-            m_data = plot_df[plot_df["recorded_at"].dt.to_period("M") == m]
-            if m_data.empty: continue
-            
-            mid_ts = m_data["recorded_at"].iloc[0] + (m_data["recorded_at"].iloc[-1] - m_data["recorded_at"].iloc[0]) / 2
-            month_annotations.append(dict(
-                x=mid_ts, y=-0.3, text=f"<b>{m_data['recorded_at'].iloc[0].strftime('%B')}</b>",
-                showarrow=False, xref="x", yref="paper",
-                font=dict(size=12, color=month_label_color), xanchor="center"
-            ))
-            
-    return month_annotations, month_dividers, year_annotations
-
-def get_metric_stats(df, *, policy: MetricPolicy | None = None):
-    if df is None or df.empty:
-        return {
-            "latest": None, "ma7": None, "change": None,
-            "avg": None, "count": 0, "last_date": "No Data"
-        }
-
-    policy = policy or DEFAULT_POLICY
-    df = df.copy()
-    df = _ensure_recorded_at_utc(df)
-    
-    df = df.sort_values("recorded_at")
-
-    # Treat NULL/blank as "not measured" (excluded from stats), but keep numeric 0 as valid.
-    raw_numeric = pd.to_numeric(df["value"], errors="coerce")
-    clean_series = raw_numeric.dropna()
-    if clean_series.empty:
-        return {
-            "latest": None,
-            "ma7": None,
-            "change": None,
-            "avg": None,
-            "count": 0,
-            "last_date": "No Data",
-        }
-
-    last_ts = df[df.index == clean_series.index[-1]]["recorded_at"].iloc[0]
-
-    if policy.missing_policy == "missing_is_zero":
-        start_ts = df["recorded_at"].min()
-        end_ts = df["recorded_at"].max()
-        daily_df = _collapse_to_daily(df, policy.daily_agg)
-        daily_df = _apply_missing_policy_daily(
-            daily_df, start_ts=start_ts, end_ts=end_ts, missing_policy=policy.missing_policy
-        )
-        series = pd.to_numeric(daily_df["value"], errors="coerce").fillna(0.0)
-
-        latest_val = float(series.iloc[-1])
-        ma7 = series.rolling(window=7).mean().iloc[-1] if series.shape[0] >= 7 else None
-        change = float(series.iloc[-1] - series.iloc[-2]) if series.shape[0] >= 2 else 0.0
-        avg_val = float(series.mean())
-    else:
-        latest_val = float(clean_series.iloc[-1])
-        ma7 = clean_series.rolling(window=7).mean().iloc[-1] if len(clean_series) >= 7 else None
-        change = float(clean_series.iloc[-1] - clean_series.iloc[-2]) if len(clean_series) >= 2 else 0.0
-        avg_val = float(clean_series.mean())
-        
-    return {
-        "latest": latest_val,
-        "ma7": ma7,
-        "change": change,
-        "avg": avg_val,
-        "count": int(clean_series.shape[0]),
-        "last_date": last_ts.strftime('%d %b') 
-    }
 
 def render_stat_row(stats, mode="compact"):
     if not stats:
@@ -384,6 +110,7 @@ def render_stat_row(stats, mode="compact"):
             </div>
         """, unsafe_allow_html=True)
 
+
 def show_visualizations(
     dfe,
     m_unit,
@@ -411,7 +138,7 @@ def show_visualizations(
     dfe = dfe.copy()
 
     # 1. TIMEZONE & TYPE SANITY CHECK
-    dfe = _ensure_recorded_at_utc(dfe)
+    dfe = ensure_recorded_at_utc(dfe)
 
     # 2. CALCULATE DATA SPAN
     min_date = dfe["recorded_at"].min()
@@ -457,7 +184,7 @@ def show_visualizations(
     last_ts = dfe["recorded_at"].max()
     
     end_ts = _today_utc_end() if show_pills else last_ts
-    period = _resolve_period(range_choice or "Month", min_ts=min_date, max_ts=max_date, anchor_end_ts=end_ts)
+    period = resolve_period(range_choice or "Month", min_ts=min_date, max_ts=max_date, anchor_end_ts=end_ts)
     start_ts = period.start_ts
     end_ts = period.end_ts
     freq = period.freq
@@ -488,12 +215,12 @@ def show_visualizations(
 
     # Normalize values: blanks/NULLs -> NaN, numeric 0 preserved.
     filtered_df["value"] = pd.to_numeric(filtered_df["value"], errors="coerce")
-    daily_df = _collapse_to_daily(filtered_df, policy.daily_agg)
-    daily_df = _apply_missing_policy_daily(
+    daily_df = collapse_to_daily(filtered_df, policy.daily_agg)
+    daily_df = apply_missing_policy_daily(
         daily_df, start_ts=start_ts, end_ts=end_ts, missing_policy=policy.missing_policy
     )
 
-    plot_df, agg_kind = _resample_to_plot_df(
+    plot_df, agg_kind = resample_to_plot_df(
         daily_df,
         freq=freq,
         kind=str(kind),
@@ -605,7 +332,7 @@ def show_visualizations(
         
         _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str)
         
-        y0, y1 = _score_yaxis_range(range_start=int(rs), range_end=int(re), missing_policy=policy.missing_policy)
+        y0, y1 = score_yaxis_range(range_start=int(rs), range_end=int(re), missing_policy=policy.missing_policy)
         fig.update_yaxes(range=[y0, y1], dtick=1)
         fig.update_layout(bargap=0.25)
     elif is_count:

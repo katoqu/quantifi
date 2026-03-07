@@ -6,7 +6,7 @@ pytest.importorskip("streamlit")
 
 import pandas as pd  # noqa: E402
 
-from ui.visualize import get_metric_stats  # noqa: E402
+from ui.chart_stats import get_metric_stats  # noqa: E402
 from metric_policy import MetricPolicy  # noqa: E402
 
 
