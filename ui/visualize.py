@@ -423,14 +423,16 @@ def show_visualizations(
                 showarrow=False,
                 xref="x",
                 yref="paper",
-                font=dict(size=9, color="rgba(130, 130, 130, 0.5)"),
+                font=dict(size=11, color="rgba(180, 180, 180, 0.7)"),                
+                #font=dict(size=9, color="rgba(130, 130, 130, 0.5)"),
                 xanchor="right"
             )
 
     # Combine title and subtitle with line break if both exist
     combined_title = summary_main_title
     if summary_subtitle:
-        combined_title = f"{summary_main_title}<br><sub style='font-size: 9px; color: rgba(120, 120, 120, 0.7);'>{summary_subtitle}</sub>"
+        combined_title = f"{summary_main_title}<br><sub style='font-size: 12px; color: rgba(180, 180, 180, 0.9);'>{summary_subtitle}</sub>"
+#        combined_title = f"{summary_main_title}<br><sub style='font-size: 9px; color: rgba(120, 120, 120, 0.7);'>{summary_subtitle}</sub>"
 
     # Increase top margin if year annotations are present (to avoid overlap with title)
     top_margin = 60 if summary_main_title else 40
@@ -456,7 +458,8 @@ def show_visualizations(
                 text=combined_title,
                 x=0.0,
                 xanchor="left",
-                font=dict(size=13, color="rgba(150, 150, 150, 0.9)"),
+                font=dict(size=14, color="rgba(200, 200, 200, 0.9)"),
+#                font=dict(size=13, color="rgba(150, 150, 150, 0.9)"),
             )
             if summary_main_title
             else None
