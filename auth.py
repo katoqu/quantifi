@@ -4,79 +4,74 @@ from auth_ui import AuthUI
 from auth_engine import AuthEngine
 import auth_persistence
 import cache_control
+import time
 
 def is_invite_only() -> bool:
     return AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False))
 
 def init_session_state():
-    """Initializes the session state and synchronizes with Supabase auth."""
+    """Initializes session state with a persistence bridge for mobile wake-ups."""
     
     auth_persistence.mount()
 
+    # 1. Define Defaults
     defaults = {
         "user": None, 
-        "show_password_reset": False, 
-        "show_recovery_form": False,
-        "recovery_type": None,
-        "show_debug_panel": False,
         "auth_debug": [],
-        "use_time_sticky": False,          
         "tracker_view_selector": "Home",   
-        "last_active_mid": None,           
-        "active_cat_filter": "All",        
         "cache_buster": 0,
         "_logout_pending": False,
-        "_cookie_restore_failed": False, # New safety flag
+        "_restore_attempts": 0,  # Safety counter for mobile wake-ups
+        "app_just_woke_up": True, 
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
             st.session_state[k] = v
 
+    # 2. Proactive Refresh (For users who are already logged in and active)
     if st.session_state.user is not None:
+        # Check if the token is within 15 mins (900s) of expiring
         new_session, err = AuthEngine.maybe_refresh_session(seconds_skew=900)
         if new_session:
             payload = AuthEngine.session_to_payload(new_session)
             if payload:
                 auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
                 st.session_state.auth_debug.append("Workout session refreshed proactively.")
-        if err:
-            st.session_state.auth_debug.append(f"Refresh attempt failed: {err}")
+        return # Skip restore logic if user is already valid in memory
 
+    # 3. Restore Logic (The 'Safety Bridge' for mobile wake-up)
     if st.session_state.user is None:
         persisted = auth_persistence.load()
 
-        if st.session_state.get("_logout_pending"):
-            if persisted: return
-            st.session_state["_logout_pending"] = False
-            return
-
-        if isinstance(persisted, dict) and persisted.get("access_token") and persisted.get("refresh_token"):
+        # If a cookie is found, attempt to restore the Supabase session
+        if isinstance(persisted, dict) and persisted.get("access_token"):
             user, session, err = AuthEngine.restore_session(
                 persisted["access_token"], persisted["refresh_token"]
             )
             if user:
                 st.session_state.user = user
-                payload = AuthEngine.session_to_payload(session)
-                if payload:
-                    auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
-                cache_control.bump()
-                st.session_state["_cookie_restore_failed"] = False
+                st.session_state._restore_attempts = 0 # Success, reset counter
                 return
             
             if err:
-                st.session_state.auth_debug.append(f"Cookie restore failed: {err}")
-                # CRITICAL FIX: We no longer call auth_persistence.clear() here.
-                # If the network fails on wake-up, we keep the cookie so you can retry.
-                st.session_state["_cookie_restore_failed"] = True
+                st.session_state.auth_debug.append(f"Cookie restore error: {err}")
 
-        # Final Fallback
-        try:
-            res = sb.auth.get_user()
-            user = getattr(res, "user", None) if res else None
-            if user:
-                st.session_state.user = user
-        except Exception as e:
-            st.session_state.auth_debug.append(f"Session init error: {str(e)}")
+        # --- THE BRIDGE ---
+        # If no cookie is found on the first try, the mobile browser is likely 
+        # still waking up. We wait 0.5 seconds and rerun ONCE to try again.
+        if st.session_state._restore_attempts < 1:
+            st.session_state._restore_attempts += 1
+            time.sleep(0.5) 
+            st.rerun()
+
+    # 4. Final Fallback: Check if Supabase client already has the user in memory
+    try:
+        res = sb.auth.get_user()
+        user = getattr(res, "user", None) if res else None
+        if user:
+            st.session_state.user = user
+    except Exception as e:
+        st.session_state.auth_debug.append(f"Client memory check failed: {e}")
 
 def is_authenticated():
     if st.session_state.get("show_recovery_form"):

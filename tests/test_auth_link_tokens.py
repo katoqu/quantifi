@@ -18,7 +18,6 @@ def _import_fresh(name: str):
     sys.modules.pop(name, None)
     return importlib.import_module(name)
 
-
 def _install_streamlit_stub(monkeypatch, *, secrets: dict | None = None):
     st = types.SimpleNamespace()
     st.secrets = dict(secrets or {})
@@ -27,9 +26,21 @@ def _install_streamlit_stub(monkeypatch, *, secrets: dict | None = None):
 
     def _no_op(*_a, **_k):
         return None
+    
+    # NEW: Context manager stub for st.spinner
+    class _MockContextManager:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
 
-    # Used by handle_link_tokens error path.
+    def _spinner_mock(*_a, **_k):
+        return _MockContextManager()
+
+    # Stubs required by the new auth.py logic
     st.error = _no_op
+    st.rerun = _no_op     # <--- This fixes your AttributeError
+    st.spinner = _spinner_mock # <--- This prevents failures in auth_page
+    st.title = _no_op
+    st.warning = _no_op
 
     monkeypatch.setitem(sys.modules, "streamlit", st)
     return st
