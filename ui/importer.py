@@ -49,10 +49,9 @@ def validate_import_frames(df_entries: pd.DataFrame, df_changes: pd.DataFrame) -
         if missing:
             errors.append(f"Missing mandatory columns for entries: {', '.join(missing)}")
         else:
-            for idx, row in df_entries.iterrows():
-                row_num = idx + 2
+            for i, (idx, row) in enumerate(df_entries.iterrows()):
+                row_num = i + 2
                 m_name = str(row.get("Metric", "Unknown"))
-
                 m_type = str(row.get("Type")).strip().lower()
                 if m_type not in ALLOWED_TYPES:
                     errors.append(
@@ -96,8 +95,8 @@ def validate_import_frames(df_entries: pd.DataFrame, df_changes: pd.DataFrame) -
         if missing:
             errors.append(f"Missing mandatory columns for changes: {', '.join(missing)}")
         else:
-            for idx, row in df_changes.iterrows():
-                row_num = idx + 2
+            for i, (idx, row) in enumerate(df_changes.iterrows()):
+                row_num = i + 2
                 title = str(row.get("Title") or "").strip()
                 if not title:
                     errors.append(f"Row {row_num}: Change Title cannot be empty.")
