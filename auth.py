@@ -23,6 +23,8 @@ def init_session_state():
         "_logout_pending": False,
         "_restore_attempts": 0,  # Safety counter for mobile wake-ups
         "app_just_woke_up": True, 
+        "show_recovery_form": False,
+        "show_password_reset": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
@@ -160,10 +162,10 @@ def auth_page():
             st.rerun()
         return
 
-    if st.session_state.show_recovery_form:
+    if st.session_state.get("show_recovery_form", False):
         AuthUI.render_recovery_form()
     
-    elif st.session_state.show_password_reset:
+    elif st.session_state.get("show_password_reset", False):
         st.subheader("Reset Password")
         email = st.text_input("Enter your email")
         col1, col2 = st.columns(2)
