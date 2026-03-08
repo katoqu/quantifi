@@ -8,12 +8,9 @@ import cache_control
 def is_invite_only() -> bool:
     return AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False))
 
-
 def init_session_state():
     """Initializes the session state and synchronizes with Supabase auth."""
     
-    # 1. Component Mounting
-    # Ensures the JS/HTML for cookies is present on every rerun
     auth_persistence.mount()
 
     defaults = {
@@ -29,33 +26,25 @@ def init_session_state():
         "active_cat_filter": "All",        
         "cache_buster": 0,
         "_logout_pending": False,
+        "_cookie_restore_failed": False, # New safety flag
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
             st.session_state[k] = v
 
-    # 2. Aggressive Session Keep-Alive
-    # We check if the session is within 15 mins (900s) of expiring.
     if st.session_state.user is not None:
-        # Increase skew to 15 minutes to bridge your workout gaps
         new_session, err = AuthEngine.maybe_refresh_session(seconds_skew=900)
-        
         if new_session:
-            # If a refresh happened, we MUST update the browser cookie
-            # so the user doesn't get a 'stale token' error on the next reload.
             payload = AuthEngine.session_to_payload(new_session)
             if payload:
                 auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
                 st.session_state.auth_debug.append("Workout session refreshed proactively.")
-        
         if err:
             st.session_state.auth_debug.append(f"Refresh attempt failed: {err}")
 
-    # 3. Restore Logic
     if st.session_state.user is None:
         persisted = auth_persistence.load()
 
-        # Zombie Cookie Shield logic
         if st.session_state.get("_logout_pending"):
             if persisted: return
             st.session_state["_logout_pending"] = False
@@ -67,16 +56,18 @@ def init_session_state():
             )
             if user:
                 st.session_state.user = user
-                # Ensure the restored (and potentially refreshed) session is saved
                 payload = AuthEngine.session_to_payload(session)
                 if payload:
                     auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
                 cache_control.bump()
+                st.session_state["_cookie_restore_failed"] = False
                 return
             
             if err:
                 st.session_state.auth_debug.append(f"Cookie restore failed: {err}")
-            auth_persistence.clear()
+                # CRITICAL FIX: We no longer call auth_persistence.clear() here.
+                # If the network fails on wake-up, we keep the cookie so you can retry.
+                st.session_state["_cookie_restore_failed"] = True
 
         # Final Fallback
         try:
@@ -88,13 +79,11 @@ def init_session_state():
             st.session_state.auth_debug.append(f"Session init error: {str(e)}")
 
 def is_authenticated():
-    """Returns True if a user is logged in and not currently recovering an account."""
     if st.session_state.get("show_recovery_form"):
         return False
     return st.session_state.get("user") is not None
 
 def get_current_user():
-    """Safely retrieves the current user object."""
     return st.session_state.get("user")
 
 def is_admin() -> bool:
@@ -107,26 +96,19 @@ def is_admin() -> bool:
     return user.email.strip().lower() in admins
 
 def sign_out():
-    """Signs out the user, clears all cached data, and resets the session."""
     try:
         sb.auth.sign_out()
     except Exception as e:
         st.session_state.auth_debug.append(f"Sign out error: {str(e)}")
 
-    # Queues the cookie for deletion
     auth_persistence.clear()
-    
-    # Clear session state user and put up the zombie shield
     st.session_state.user = None
     st.session_state["_logout_pending"] = True
-
-    # Invalidate per-session caches and clean up UI states
     cache_control.bump()
     st.session_state.show_recovery_form = False
     st.session_state.show_password_reset = False
     
 def handle_link_tokens() -> bool:
-    """Handles Supabase email deep-link tokens. Returns True if a token was processed."""
     params = st.query_params
     if "token_hash" not in params or "type" not in params:
         return False
@@ -134,8 +116,6 @@ def handle_link_tokens() -> bool:
     try:
         token_type = str(params["type"]).strip()
         res = sb.auth.verify_otp({"token_hash": params["token_hash"], "type": token_type})
-
-        # Clear query params so refreshes don't re-process the token.
         st.query_params.clear()
         cache_control.bump() 
 
@@ -164,6 +144,26 @@ def auth_page():
         st.rerun()
 
     AuthUI.render_debug_panel()
+
+    # --- NEW: The Wake-Up Buffer ---
+    # If this is the very first render of a new session (like after waking up),
+    # give the browser 1 second to send the authentication cookies to Python.
+    if st.session_state.get("app_just_woke_up", True):
+        st.session_state["app_just_woke_up"] = False
+        st.title("QuantifI")
+        with st.spinner("Resuming session..."):
+            import time
+            time.sleep(1.0) 
+        st.rerun()
+
+    # --- Catch network blips gracefully ---
+    if st.session_state.get("_cookie_restore_failed"):
+        st.title("QuantifI")
+        st.warning("Connection lost while waking the app. Tap below to reconnect.")
+        if st.button("🔄 Reconnect", use_container_width=True, type="primary"):
+            st.session_state["_cookie_restore_failed"] = False
+            st.rerun()
+        return
 
     if st.session_state.show_recovery_form:
         AuthUI.render_recovery_form()

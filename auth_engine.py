@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 from supabase_config import sb, sb_admin
 
@@ -15,19 +16,44 @@ class AuthEngine:
         """Standardizes input and handles iOS smart punctuation for stability."""
         if not text: 
             return ""
-        # Fixes common mobile input issues (e.g., smart quotes and dashes)
         replacements = {'“': '"', '”': '"', '‘': "'", '’': "'", '—': '--', '–': '-'}
         for s, r in replacements.items():
             text = text.replace(s, r)
         return text.strip()
 
     @staticmethod
+    def _with_retries(func, retries=3, delay=1.0):
+        """
+        Executes a network function with retries to handle mobile wake-up latency.
+        Waits `delay` seconds between attempts if a transient network error occurs.
+        """
+        last_err = None
+        # Ensure we always try at least once
+        actual_retries = max(1, retries) 
+        
+        for attempt in range(actual_retries):
+            try:
+                return func()
+            except Exception as e:
+                last_err = e
+                err_str = str(e).lower()
+                # If Supabase explicitly rejects the token, do not retry.
+                # Only retry on network timeouts, connection drops, etc.
+                if "invalid" in err_str or "expired" in err_str:
+                    raise e
+                time.sleep(delay)
+                
+        # Safely raise the error only if it's an actual exception
+        if last_err is not None:
+            raise last_err
+        else:
+            raise RuntimeError("Network operation failed unexpectedly.")
+
+    @staticmethod
     def sign_in(email, password):
-        """Authenticates with Supabase using PKCE-compatible flows."""
         try:
             email_clean = email.strip().lower()
             pwd_clean = AuthEngine.normalize_input(password)
-            # pkce flow is handled by the client options in supabase_config
             res = sb.auth.sign_in_with_password({"email": email_clean, "password": pwd_clean})
             user = getattr(res, "user", None) if res else None
             session = getattr(res, "session", None) if res else None
@@ -37,23 +63,16 @@ class AuthEngine:
 
     @staticmethod
     def send_magic_link(email: str):
-        """
-        Sends a passwordless sign-in link (magic link / OTP email).
-
-        This works for both sign-in and sign-up when self-signups are enabled in Supabase.
-        """
         try:
             email_clean = (email or "").strip().lower()
             if not email_clean:
                 return False, "Email is required."
 
             url = st.secrets.get("REDIRECT_URL", "http://localhost:8501").strip()
-
             fn = getattr(sb.auth, "sign_in_with_otp", None)
             if not callable(fn):
                 return False, "Supabase client does not support OTP/magic links."
 
-            # Supabase Python client payload formats have varied; try a few compatible shapes.
             attempts = [
                 {"email": email_clean, "options": {"email_redirect_to": url}},
                 {"email": email_clean, "email_redirect_to": url},
@@ -81,7 +100,6 @@ class AuthEngine:
 
     @staticmethod
     def sign_up(email, password):
-        """Creates a new user account with normalized credentials."""
         if AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False)):
             return None, None, "Sign-ups are disabled. Ask an admin for an invite."
         try:
@@ -96,11 +114,9 @@ class AuthEngine:
 
     @staticmethod
     def update_password(new_password):
-        """Updates password and clears the session for a clean re-login."""
         try:
             clean_pwd = AuthEngine.normalize_input(new_password)
             sb.auth.update_user({"password": clean_pwd})
-            # Ensures no lingering recovery tokens remain active
             sb.auth.sign_out() 
             return True, None
         except Exception as e:
@@ -108,9 +124,7 @@ class AuthEngine:
 
     @staticmethod
     def request_reset(email):
-        """Sends a password recovery email using the configured redirect URL."""
         try:
-            # Fetches redirect URL from secrets; vital for PKCE redirect stability
             url = st.secrets.get("REDIRECT_URL", "http://localhost:8501").strip()
             sb.auth.reset_password_for_email(email.strip(), {"redirect_to": url})
             return True, None
@@ -119,11 +133,6 @@ class AuthEngine:
 
     @staticmethod
     def invite_user(email):
-        """
-        Sends a Supabase Auth invite email (admin-only).
-
-        Note: this is different from Streamlit Community Cloud app sharing invites.
-        """
         try:
             email_clean = (email or "").strip().lower()
             if not email_clean:
@@ -136,9 +145,6 @@ class AuthEngine:
 
     @staticmethod
     def session_to_payload(session) -> dict | None:
-        """
-        Normalizes a Supabase session object to a JSON-serializable payload for cookies.
-        """
         if session is None:
             return None
         if isinstance(session, dict):
@@ -158,16 +164,12 @@ class AuthEngine:
 
     @staticmethod
     def restore_session(access_token: str, refresh_token: str):
-        """
-        Restores a Supabase session (best-effort) from tokens.
-        Returns (user, session, err).
-        """
         try:
             if hasattr(sb.auth, "set_session"):
-                res = sb.auth.set_session(access_token, refresh_token)
+                # Use our new retry wrapper to survive mobile wake-ups
+                res = AuthEngine._with_retries(lambda: sb.auth.set_session(access_token, refresh_token))
             elif hasattr(sb.auth, "recover_session"):
-                # Older gotrue client variants
-                res = sb.auth.recover_session(access_token)
+                res = AuthEngine._with_retries(lambda: sb.auth.recover_session(access_token))
             else:
                 return None, None, "Supabase auth client does not support session restore."
 
@@ -177,21 +179,26 @@ class AuthEngine:
                 user = res.get("user") or user
                 session = res.get("session") or session
             return user, session, None
+            
         except Exception as e:
-            # If access token is expired, try a refresh-token-based restore.
             try:
                 refresh = getattr(sb.auth, "refresh_session", None)
                 if callable(refresh):
-                    try:
-                        refreshed = refresh(refresh_token)
-                    except TypeError:
-                        refreshed = refresh()
+                    # Use our new retry wrapper here too
+                    def _do_refresh():
+                        try:
+                            return refresh(refresh_token)
+                        except TypeError:
+                            return refresh()
+                    
+                    refreshed = AuthEngine._with_retries(_do_refresh)
+                    
                     new_session = getattr(refreshed, "session", None) if refreshed else None
                     if new_session is None and isinstance(refreshed, dict):
                         new_session = refreshed.get("session")
                     payload = AuthEngine.session_to_payload(new_session)
                     if payload and hasattr(sb.auth, "set_session"):
-                        res = sb.auth.set_session(payload["access_token"], payload["refresh_token"])
+                        res = AuthEngine._with_retries(lambda: sb.auth.set_session(payload["access_token"], payload["refresh_token"]))
                         user = getattr(res, "user", None) if res else None
                         session = getattr(res, "session", None) if res else None
                         if isinstance(res, dict):
@@ -205,10 +212,6 @@ class AuthEngine:
 
     @staticmethod
     def maybe_refresh_session(seconds_skew: int = 120):
-        """
-        Refreshes the Supabase session if it is close to expiry (best-effort).
-        Returns (session, err) where session may be None when no refresh happened.
-        """
         try:
             get_session = getattr(sb.auth, "get_session", None)
             if not callable(get_session):
@@ -233,7 +236,8 @@ class AuthEngine:
 
             refresh = getattr(sb.auth, "refresh_session", None)
             if callable(refresh):
-                res = refresh()
+                # Apply retry wrapper to the proactive refresh
+                res = AuthEngine._with_retries(lambda: refresh())
                 new_session = getattr(res, "session", None) if res else None
                 if new_session is None and isinstance(res, dict):
                     new_session = res.get("session")
@@ -244,9 +248,6 @@ class AuthEngine:
 
     @staticmethod
     def get_session_payload():
-        """
-        Best-effort accessor for current session tokens (for SID store refresh/migration).
-        """
         try:
             get_session = getattr(sb.auth, "get_session", None)
             if not callable(get_session):
