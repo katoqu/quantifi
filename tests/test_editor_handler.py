@@ -759,7 +759,7 @@ class TestExecuteSave:
     @patch("logic.editor_handler.models")
     @patch("logic.editor_handler.st")
     def test_execute_save_clears_editor_widget_state(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
-        """Should clear data_editor widget state after save."""
+        """Should remove data_editor widget state after save."""
         df = pd.DataFrame({
             "id": ["e-1"],
             "Change Log": ["🟡"],
@@ -782,11 +782,7 @@ class TestExecuteSave:
 
         editor_handler.execute_save("m-1", "draft_state", "editor_widget")
 
-        assert mock_st.session_state["editor_widget"] == {
-            "edited_rows": {},
-            "added_rows": [],
-            "deleted_rows": [],
-        }
+        assert "editor_widget" not in mock_st.session_state
 
 
 # Integration Tests

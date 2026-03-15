@@ -169,11 +169,8 @@ def execute_save(mid, state_key, editor_key):
 
     # 4. Clean up and update state with fresh data instead of empty DFs
     if editor_key in st.session_state:
-        st.session_state[editor_key] = {
-            "edited_rows": {},
-            "added_rows": [],
-            "deleted_rows": [],
-        }
+        # Streamlit forbids setting widget state directly; remove it to reset.
+        st.session_state.pop(editor_key, None)
     reset_editor_state(state_key, mid)
     if fresh_dfe is not None:
         st.session_state[f"saved_data_{mid}"] = fresh_dfe.copy()
