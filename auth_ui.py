@@ -43,7 +43,7 @@ class AuthUI:
         to = ",".join(admins)
         subject = quote("QuantifI access request")
         body = quote(
-            "Hi,\n\nCould I get an invite to QuantifI?\n\nMy email:\n\nThanks!"
+            "Hi,\n\nCould I get an invite to QuantifI?\n\nThanks!"
         )
         mailto = f"mailto:{to}?subject={subject}&body={body}"
         st.link_button("Request access", mailto, use_container_width=True)
