@@ -7,8 +7,8 @@ pytest.importorskip("streamlit")
 from ui.chart_data import score_resample_agg, score_yaxis_range  # noqa: E402
 
 
-def test_score_resample_agg_uses_mean_when_missing_is_zero():
-    assert score_resample_agg(missing_policy="missing_is_zero") == "mean"
+def test_score_resample_agg_uses_median_for_scores():
+    assert score_resample_agg(missing_policy="missing_is_zero") == "median"
     assert score_resample_agg(missing_policy="ignore_missing") == "median"
 
 

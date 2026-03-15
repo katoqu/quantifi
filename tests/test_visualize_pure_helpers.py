@@ -35,7 +35,7 @@ def test_resolve_period_week_is_trailing_to_anchor_end():
     assert spec.freq == "D"
 
 
-def test_resample_to_plot_df_count_sum_min_count_drops_all_nan():
+def test_resample_to_plot_df_count_mean_drops_all_nan():
     daily_df = pd.DataFrame(
         {
             "recorded_at": ["2026-03-01T12:00:00Z", "2026-03-02T12:00:00Z"],
@@ -43,11 +43,11 @@ def test_resample_to_plot_df_count_sum_min_count_drops_all_nan():
         }
     )
     plot_df, agg = resample_to_plot_df(daily_df, freq="W", kind="count", missing_policy="ignore_missing")
-    assert agg == "sum"
+    assert agg == "mean"
     assert plot_df.empty
 
 
-def test_resample_to_plot_df_score_missing_is_zero_uses_mean():
+def test_resample_to_plot_df_score_missing_is_zero_uses_median():
     # Simulate "missing is zero" by including explicit zeros in the daily series.
     daily_df = pd.DataFrame(
         {
@@ -57,6 +57,6 @@ def test_resample_to_plot_df_score_missing_is_zero_uses_mean():
         }
     )
     plot_df, agg = resample_to_plot_df(daily_df, freq="W", kind="score", missing_policy="missing_is_zero")
-    assert agg == "mean"
+    assert agg == "median"
     assert plot_df.shape[0] == 1
-    assert plot_df["value"].iloc[0] == pytest.approx(4 / 3)
+    assert plot_df["value"].iloc[0] == pytest.approx(0.0)

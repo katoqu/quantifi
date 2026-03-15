@@ -101,7 +101,7 @@ def resample_to_plot_df(
     if kind == "score":
         agg_kind = score_resample_agg(missing_policy=missing_policy)
     elif kind == "count":
-        agg_kind = "sum"
+        agg_kind = "mean"
     else:
         agg_kind = "mean"
 
@@ -172,7 +172,7 @@ def apply_missing_policy_daily(
 
 def score_resample_agg(*, missing_policy: str) -> str:
     """Get aggregation method for score kind."""
-    return "mean" if missing_policy == "missing_is_zero" else "median"
+    return "median"
 
 
 def score_yaxis_range(*, range_start: int, range_end: int, missing_policy: str) -> tuple[float, float]:
