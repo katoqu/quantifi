@@ -575,10 +575,11 @@ class TestResetEditorState:
 class TestExecuteSave:
     """Tests for committing pending edits to database."""
 
+    @patch("logic.editor_handler.cache_control")
     @patch("logic.editor_handler.utils")
     @patch("logic.editor_handler.models")
     @patch("logic.editor_handler.st")
-    def test_execute_save_processes_deletions(self, mock_st, mock_models, mock_utils: Mock):
+    def test_execute_save_processes_deletions(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
         """Should delete entries marked with 🔴."""
         df = pd.DataFrame({
             "id": ["e-1", "e-2", "e-3"],
@@ -602,10 +603,11 @@ class TestExecuteSave:
         call_args = [call[0][0] for call in mock_models.delete_entry.call_args_list]
         assert "e-1" in call_args
 
+    @patch("logic.editor_handler.cache_control")
     @patch("logic.editor_handler.utils")
     @patch("logic.editor_handler.models")
     @patch("logic.editor_handler.st")
-    def test_execute_save_processes_updates(self, mock_st, mock_models, mock_utils: Mock):
+    def test_execute_save_processes_updates(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
         """Should update entries marked with 🟡."""
         df = pd.DataFrame({
             "id": ["e-1", "e-2"],
@@ -629,10 +631,11 @@ class TestExecuteSave:
         call_args = mock_models.update_entry.call_args_list
         assert any("e-2" in str(call) for call in call_args)
 
+    @patch("logic.editor_handler.cache_control")
     @patch("logic.editor_handler.utils")
     @patch("logic.editor_handler.models")
     @patch("logic.editor_handler.st")
-    def test_execute_save_handles_null_values(self, mock_st, mock_models, mock_utils: Mock):
+    def test_execute_save_handles_null_values(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
         """Should convert empty/NaN values to None in database."""
         df = pd.DataFrame({
             "id": ["e-1"],
@@ -656,10 +659,11 @@ class TestExecuteSave:
         update_call = mock_models.update_entry.call_args
         assert update_call[0][1]["value"] is None
 
+    @patch("logic.editor_handler.cache_control")
     @patch("logic.editor_handler.utils")
     @patch("logic.editor_handler.models")
     @patch("logic.editor_handler.st")
-    def test_execute_save_processes_new_rows(self, mock_st, mock_models, mock_utils: Mock):
+    def test_execute_save_processes_new_rows(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
         """Should create entries from added_rows."""
         df = pd.DataFrame({
             "id": [],
@@ -686,10 +690,11 @@ class TestExecuteSave:
         # Should call create_entry twice
         assert mock_models.create_entry.call_count == 2
 
+    @patch("logic.editor_handler.cache_control")
     @patch("logic.editor_handler.utils")
     @patch("logic.editor_handler.models")
     @patch("logic.editor_handler.st")
-    def test_execute_save_refreshes_data(self, mock_st, mock_models, mock_utils: Mock):
+    def test_execute_save_refreshes_data(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
         """Should fetch fresh data after changes and refresh state."""
         df = pd.DataFrame({
             "id": ["e-1"],
@@ -716,16 +721,18 @@ class TestExecuteSave:
 
         editor_handler.execute_save("m-1", "draft_state", "editor_widget")
 
-        # Should call collect_data to refresh data
+        # Should bump cache and call collect_data to refresh data
+        mock_cache.bump.assert_called()
         mock_utils.collect_data.assert_called_with({"id": "m-1"})
 
         # Should call finalize_action to show success message
         mock_utils.finalize_action.assert_called()
 
+    @patch("logic.editor_handler.cache_control")
     @patch("logic.editor_handler.utils")
     @patch("logic.editor_handler.models")
     @patch("logic.editor_handler.st")
-    def test_execute_save_reruns_ui(self, mock_st, mock_models, mock_utils: Mock):
+    def test_execute_save_reruns_ui(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
         """Should trigger UI rerun after save completes."""
         df = pd.DataFrame({
             "id": [],
@@ -746,6 +753,40 @@ class TestExecuteSave:
 
         # Should call st.rerun()
         mock_st.rerun.assert_called()
+
+    @patch("logic.editor_handler.cache_control")
+    @patch("logic.editor_handler.utils")
+    @patch("logic.editor_handler.models")
+    @patch("logic.editor_handler.st")
+    def test_execute_save_clears_editor_widget_state(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
+        """Should clear data_editor widget state after save."""
+        df = pd.DataFrame({
+            "id": ["e-1"],
+            "Change Log": ["🟡"],
+            "value": [80.0],
+            "recorded_at": ["2026-03-01"],
+            "Select": [False],
+        })
+        mock_st.session_state = {
+            "draft_state": df,
+            "editor_widget": {
+                "edited_rows": {0: {"value": 81.0}},
+                "added_rows": [{"value": 70.0}],
+                "deleted_rows": [1],
+            },
+            "start_date_m-1": dt.date(2026, 3, 1),
+            "end_date_m-1": dt.date(2026, 3, 7),
+            "pill_m-1": "Week",
+        }
+        mock_utils.collect_data.return_value = (df, "unit", "name")
+
+        editor_handler.execute_save("m-1", "draft_state", "editor_widget")
+
+        assert mock_st.session_state["editor_widget"] == {
+            "edited_rows": {},
+            "added_rows": [],
+            "deleted_rows": [],
+        }
 
 
 # Integration Tests

@@ -14,6 +14,21 @@ def _persist_session_tokens(session):
     if payload and payload.get("access_token") and payload.get("refresh_token"):
         auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
 
+def _refresh_skew_seconds() -> int:
+    raw = st.secrets.get("AUTH_REFRESH_SKEW_SECONDS", 1800)
+    try:
+        val = int(raw)
+    except Exception:
+        return 1800
+    if val < 60:
+        return 60
+    return val
+
+def _persist_current_session_tokens():
+    payload = AuthEngine.get_session_payload()
+    if payload and payload.get("access_token") and payload.get("refresh_token"):
+        auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
+
 def init_session_state():
     """Initializes session state with a persistence bridge for mobile wake-ups."""
     
@@ -37,8 +52,12 @@ def init_session_state():
 
     # 2. Proactive Refresh (For users who are already logged in and active)
     if st.session_state.user is not None:
-        # Check if the token is within 15 mins (900s) of expiring
-        new_session, err = AuthEngine.maybe_refresh_session(seconds_skew=900)
+        # Keep cookie tokens in sync in case refresh token rotation happened.
+        _persist_current_session_tokens()
+        # Proactively refresh before expiry.
+        new_session, err = AuthEngine.maybe_refresh_session(
+            seconds_skew=_refresh_skew_seconds()
+        )
         if new_session:
             payload = AuthEngine.session_to_payload(new_session)
             if payload:

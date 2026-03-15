@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import models
 import utils
+import cache_control
 import datetime as dt
 
 def get_pill_range(selection, abs_min, abs_max):
@@ -159,12 +160,20 @@ def execute_save(mid, state_key, editor_key):
             })
     
     # --- FIX: RE-FETCH FRESH DATA ---
+    # Bust the per-session cache before reloading data so the UI reflects deletions.
+    cache_control.bump()
     # We clear the cache and fetch the updated dataset from the DB
     # Assuming your metric object is available or you just need the ID to re-fetch
     # If collect_data requires the full 'selected_metric' dict, you may need to pass it in
     fresh_dfe, _, _ = utils.collect_data({"id": mid}) 
 
     # 4. Clean up and update state with fresh data instead of empty DFs
+    if editor_key in st.session_state:
+        st.session_state[editor_key] = {
+            "edited_rows": {},
+            "added_rows": [],
+            "deleted_rows": [],
+        }
     reset_editor_state(state_key, mid)
     if fresh_dfe is not None:
         st.session_state[f"saved_data_{mid}"] = fresh_dfe.copy()
