@@ -15,6 +15,7 @@ from unittest.mock import Mock, MagicMock, patch
 import sys
 import importlib
 import models
+import os
 
 
 @pytest.fixture(autouse=True)
@@ -211,6 +212,24 @@ class TestGetMetrics:
             result = models.get_metrics()
 
             assert result == []
+
+
+class TestGetCategories:
+    """Tests for get_categories wrapper."""
+
+    @patch("models.cache_control")
+    @patch("models.st")
+    def test_get_categories_returns_cached(self, mock_st, mock_cache):
+        mock_cache.get_buster.return_value = 0
+        mock_st.session_state = {"user": Mock(id="u-1")}
+
+        with patch.object(models, "_get_categories_cached") as mock_cached:
+            mock_cached.return_value = [{"id": "cat-1", "name": "health"}]
+
+            result = models.get_categories()
+
+            assert result == [{"id": "cat-1", "name": "health"}]
+            mock_cached.assert_called_once()
 
 
 class TestGetEntries:
@@ -728,3 +747,72 @@ class TestBulkOperations:
             result = models.get_all_entries_bulk()
 
             assert result is None
+
+
+class TestExportHelpers:
+    """Tests for export helpers that touch Supabase and local disk."""
+
+    @patch("models.st")
+    def test_get_flat_export_data_returns_empty_on_missing_entries(self, mock_st):
+        mock_st.session_state = {"user": Mock(id="u-1")}
+
+        with patch.object(models, "_safe_execute") as mock_safe:
+            mock_safe.return_value = None
+
+            result = models.get_flat_export_data()
+
+            assert result == []
+
+    @patch("models.st")
+    def test_get_flat_export_data_builds_rows(self, mock_st):
+        mock_st.session_state = {"user": Mock(id="u-1")}
+
+        entries_res = Mock(data=[{"recorded_at": "2026-03-07T08:00:00Z", "value": 1, "metrics": {}}])
+        changes_res = Mock(data=[{"recorded_at": "2026-03-07T09:00:00Z", "title": "x", "notes": ""}])
+
+        with patch.object(models, "_safe_execute") as mock_safe:
+            mock_safe.side_effect = [entries_res, changes_res]
+            with patch.object(models, "build_export_rows") as mock_build:
+                mock_build.return_value = [{"RowType": "entry"}]
+
+                result = models.get_flat_export_data()
+
+                assert result == [{"RowType": "entry"}]
+                mock_build.assert_called_once()
+
+    @patch("models.st")
+    def test_wipe_user_data_calls_safe_execute(self, mock_st):
+        mock_st.session_state = {"user": Mock(id="u-1")}
+
+        with patch.object(models, "_safe_execute") as mock_safe:
+            models.wipe_user_data()
+
+            assert mock_safe.call_count == 4
+
+    @patch("models.st")
+    def test_archive_metric_calls_safe_execute(self, mock_st):
+        mock_st.session_state = {"user": Mock(id="u-1")}
+
+        with patch.object(models, "_safe_execute") as mock_safe:
+            models.archive_metric("m-1")
+
+            mock_safe.assert_called_once()
+
+    @patch("models.st")
+    def test_save_and_load_backup_timestamp(self, mock_st, tmp_path, monkeypatch):
+        mock_st.session_state = {"user": Mock(id="u-1")}
+        monkeypatch.chdir(tmp_path)
+
+        models.save_backup_timestamp()
+        assert os.path.exists("config.json") is True
+
+        last = models.get_last_backup_timestamp()
+        assert isinstance(last, str)
+        assert last != "Never"
+
+    @patch("models.st")
+    def test_get_last_backup_timestamp_missing_file(self, mock_st, tmp_path, monkeypatch):
+        mock_st.session_state = {"user": Mock(id="u-1")}
+        monkeypatch.chdir(tmp_path)
+
+        assert models.get_last_backup_timestamp() == "Never"

@@ -46,10 +46,9 @@ def _install_streamlit_stub(monkeypatch, *, secrets: dict | None = None):
     return st
 
 
-def test_invite_link_logs_in_without_password_prompt(monkeypatch):
+def test_invite_link_shows_password_setup(monkeypatch):
     """
-    Regression: Supabase invite links should not force the "set password" flow when
-    the app supports passwordless login via magic links.
+    Invite links should route to the password setup flow for account-based access.
     """
     st = _install_streamlit_stub(monkeypatch, secrets={})
 
@@ -74,9 +73,8 @@ def test_invite_link_logs_in_without_password_prompt(monkeypatch):
 
     assert auth.handle_link_tokens() is True
     assert st.query_params == {}
-    assert st.session_state.get("show_recovery_form") is False
-    assert st.session_state.get("user") is not None
-    assert getattr(st.session_state["user"], "email", None) == "a@example.com"
+    assert st.session_state.get("show_recovery_form") is True
+    assert st.session_state.get("recovery_type") == "invite"
 
 
 def test_recovery_link_shows_password_reset_form(monkeypatch):
@@ -102,3 +100,31 @@ def test_recovery_link_shows_password_reset_form(monkeypatch):
     assert st.session_state.get("show_recovery_form") is True
     assert st.session_state.get("recovery_type") == "recovery"
 
+
+def test_invite_code_link_routes_to_password_setup(monkeypatch):
+    st = _install_streamlit_stub(monkeypatch, secrets={})
+
+    sb = types.SimpleNamespace(auth=types.SimpleNamespace())
+    sb_admin = types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace()))
+    supabase_config = types.SimpleNamespace(sb=sb, sb_admin=sb_admin)
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+
+    auth = _import_fresh("auth")
+
+    def _fake_exchange_code(_code):
+        return (
+            types.SimpleNamespace(id="u1", email="a@example.com"),
+            {"access_token": "a", "refresh_token": "r"},
+            None,
+        )
+
+    auth.AuthEngine.exchange_code_for_session = staticmethod(_fake_exchange_code)
+
+    auth.init_session_state()
+    st.query_params["code"] = "abc"
+    st.query_params["type"] = "invite"
+
+    assert auth.handle_link_tokens() is True
+    assert st.query_params == {}
+    assert st.session_state.get("show_recovery_form") is True
+    assert st.session_state.get("recovery_type") == "invite"

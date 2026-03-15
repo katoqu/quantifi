@@ -144,6 +144,51 @@ class AuthEngine:
             return False, str(e)
 
     @staticmethod
+    def exchange_code_for_session(code: str):
+        """
+        Exchanges a PKCE auth code for a session (used by invite/magic link flows).
+        Tries multiple payload shapes to stay compatible across supabase-py versions.
+        """
+        try:
+            code_clean = (code or "").strip()
+            if not code_clean:
+                return None, None, "Missing auth code."
+
+            fn = getattr(sb.auth, "exchange_code_for_session", None)
+            if not callable(fn):
+                return None, None, "Supabase client does not support code exchange."
+
+            attempts = [
+                {"auth_code": code_clean},
+                {"code": code_clean},
+                code_clean,
+            ]
+            last_err: Exception | None = None
+            res = None
+            for payload in attempts:
+                try:
+                    res = fn(payload)
+                    last_err = None
+                    break
+                except TypeError as e:
+                    last_err = e
+                    continue
+                except Exception as e:
+                    last_err = e
+                    continue
+            if last_err is not None:
+                raise last_err
+
+            user = getattr(res, "user", None) if res else None
+            session = getattr(res, "session", None) if res else None
+            if isinstance(res, dict):
+                user = res.get("user") or user
+                session = res.get("session") or session
+            return user, session, None
+        except Exception as e:
+            return None, None, str(e)
+
+    @staticmethod
     def session_to_payload(session) -> dict | None:
         if session is None:
             return None

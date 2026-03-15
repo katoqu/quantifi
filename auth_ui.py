@@ -120,10 +120,10 @@ class AuthUI:
         
         if AuthUI._invite_only_enabled():
             AuthUI._render_request_access()
-
-        if st.button("Forgot password?", type="secondary"):
-            st.session_state.show_password_reset = True
-            st.rerun()
+        else:
+            if st.button("Forgot password?", type="secondary"):
+                st.session_state.show_password_reset = True
+                st.rerun()
 
     @staticmethod
     def render_signup_tab():
@@ -146,16 +146,24 @@ class AuthUI:
 
     @staticmethod
     def render_recovery_form():
-        st.title("Set New Password")
+        recovery_type = str(st.session_state.get("recovery_type") or "").strip().lower()
+        if recovery_type == "invite":
+            st.title("Create Your Account")
+        else:
+            st.title("Set New Password")
         with st.container(border=True):
             new_p = st.text_input("New Password", type="password")
             conf_p = st.text_input("Confirm Password", type="password")
-            if st.button("Update password", type="primary", use_container_width=True):
+            button_label = "Create account" if recovery_type == "invite" else "Update password"
+            if st.button(button_label, type="primary", use_container_width=True):
                 if new_p == conf_p and new_p:
                     success, err = AuthEngine.update_password(new_p)
                     if success:
                         cache_control.bump()
-                        st.success("Updated! Redirecting to login...")
+                        if recovery_type == "invite":
+                            st.success("Account created! Redirecting to login...")
+                        else:
+                            st.success("Updated! Redirecting to login...")
                         st.query_params.clear()
                         st.session_state.show_recovery_form = False
                         st.session_state.recovery_type = None

@@ -9,6 +9,11 @@ import time
 def is_invite_only() -> bool:
     return AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False))
 
+def _persist_session_tokens(session):
+    payload = AuthEngine.session_to_payload(session)
+    if payload and payload.get("access_token") and payload.get("refresh_token"):
+        auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
+
 def init_session_state():
     """Initializes session state with a persistence bridge for mobile wake-ups."""
     
@@ -107,16 +112,44 @@ def sign_out():
     
 def handle_link_tokens() -> bool:
     params = st.query_params
+    token_type = str(params.get("type", "")).strip().lower()
+
+    if "code" in params:
+        try:
+            code = str(params["code"]).strip()
+            user, session, err = AuthEngine.exchange_code_for_session(code)
+            st.query_params.clear()
+            cache_control.bump()
+            if err:
+                st.error(f"Link invalid or expired: {err}")
+                return True
+
+            if user:
+                st.session_state.user = user
+            if session:
+                _persist_session_tokens(session)
+
+            if token_type in {"recovery", "invite"}:
+                st.session_state.recovery_type = token_type
+                st.session_state.show_recovery_form = True
+            else:
+                st.session_state.recovery_type = None
+                st.session_state.show_recovery_form = False
+
+            return True
+        except Exception as e:
+            st.error(f"Link invalid or expired: {e}")
+            return True
+
     if "token_hash" not in params or "type" not in params:
         return False
 
     try:
-        token_type = str(params["type"]).strip()
         res = sb.auth.verify_otp({"token_hash": params["token_hash"], "type": token_type})
         st.query_params.clear()
         cache_control.bump() 
 
-        if token_type == "recovery":
+        if token_type in {"recovery", "invite"}:
             st.session_state.recovery_type = token_type
             st.session_state.show_recovery_form = True
             return True
@@ -125,10 +158,14 @@ def handle_link_tokens() -> bool:
         st.session_state.show_recovery_form = False
 
         user = getattr(res, "user", None) if res else None
+        session = getattr(res, "session", None) if res else None
         if isinstance(res, dict):
             user = res.get("user") or user
+            session = res.get("session") or session
         if user:
             st.session_state.user = user
+        if session:
+            _persist_session_tokens(session)
 
         return True
     except Exception as e:
