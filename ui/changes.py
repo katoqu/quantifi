@@ -17,6 +17,13 @@ def _parse_iso_datetime(value):
         return None
 
 
+def _render_markdown_notes(notes: str | None):
+    if not notes:
+        st.caption("No notes.")
+        return
+    st.markdown(notes)
+
+
 def show_changes():
     st.subheader("Lifestyle Changes")
 
@@ -53,7 +60,10 @@ def show_changes():
                 format_func=lambda x: cat_labels.get(x, "Unknown"),
             )
             title = st.text_input("Title", placeholder="e.g., Started vegetarian nutrition")
-            notes = st.text_area("Notes", placeholder="Optional context, routine details, exceptions…")
+            notes = st.text_area(
+                "Notes (Markdown supported)",
+                placeholder="Optional context, routine details, exceptions…",
+            )
 
             date_input = dt.date.today()
             time_input = dt.datetime.now().time().replace(second=0, microsecond=0)
@@ -146,7 +156,7 @@ def show_changes():
                             key=f"edit_change_title_{ev_id}",
                         )
                         edit_notes = st.text_area(
-                            "Notes",
+                            "Notes (Markdown supported)",
                             value=ev.get("notes") or "",
                             key=f"edit_change_notes_{ev_id}",
                         )
@@ -200,7 +210,4 @@ def show_changes():
                             utils.finalize_action("Updated", icon="✏️")
                             st.rerun()
                 else:
-                    if ev.get("notes"):
-                        st.write(ev["notes"])
-                    else:
-                        st.caption("No notes.")
+                    _render_markdown_notes(ev.get("notes"))

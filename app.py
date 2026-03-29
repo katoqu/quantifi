@@ -1,7 +1,50 @@
 import streamlit as st
+try:  # pragma: no cover - defensive for tests without full Streamlit
+    import streamlit.components.v1 as components
+except Exception:  # pragma: no cover
+    components = None
 import auth
 from ui import pages
 import utils
+
+
+def _bridge_hash_params():
+    if components is None:
+        return
+    components.html(
+        """
+<script>
+(function() {
+  const hash = window.location.hash || "";
+  if (!hash || hash.length < 2) return;
+  const hashParams = new URLSearchParams(hash.slice(1));
+  if (!hashParams.get("access_token")) return;
+  const qs = new URLSearchParams(window.location.search);
+  if (qs.get("access_token")) return; // already bridged
+  hashParams.forEach((v, k) => qs.set(k, v));
+  const newUrl = window.location.pathname + "?" + qs.toString();
+  window.location.replace(newUrl);
+})();
+</script>
+        """,
+        height=0,
+    )
+
+
+def _force_auth_flow_from_params() -> bool:
+    params = st.query_params
+    token_type = str(params.get("type", "")).strip().lower()
+    if token_type in {"invite", "recovery"}:
+        return True
+    if token_type == "" and auth.is_invite_only():
+        if "token_hash" in params or "code" in params:
+            return True
+        if "access_token" in params and "refresh_token" in params:
+            return True
+    return False
+
+# 0. Ensure hash-based tokens are available as query params early
+_bridge_hash_params()
 
 # 1. Initialize State
 auth.init_session_state()
@@ -12,6 +55,9 @@ utils.apply_mobile_table_css()
 utils.apply_landing_grid_css()
 
 # 2. Authentication Check
+if _force_auth_flow_from_params():
+    auth.auth_page()
+    st.stop()
 if not auth.is_authenticated():
     auth.auth_page()
     st.stop()

@@ -246,6 +246,16 @@ def auth_page():
   if (!hashParams.get("access_token")) return;
   const qs = new URLSearchParams(window.location.search);
   if (qs.get("access_token")) return; // already bridged
+  // If Supabase didn't include type in the redirect, try to recover it from the referrer.
+  if (!hashParams.get("type") && !qs.get("type") && document.referrer) {
+    try {
+      const ref = new URL(document.referrer);
+      const refType = ref.searchParams.get("type");
+      if (refType) {
+        qs.set("type", refType);
+      }
+    } catch (e) {}
+  }
   hashParams.forEach((v, k) => qs.set(k, v));
   const newUrl = window.location.pathname + "?" + qs.toString();
   window.location.replace(newUrl);
