@@ -143,6 +143,7 @@ class AuthEngine:
         except Exception as e:
             return False, str(e)
 
+
     @staticmethod
     def exchange_code_for_session(code: str):
         """

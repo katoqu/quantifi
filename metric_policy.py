@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal, Mapping
 
 MissingPolicy = Literal["ignore_missing", "missing_is_zero"]
-DailyAgg = Literal["sum", "mean", "last", "max", "min"]
+DailyAgg = Literal["sum", "mean", "median", "last", "max", "min"]
 
 
 @dataclass(frozen=True)

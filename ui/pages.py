@@ -1,8 +1,43 @@
 import streamlit as st
+import pandas as pd
 import models
 import utils
 from ui import manage_lookups, capture, metrics, data_editor, importer, landing_page, changes
 from ui import admin_page as admin_page_ui
+
+
+def _recent_metric_ids(all_entries, limit=5):
+    """Return metric IDs with the most recent numeric entries."""
+    if not all_entries:
+        return []
+    df = pd.DataFrame(all_entries)
+    if df.empty or "recorded_at" not in df.columns:
+        return []
+    df["recorded_at"] = pd.to_datetime(df["recorded_at"], format="mixed", utc=True)
+    value_series = df["value"] if "value" in df.columns else pd.Series(index=df.index, dtype="object")
+    df["_value_num"] = pd.to_numeric(value_series, errors="coerce")
+    measured_df = df[pd.notna(df["_value_num"])].copy()
+    if measured_df.empty:
+        return []
+    latest_by_metric = measured_df.groupby("metric_id")["recorded_at"].max()
+    recent_ids = list(latest_by_metric.sort_values(ascending=False).head(int(limit)).index)
+    return recent_ids
+
+
+def _filter_metrics_for_subview(all_metrics, cat_map, current_filter, *, recent_ids=None):
+    if not current_filter:
+        return list(all_metrics)
+    if current_filter == "Recent":
+        if not recent_ids:
+            return []
+        id_map = {str(m.get("id")): m for m in all_metrics}
+        ordered = []
+        for mid in recent_ids:
+            m = id_map.get(str(mid))
+            if m:
+                ordered.append(m)
+        return ordered
+    return [m for m in all_metrics if cat_map.get(m.get("category_id")) == current_filter]
 
 def tracker_page():
     """Main dashboard controller optimized for mobile."""
@@ -50,6 +85,33 @@ def tracker_page():
         ) % 5
     st.session_state["last_tracker_view_selection"] = view_mode
 
+    # --- 4b. SUBVIEW FILTER PILLS (Add/Stats/Edit) ---
+    filtered_metrics = all_metrics
+    if view_mode in ("Add", "Stats", "Edit"):
+        cats = models.get_categories() or []
+        cat_map = {c["id"]: c["name"].title() for c in cats}
+        cat_options = ["Recent"] + sorted([c["name"].title() for c in cats])
+
+        filter_key = "tracker_subview_cat_filter"
+        if st.session_state.get(filter_key) is not None and st.session_state.get(filter_key) not in cat_options:
+            st.session_state[filter_key] = None
+
+        st.pills(
+            "Filter",
+            options=cat_options,
+            key=filter_key,
+            label_visibility="collapsed",
+            selection_mode="single",
+        )
+
+        current_filter = st.session_state.get(filter_key)
+        recent_ids = None
+        if current_filter == "Recent":
+            recent_ids = _recent_metric_ids(models.get_all_entries_bulk(), limit=5)
+        filtered_metrics = _filter_metrics_for_subview(
+            all_metrics, cat_map, current_filter, recent_ids=recent_ids
+        )
+
         # Back Button Pill (simplified label)
     if view_mode != "Home":
         utils.render_back_button(target_page_title="Tracker", target_tab="Home")
@@ -60,11 +122,11 @@ def tracker_page():
 
     selected_metric = None
     if view_mode not in ("Home", "Log"):
-        active_id = st.session_state.get("last_active_mid")
-        selected_metric = metrics.select_metric(all_metrics, target_id=active_id)
-        
-        if selected_metric:
-            st.session_state["last_active_mid"] = selected_metric['id']
+        if not filtered_metrics:
+            st.info("No metrics match this filter.")
+        else:
+            active_id = st.session_state.get("last_active_mid")
+            selected_metric = metrics.select_metric_dropdown(filtered_metrics, target_id=active_id)
 
     # --- 6. CONTENT ROUTING ---
     if view_mode == "Home":

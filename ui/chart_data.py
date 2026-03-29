@@ -133,6 +133,8 @@ def collapse_to_daily(df: pd.DataFrame, daily_agg: str) -> pd.DataFrame:
 
     if daily_agg == "mean":
         agg_func = "mean"
+    elif daily_agg == "median":
+        agg_func = "median"
     elif daily_agg == "last":
         agg_func = lambda s: s.dropna().iloc[-1] if s.dropna().shape[0] else float("nan")
     elif daily_agg == "max":

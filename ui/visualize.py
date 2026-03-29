@@ -44,14 +44,34 @@ def _format_value_for_metric(val: float | None, *, kind: str) -> str:
         return str(val)
 
 
-def _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str):
-    """Helper: add horizontal reference line without label."""
+def _format_baseline_label(val: float, *, kind: str, agg_kind: str) -> str:
+    return f"{val:.1f}"
+
+
+def _add_baseline_reference(fig, baseline_val, baseline_label, *, kind: str, agg_kind: str, unit_suffix: str = ""):
+    """Helper: add horizontal reference line with a right-side label."""
     if baseline_val is None:
         return
+    label_val = _format_baseline_label(baseline_val, kind=kind, agg_kind=agg_kind)
+    label = f"{baseline_label} {label_val}{unit_suffix}"
     fig.add_hline(
         y=baseline_val,
         line_dash="dash",
         line_color="rgba(100, 100, 100, 0.2)",
+    )
+    fig.add_annotation(
+        x=1.0,
+        y=baseline_val,
+        xref="paper",
+        yref="y",
+        text=label,
+        showarrow=False,
+        xanchor="right",
+        font=dict(size=11, color="rgba(235, 235, 235, 0.9)"),
+        bgcolor="rgba(20, 20, 20, 0.6)",
+        bordercolor="rgba(255, 255, 255, 0.25)",
+        borderwidth=1,
+        borderpad=3,
     )
 
 
@@ -222,336 +242,527 @@ def show_visualizations(
     # 4. FILTERING & DATA GUARD
     mask = (dfe["recorded_at"] >= start_ts) & (dfe["recorded_at"] <= end_ts)
     filtered_df = dfe.loc[mask].copy().sort_values("recorded_at")
+
+    tabs = st.tabs(["Chart", "Raw data plot"])
+    chart_tab, raw_tab = tabs[0], tabs[1]
+
+    with raw_tab:
+        raw_df = filtered_df.sort_values("recorded_at").copy()
+        if raw_df.empty and policy.missing_policy != "missing_is_zero":
+            st.info("No raw data for this period.")
+        else:
+            kind_for_raw = metric_kind
+            if kind_for_raw not in ("quantitative", "count", "score"):
+                if unit_type == "integer_range":
+                    kind_for_raw = "score"
+                elif unit_type == "integer":
+                    kind_for_raw = "count"
+                else:
+                    kind_for_raw = "quantitative"
+
+            raw_df["value"] = pd.to_numeric(raw_df["value"], errors="coerce")
+            if policy.missing_policy == "missing_is_zero":
+                if kind_for_raw == "count":
+                    daily_agg = "sum"
+                elif kind_for_raw == "score":
+                    daily_agg = "median"
+                else:
+                    daily_agg = policy.daily_agg
+                daily_df = collapse_to_daily(raw_df, daily_agg)
+                raw_df = apply_missing_policy_daily(
+                    daily_df, start_ts=start_ts, end_ts=end_ts, missing_policy=policy.missing_policy
+                )
+            else:
+                raw_df = raw_df.dropna(subset=["value"])
+
+            if raw_df.empty:
+                st.info("No measured values in this period.")
+            else:
+                fig_raw = go.Figure()
+
+                if kind_for_raw == "score":
+                    fig_raw.add_trace(
+                        go.Scatter(
+                            x=raw_df["recorded_at"],
+                            y=raw_df["value"],
+                            mode="markers",
+                            marker=dict(size=6, color="rgba(20, 20, 20, 0.65)", line=dict(color="white", width=1)),
+                            name="Raw",
+                            hovertemplate=f"<b>Raw: %{{y:.1f}} {m_unit}</b><br>%{{x|%d %b %Y}}<extra></extra>",
+                        )
+                    )
+                    avg_raw = float(raw_df["value"].median())
+                    fig_raw.add_hline(
+                        y=avg_raw,
+                        line_dash="dash",
+                        line_color="rgba(100, 100, 100, 0.25)",
+                    )
+                    avg_label = f"Median {avg_raw:.1f}"
+                    fig_raw.add_annotation(
+                        x=1.0,
+                        y=avg_raw,
+                        xref="paper",
+                        yref="y",
+                        text=avg_label,
+                        showarrow=False,
+                        xanchor="right",
+                        font=dict(size=11, color="rgba(120, 120, 120, 0.7)"),
+                    )
+                    rs = range_start
+                    re = range_end
+                    if rs is None:
+                        try:
+                            rs = int(math.floor(float(raw_df["value"].min())))
+                        except Exception:
+                            rs = 1
+                    if re is None:
+                        try:
+                            re = int(math.ceil(float(raw_df["value"].max())))
+                        except Exception:
+                            re = 5
+                    y0, y1 = score_yaxis_range(range_start=int(rs), range_end=int(re), missing_policy=policy.missing_policy)
+                    fig_raw.update_yaxes(range=[y0, y1], dtick=1)
+                else:
+                    fig_raw.add_trace(
+                        go.Scatter(
+                            x=raw_df["recorded_at"],
+                            y=raw_df["value"],
+                            mode="markers",
+                            marker=dict(size=6, color="#1f77b4", line=dict(color="white", width=1)),
+                            name="Raw",
+                            hovertemplate=f"<b>Raw: %{{y:.1f}} {m_unit}</b><br>%{{x|%d %b %Y}}<extra></extra>",
+                        )
+                    )
+                    avg_raw = float(raw_df["value"].mean())
+                    fig_raw.add_hline(
+                        y=avg_raw,
+                        line_dash="dash",
+                        line_color="rgba(100, 100, 100, 0.25)",
+                    )
+                    avg_label = f"Avg {avg_raw:.1f}"
+                    fig_raw.add_annotation(
+                        x=1.0,
+                        y=avg_raw,
+                        xref="paper",
+                        yref="y",
+                        text=avg_label,
+                        showarrow=False,
+                        xanchor="right",
+                        font=dict(size=11, color="rgba(120, 120, 120, 0.7)"),
+                    )
+
+                fig_raw.update_layout(
+                    yaxis_title=m_unit,
+                    height=260,
+                    margin=dict(l=10, r=20, t=30, b=60),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    showlegend=False,
+                    hovermode="x",
+                    xaxis=dict(
+                        tickformat="%d %b",
+                        nticks=8,
+                        fixedrange=True,
+                        tickfont=dict(color="rgba(140, 140, 140, 0.8)"),
+                    ),
+                )
+                fig_raw.update_yaxes(fixedrange=True)
+                fig_raw.update_xaxes(
+                    showspikes=True,
+                    spikemode="across",
+                    spikesnap="cursor",
+                    spikecolor="rgba(0,0,0,0.25)",
+                    spikethickness=1,
+                )
+                fig_raw.update_yaxes(
+                    showspikes=True,
+                    spikemode="across",
+                    spikesnap="cursor",
+                    spikecolor="rgba(0,0,0,0.25)",
+                    spikethickness=1,
+                )
+
+                st.plotly_chart(
+                    fig_raw,
+                    use_container_width=True,
+                    config={
+                        "displayModeBar": False,
+                        "staticPlot": False,
+                        "scrollZoom": False,
+                        "doubleClick": False,
+                        "displaylogo": False,
+                        "editable": False,
+                        "showAxisDragHandles": False,
+                        "showAxisRangeEntryBoxes": False,
+                    },
+                )
+
+    with chart_tab:
+        if filtered_df.empty and policy.missing_policy != "missing_is_zero":
+            st.info("No measurements recorded in this period.")
+            return
     
-    if filtered_df.empty and policy.missing_policy != "missing_is_zero":
-        st.info("No measurements recorded in this period.")
-        return
-
-    # 5. RESAMPLING
-    kind = metric_kind
-    if kind not in ("quantitative", "count", "score"):
-        if unit_type == "integer_range":
-            kind = "score"
-        elif unit_type == "integer":
-            kind = "count"
+        # 5. RESAMPLING
+        kind = metric_kind
+        if kind not in ("quantitative", "count", "score"):
+            if unit_type == "integer_range":
+                kind = "score"
+            elif unit_type == "integer":
+                kind = "count"
+            else:
+                kind = "quantitative"
+    
+        is_ordinal_score = kind == "score"
+        is_count = kind == "count"
+    
+        if is_ordinal_score and "Avg" in hover_label:
+            hover_label = hover_label.replace("Avg", "Median")
+    
+        # Normalize values: blanks/NULLs -> NaN, numeric 0 preserved.
+        filtered_df["value"] = pd.to_numeric(filtered_df["value"], errors="coerce")
+    
+        # Option A: single aggregation from raw data (skip daily collapse),
+        # except when daily semantics are required (count/score) or missing_is_zero.
+        use_daily_for_plot = policy.missing_policy == "missing_is_zero" or kind in ("count", "score")
+        if use_daily_for_plot:
+            if kind == "count":
+                daily_agg = "sum"
+            elif kind == "score":
+                daily_agg = "median"
+            else:
+                daily_agg = policy.daily_agg
+    
+            daily_df = collapse_to_daily(filtered_df, daily_agg)
+            if policy.missing_policy == "missing_is_zero":
+                plot_input_df = apply_missing_policy_daily(
+                    daily_df, start_ts=start_ts, end_ts=end_ts, missing_policy=policy.missing_policy
+                )
+            else:
+                plot_input_df = daily_df
         else:
-            kind = "quantitative"
-
-    is_ordinal_score = kind == "score"
-    is_count = kind == "count"
-
-    # Normalize values: blanks/NULLs -> NaN, numeric 0 preserved.
-    filtered_df["value"] = pd.to_numeric(filtered_df["value"], errors="coerce")
-
-    # Option A: single aggregation from raw data (skip daily collapse),
-    # except when daily semantics are required (count/score) or missing_is_zero.
-    use_daily_for_plot = policy.missing_policy == "missing_is_zero" or kind in ("count", "score")
-    if use_daily_for_plot:
-        if kind == "count":
-            daily_agg = "sum"
-        elif kind == "score":
-            daily_agg = "mean"
-        else:
-            daily_agg = policy.daily_agg
-
-        daily_df = collapse_to_daily(filtered_df, daily_agg)
-        if policy.missing_policy == "missing_is_zero":
-            plot_input_df = apply_missing_policy_daily(
-                daily_df, start_ts=start_ts, end_ts=end_ts, missing_policy=policy.missing_policy
-            )
-        else:
-            plot_input_df = daily_df
-    else:
-        plot_input_df = filtered_df[["recorded_at", "value"]].copy()
-
-    plot_df, agg_kind = resample_to_plot_df(
-        plot_input_df,
-        freq=freq,
-        kind=str(kind),
-        missing_policy=policy.missing_policy,
-    )
-
-    baseline_label = "Median" if (is_ordinal_score and agg_kind == "median") else "Avg"
-    baseline_val = None
-    baseline_val_str = None
-    baseline_series = pd.to_numeric(plot_df["value"], errors="coerce").dropna()
-    if not baseline_series.empty:
-        if is_ordinal_score:
-            baseline_val = float(baseline_series.mean() if agg_kind == "mean" else baseline_series.median())
-            baseline_val_str = f"{baseline_val:.1f}" if agg_kind == "mean" else f"{baseline_val:.0f}"
-        elif is_count:
-            baseline_val = float(baseline_series.mean())
-            baseline_val_str = f"{baseline_val:.0f}"
-        else:
-            baseline_val = float(baseline_series.mean())
-            baseline_val_str = f"{baseline_val:.1f}"
-
-    if plot_df.empty:
-        st.info("Insufficient data points in this range to display a chart.")
-        return
-
-    # Two-level title: primary stats (main) + context (subtitle)
-    summary_main_title = None
-    summary_subtitle = None
-    if use_daily_for_plot:
-        summary_series = pd.to_numeric(plot_input_df["value"], errors="coerce")
-        if policy.missing_policy != "missing_is_zero":
-            summary_series = summary_series.dropna()
-    elif policy.missing_policy == "missing_is_zero":
-        summary_series = pd.to_numeric(plot_input_df["value"], errors="coerce")
-    else:
-        summary_series = pd.to_numeric(filtered_df["value"], errors="coerce").dropna()
-    if not summary_series.empty:
-        if is_ordinal_score:
-            primary_label = "Median"
-            primary_val = float(summary_series.median())
-        else:
-            primary_label = "Average"
-            primary_val = float(summary_series.mean())
-
+            plot_input_df = filtered_df[["recorded_at", "value"]].copy()
+    
+        plot_df, agg_kind = resample_to_plot_df(
+            plot_input_df,
+            freq=freq,
+            kind=str(kind),
+            missing_policy=policy.missing_policy,
+        )
+    
+        baseline_label = "Median" if agg_kind == "median" else "Avg"
+        baseline_val = None
+        baseline_val_str = None
+        baseline_series = pd.to_numeric(plot_df["value"], errors="coerce").dropna()
+        if not baseline_series.empty:
+            if is_ordinal_score:
+                baseline_val = float(baseline_series.mean() if agg_kind == "mean" else baseline_series.median())
+                baseline_val_str = f"{baseline_val:.1f}" if agg_kind == "mean" else f"{baseline_val:.0f}"
+            elif is_count:
+                baseline_val = float(baseline_series.mean())
+                baseline_val_str = f"{baseline_val:.0f}"
+            else:
+                baseline_val = float(baseline_series.mean())
+                baseline_val_str = f"{baseline_val:.1f}"
+    
+        if plot_df.empty:
+            st.info("Insufficient data points in this range to display a chart.")
+            return
+    
+        # Two-level title: primary stats (main) + context (subtitle)
+        summary_main_title = None
+        summary_subtitle = None
         unit = (m_unit or "").strip()
         unit_suffix = f" {unit}" if unit else ""
-        primary_str = f"{_format_value_for_metric(primary_val, kind=kind)}{unit_suffix}"
+        if use_daily_for_plot:
+            summary_series = pd.to_numeric(plot_input_df["value"], errors="coerce")
+            if policy.missing_policy != "missing_is_zero":
+                summary_series = summary_series.dropna()
+        elif policy.missing_policy == "missing_is_zero":
+            summary_series = pd.to_numeric(plot_input_df["value"], errors="coerce")
+        else:
+            summary_series = pd.to_numeric(filtered_df["value"], errors="coerce").dropna()
+        if not summary_series.empty:
+            if is_ordinal_score:
+                primary_label = "Median"
+                primary_val = float(summary_series.median())
+            else:
+                primary_label = "Average"
+                primary_val = float(summary_series.mean())
+    
+            primary_str = f"{_format_value_for_metric(primary_val, kind=kind)}{unit_suffix}"
+    
+            # Primary title: just key stats
+            summary_main_title = f"{'Med' if is_ordinal_score else 'Avg'} {primary_str}"
+            
+            # Subtitle: context (date range, point count, coverage)
+            date_range_str = f"{start_ts.strftime('%d %b %Y')} – {end_ts.strftime('%d %b %Y')}"
+            summary_subtitle = date_range_str
 
-        # Primary title: just key stats
-        summary_main_title = f"{'Med' if is_ordinal_score else 'Avg'} {primary_str}"
-        
-        # Subtitle: context (date range, point count, coverage)
-        date_range_str = f"{start_ts.strftime('%d %b %Y')} – {end_ts.strftime('%d %b %Y')}"
-        summary_subtitle = date_range_str
+        if baseline_val_str is not None and summary_main_title:
+            summary_main_title = str(m_name).title()
+    
+        if range_choice in ["Last 6 months", "Last year"] and len(plot_df) < 8:
+             tickformat = "%d %b"
+    
+        trend = None
+        if kind == "quantitative" and range_choice in ["6M", "Year", "All"]:
+            trend_span = min(5, len(plot_df))
+            if trend_span >= 3:
+                trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean()
+    
+        # 6. PLOTLY CONSTRUCTION
+        month_annotations, month_dividers, year_annotations = build_hierarchical_annotations(plot_df, freq, range_choice)
+        fig = go.Figure()
+    
+        if is_ordinal_score:
+            rs = range_start
+            re = range_end
+            if rs is None:
+                try:
+                    rs = int(math.floor(float(filtered_df["value"].min())))
+                except Exception:
+                    rs = 1
+            if re is None:
+                try:
+                    re = int(math.ceil(float(filtered_df["value"].max())))
+                except Exception:
+                    re = 5
+            colorscale = ("Viridis" if higher_is_better else "Viridis_r") if colorblind_safe else ("RdYlGn" if bool(higher_is_better) else "RdYlGn_r")
 
-    if range_choice in ["Last 6 months", "Last year"] and len(plot_df) < 8:
-         tickformat = "%d %b"
-
-    trend = None
-    if kind == "quantitative" and range_choice in ["6M", "Year", "All"]:
-        trend_span = min(5, len(plot_df))
-        if trend_span >= 3:
-            trend = plot_df["value"].ewm(span=trend_span, adjust=False).mean()
-
-    # 6. PLOTLY CONSTRUCTION
-    month_annotations, month_dividers, year_annotations = build_hierarchical_annotations(plot_df, freq, range_choice)
-    fig = go.Figure()
-
-    if is_ordinal_score:
-        rs = range_start
-        re = range_end
-        if rs is None:
-            try:
-                rs = int(math.floor(float(filtered_df["value"].min())))
-            except Exception:
-                rs = 1
-        if re is None:
-            try:
-                re = int(math.ceil(float(filtered_df["value"].max())))
-            except Exception:
-                re = 5
-        colorscale = ("Viridis" if higher_is_better else "Viridis_r") if colorblind_safe else ("RdYlGn" if bool(higher_is_better) else "RdYlGn_r")
-
-        fig.add_trace(
-            go.Bar(
-                x=plot_df["recorded_at"],
-                y=plot_df["value"],
-                name=m_name,
-                marker=dict(
-                    color=plot_df["value"],
-                    colorscale=colorscale,
-                    cmin=rs,
-                    cmax=re,
-                    showscale=False,
-                    line=dict(color="rgba(255,255,255,0.9)", width=1),
-                ),
-                hovertemplate=_get_hover_template(hover_label, agg_kind, m_unit, hover_date_fmt, "score"),
+            fig.add_trace(
+                go.Bar(
+                    x=plot_df["recorded_at"],
+                    y=plot_df["value"],
+                    name=m_name,
+                    marker=dict(
+                        color=plot_df["value"],
+                        colorscale=colorscale,
+                        cmin=rs,
+                        cmax=re,
+                        showscale=False,
+                        line=dict(color="rgba(255,255,255,0.9)", width=1),
+                    ),
+                    hovertemplate=_get_hover_template(hover_label, agg_kind, m_unit, hover_date_fmt, "score"),
+                )
             )
-        )
 
-        # Overlay raw score points for sparse/rare data visibility.
-        raw_score = filtered_df[["recorded_at", "value"]].dropna()
-        if not raw_score.empty:
+            # Overlay raw score points for sparse/rare data visibility.
+            raw_score = filtered_df[["recorded_at", "value"]].dropna()
+            if not raw_score.empty:
+                fig.add_trace(
+                    go.Scatter(
+                        x=raw_score["recorded_at"],
+                        y=raw_score["value"],
+                        mode="markers",
+                        marker=dict(
+                            size=6,
+                            color="rgba(20, 20, 20, 0.55)",
+                            line=dict(color="white", width=1),
+                        ),
+                        name="Raw",
+                        hovertemplate=f"<b>Raw: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>",
+                    )
+                )
+
+            _add_baseline_reference(
+                fig,
+                baseline_val,
+                baseline_label,
+                kind=str(kind),
+                agg_kind=str(agg_kind),
+                unit_suffix=unit_suffix,
+            )
+
+            y0, y1 = score_yaxis_range(range_start=int(rs), range_end=int(re), missing_policy=policy.missing_policy)
+            fig.update_yaxes(range=[y0, y1], dtick=1)
+            fig.update_layout(bargap=0.25)
+        elif is_count:
+            fig.add_trace(
+                go.Bar(
+                    x=plot_df["recorded_at"],
+                    y=plot_df["value"],
+                    name=m_name,
+                    marker=dict(color="rgba(31, 119, 180, 0.85)", line=dict(color="rgba(255,255,255,0.9)", width=1)),
+                    hovertemplate=_get_hover_template(hover_label, "sum", m_unit, hover_date_fmt, "count"),
+                )
+            )
+            _add_baseline_reference(
+                fig,
+                baseline_val,
+                baseline_label,
+                kind=str(kind),
+                agg_kind=str(agg_kind),
+                unit_suffix=unit_suffix,
+            )
+
+            fig.update_layout(bargap=0.25)
+        else:
             fig.add_trace(
                 go.Scatter(
-                    x=raw_score["recorded_at"],
-                    y=raw_score["value"],
-                    mode="markers",
-                    marker=dict(
-                        size=6,
-                        color="rgba(20, 20, 20, 0.55)",
-                        line=dict(color="white", width=1),
-                    ),
-                    name="Raw",
-                    hovertemplate=f"<b>Raw: %{{y:.0f}} {m_unit}</b><br>%{{x|{hover_date_fmt}}}<extra></extra>",
+                    x=plot_df["recorded_at"],
+                    y=plot_df["value"],
+                    mode="lines+markers" if len(plot_df) < 53 else "lines",
+                    line=dict(shape="spline", smoothing=0.8, color="#1f77b4", width=3),
+                    marker=dict(size=6, color="#1f77b4", line=dict(color="white", width=1)),
+                    name=m_name,
+                    hovertemplate=_get_hover_template(hover_label, "mean", m_unit, hover_date_fmt, "quantitative"),
                 )
             )
-        
-        _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str)
-        
-        y0, y1 = score_yaxis_range(range_start=int(rs), range_end=int(re), missing_policy=policy.missing_policy)
-        fig.update_yaxes(range=[y0, y1], dtick=1)
-        fig.update_layout(bargap=0.25)
-    elif is_count:
-        fig.add_trace(
-            go.Bar(
-                x=plot_df["recorded_at"],
-                y=plot_df["value"],
-                name=m_name,
-                marker=dict(color="rgba(31, 119, 180, 0.85)", line=dict(color="rgba(255,255,255,0.9)", width=1)),
-                hovertemplate=_get_hover_template(hover_label, "sum", m_unit, hover_date_fmt, "count"),
+            _add_baseline_reference(
+                fig,
+                baseline_val,
+                baseline_label,
+                kind=str(kind),
+                agg_kind=str(agg_kind),
+                unit_suffix=unit_suffix,
             )
-        )
-        _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str)
-        
-        fig.update_layout(bargap=0.25)
-    else:
-        fig.add_trace(
-            go.Scatter(
-                x=plot_df["recorded_at"],
-                y=plot_df["value"],
-                mode="lines+markers" if len(plot_df) < 53 else "lines",
-                line=dict(shape="spline", smoothing=0.8, color="#1f77b4", width=3),
-                marker=dict(size=6, color="#1f77b4", line=dict(color="white", width=1)),
-                name=m_name,
-                hovertemplate=_get_hover_template(hover_label, "mean", m_unit, hover_date_fmt, "quantitative"),
-            )
-        )
-        _add_baseline_reference(fig, baseline_val, baseline_label, baseline_val_str)
-
-    if trend is not None:
-        fig.add_trace(go.Scatter(x=plot_df["recorded_at"], y=trend, mode="lines", line=dict(color="rgba(31, 119, 180, 0.3)", width=2), name="Trend", hoverinfo="skip"))
     
-    # Add data sparsity indicator for sparse/missing data (when missing policy is ignore_missing)
-    # Skip for large time spans to avoid performance issues with hundreds of rectangles
-    if policy.missing_policy != "missing_is_zero" and filtered_df is not None and not filtered_df.empty:
-        days_span = (end_ts - start_ts).days
-        actual_days = len(filtered_df["recorded_at"].dt.date.unique())
-        
-        # Only show sparsity indicator for smaller time spans (< 100 days) to avoid performance issues
-        if days_span < 100 and days_span > 7 and actual_days < days_span * 0.6:
-            all_days = pd.date_range(start=start_ts.floor("D"), end=end_ts.floor("D"), freq="D", tz="UTC")
-            # Group consecutive missing days into fewer rectangles for performance
-            missing_days_set = set(filtered_df["recorded_at"].dt.date.unique())
-            current_gap_start = None
-            
-            for day in all_days:
-                day_date = day.date()
-                if day_date not in missing_days_set:
-                    if current_gap_start is None:
-                        current_gap_start = day
-                else:
-                    if current_gap_start is not None:
-                        # Draw a rectangle for the gap
-                        gap_end = day - pd.Timedelta(days=1)
-                        fig.add_vrect(
-                            x0=current_gap_start,
-                            x1=gap_end,
-                            fillcolor="rgba(200, 200, 200, 0.02)",
-                            line_width=0,
-                            layer="below"
-                        )
-                        current_gap_start = None
-            
-            # Handle gap at the end if it exists
-            if current_gap_start is not None:
-                fig.add_vrect(
-                    x0=current_gap_start,
-                    x1=end_ts,
-                    fillcolor="rgba(200, 200, 200, 0.02)",
-                    line_width=0,
-                    layer="below"
+        if trend is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=plot_df["recorded_at"],
+                    y=trend,
+                    mode="lines",
+                    line=dict(color="rgba(31, 119, 180, 0.3)", width=2),
+                    name="Trend",
+                    hoverinfo="skip",
                 )
-    
-    # Add "now" indicator for trailing periods (non-All views)
-    if show_pills and range_choice != "All":
-        current_time = _today_utc_end()
-        if current_time > start_ts and current_time < end_ts:
-            fig.add_vline(
-                x=current_time,
-                line_dash="dot",
-                line_color="rgba(100, 100, 100, 0.25)",
-                line_width=1
-            )
-            fig.add_annotation(
-                x=current_time,
-                y=1.05,
-                text="Today →",
-                showarrow=False,
-                xref="x",
-                yref="paper",
-                font=dict(size=11, color="rgba(180, 180, 180, 0.7)"),                
-                #font=dict(size=9, color="rgba(130, 130, 130, 0.5)"),
-                xanchor="right"
             )
 
-    # Combine title and subtitle with line break if both exist
-    combined_title = summary_main_title
-    if summary_subtitle:
-        combined_title = f"{summary_main_title}<br><sub style='font-size: 12px; color: rgba(180, 180, 180, 0.9);'>{summary_subtitle}</sub>"
-#        combined_title = f"{summary_main_title}<br><sub style='font-size: 9px; color: rgba(120, 120, 120, 0.7);'>{summary_subtitle}</sub>"
+        # Add data sparsity indicator for sparse/missing data (when missing policy is ignore_missing)
+        # Skip for large time spans to avoid performance issues with hundreds of rectangles
+        if policy.missing_policy != "missing_is_zero" and filtered_df is not None and not filtered_df.empty:
+            days_span = (end_ts - start_ts).days
+            actual_days = len(filtered_df["recorded_at"].dt.date.unique())
 
-    # Increase top margin if year annotations are present (to avoid overlap with title)
-    top_margin = 60 if summary_main_title else 40
-    if year_annotations:
-        top_margin = 100
+            # Only show sparsity indicator for smaller time spans (< 100 days) to avoid performance issues
+            if days_span < 100 and days_span > 7 and actual_days < days_span * 0.6:
+                all_days = pd.date_range(start=start_ts.floor("D"), end=end_ts.floor("D"), freq="D", tz="UTC")
+                # Group consecutive missing days into fewer rectangles for performance
+                missing_days_set = set(filtered_df["recorded_at"].dt.date.unique())
+                current_gap_start = None
 
-    # Combine all annotations
-    all_annotations = month_annotations + year_annotations
+                for day in all_days:
+                    day_date = day.date()
+                    if day_date not in missing_days_set:
+                        if current_gap_start is None:
+                            current_gap_start = day
+                    else:
+                        if current_gap_start is not None:
+                            # Draw a rectangle for the gap
+                            gap_end = day - pd.Timedelta(days=1)
+                            fig.add_vrect(
+                                x0=current_gap_start,
+                                x1=gap_end,
+                                fillcolor="rgba(200, 200, 200, 0.02)",
+                                line_width=0,
+                                layer="below",
+                            )
+                            current_gap_start = None
 
-    fig.update_layout(
-        yaxis_title=m_unit, 
-        height=320, 
-        margin=dict(l=10, r=20, t=top_margin, b=80),
-        paper_bgcolor='rgba(0,0,0,0)', 
-        plot_bgcolor='rgba(0,0,0,0)', 
-        showlegend=False,
-        hovermode="x",
-        dragmode=False,
-        shapes=month_dividers,
-        annotations=all_annotations,
-        title=(
-            dict(
-                text=combined_title,
-                x=0.0,
-                xanchor="left",
-                font=dict(size=14, color="rgba(200, 200, 200, 0.9)"),
-#                font=dict(size=13, color="rgba(150, 150, 150, 0.9)"),
-            )
-            if summary_main_title
-            else None
-        ),
-        xaxis=dict(
-            tickformat=tickformat,
-            nticks=8,
-            fixedrange=True,
-            tickfont=dict(color="rgba(140, 140, 140, 0.8)"),
+                # Handle gap at the end if it exists
+                if current_gap_start is not None:
+                    fig.add_vrect(
+                        x0=current_gap_start,
+                        x1=end_ts,
+                        fillcolor="rgba(200, 200, 200, 0.02)",
+                        line_width=0,
+                        layer="below",
+                    )
+
+        # Add "now" indicator for trailing periods (non-All views)
+        if show_pills and range_choice != "All":
+            current_time = _today_utc_end()
+            if current_time > start_ts and current_time < end_ts:
+                fig.add_vline(
+                    x=current_time,
+                    line_dash="dot",
+                    line_color="rgba(100, 100, 100, 0.25)",
+                    line_width=1,
+                )
+                fig.add_annotation(
+                    x=current_time,
+                    y=1.05,
+                    text="Today →",
+                    showarrow=False,
+                    xref="x",
+                    yref="paper",
+                    font=dict(size=11, color="rgba(180, 180, 180, 0.7)"),
+                    # font=dict(size=9, color="rgba(130, 130, 130, 0.5)"),
+                    xanchor="right",
+                )
+
+        # Combine title and subtitle with line break if both exist
+        combined_title = summary_main_title
+        if summary_subtitle:
+            combined_title = f"{summary_main_title}<br><sub style='font-size: 12px; color: rgba(180, 180, 180, 0.9);'>{summary_subtitle}</sub>"
+        # combined_title = f"{summary_main_title}<br><sub style='font-size: 9px; color: rgba(120, 120, 120, 0.7);'>{summary_subtitle}</sub>"
+
+        # Increase top margin if year annotations are present (to avoid overlap with title)
+        top_margin = 60 if summary_main_title else 40
+        if year_annotations:
+            top_margin = 100
+
+        # Combine all annotations
+        all_annotations = month_annotations + year_annotations
+
+        fig.update_layout(
+            yaxis_title=m_unit,
+            height=320,
+            margin=dict(l=10, r=20, t=top_margin, b=80),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False,
+            hovermode="x",
+            dragmode=False,
+            shapes=month_dividers,
+            annotations=all_annotations,
+            title=(
+                dict(
+                    text=combined_title,
+                    x=0.0,
+                    xanchor="left",
+                    font=dict(size=14, color="rgba(200, 200, 200, 0.9)"),
+                    # font=dict(size=13, color="rgba(150, 150, 150, 0.9)"),
+                )
+                if summary_main_title
+                else None
+            ),
+            xaxis=dict(
+                tickformat=tickformat,
+                nticks=8,
+                fixedrange=True,
+                tickfont=dict(color="rgba(140, 140, 140, 0.8)"),
+            ),
         )
-    )
 
-    fig.update_yaxes(fixedrange=True)
-    fig.update_xaxes(
-        showspikes=True,
-        spikemode="across",
-        spikesnap="cursor",
-        spikecolor="rgba(0,0,0,0.25)",
-        spikethickness=1,
-    )
-    fig.update_yaxes(
-        showspikes=True,
-        spikemode="across",
-        spikesnap="cursor",
-        spikecolor="rgba(0,0,0,0.25)",
-        spikethickness=1,
-    )
+        fig.update_yaxes(fixedrange=True)
+        fig.update_xaxes(
+            showspikes=True,
+            spikemode="across",
+            spikesnap="cursor",
+            spikecolor="rgba(0,0,0,0.25)",
+            spikethickness=1,
+        )
+        fig.update_yaxes(
+            showspikes=True,
+            spikemode="across",
+            spikesnap="cursor",
+            spikecolor="rgba(0,0,0,0.25)",
+            spikethickness=1,
+        )
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False,
-            "staticPlot": False,
-            "scrollZoom": False,
-            "doubleClick": False,
-            "displaylogo": False,
-            "editable": False,
-            "showAxisDragHandles": False,
-            "showAxisRangeEntryBoxes": False,
-        },
-    )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={
+                "displayModeBar": False,
+                "staticPlot": False,
+                "scrollZoom": False,
+                "doubleClick": False,
+                "displaylogo": False,
+                "editable": False,
+                "showAxisDragHandles": False,
+                "showAxisRangeEntryBoxes": False,
+            },
+        )

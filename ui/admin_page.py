@@ -26,12 +26,38 @@ If your deployed app is set to **Private** on Streamlit Community Cloud, users m
         submitted = st.form_submit_button("Send Invite", type="primary", use_container_width=True)
 
     if submitted:
-        ok, err = AuthEngine.invite_user(email)
+        email_clean = (email or "").strip().lower()
+        ok, err = AuthEngine.invite_user(email_clean)
         if ok:
             st.success("Invite sent (if the email is valid).")
+            st.session_state.pop("invite_already_registered_email", None)
         else:
             st.error(err or "Invite failed.")
+            if err and "already been registered" in err.lower():
+                st.session_state["invite_already_registered_email"] = email_clean
     st.caption("Note: Invites only work for new emails. Use password reset for existing users.")
+
+    registered_email = st.session_state.get("invite_already_registered_email")
+    if registered_email:
+        st.warning("This email is already registered. Send a password reset instead?")
+        if st.button("Send Password Reset Instead", type="secondary", use_container_width=True):
+            ok, err = AuthEngine.request_reset(registered_email)
+            if ok:
+                st.success("Password reset sent (if the email is valid).")
+                st.session_state.pop("invite_already_registered_email", None)
+            else:
+                st.error(err or "Password reset failed.")
+
+    with st.form("resend_invite_form", border=True):
+        resend_email = st.text_input("Resend invite email", placeholder="name@example.com")
+        resend_submitted = st.form_submit_button("Resend Invite", type="secondary", use_container_width=True)
+
+    if resend_submitted:
+        ok, err = AuthEngine.invite_user(resend_email)
+        if ok:
+            st.success("Invite re-sent (if the email is valid and not yet registered).")
+        else:
+            st.error(err or "Resend failed.")
 
     with st.form("reset_user_form", border=True):
         reset_email = st.text_input("Password reset email", placeholder="name@example.com")
@@ -43,3 +69,4 @@ If your deployed app is set to **Private** on Streamlit Community Cloud, users m
             st.success("Password reset sent (if the email is valid).")
         else:
             st.error(err or "Password reset failed.")
+    st.caption("Use password reset for existing users who need to set or change their password.")

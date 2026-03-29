@@ -1,6 +1,6 @@
 import streamlit as st
 import time
-from urllib.parse import quote
+import re
 from auth_engine import AuthEngine
 import cache_control
 import auth_persistence
@@ -40,13 +40,34 @@ class AuthUI:
             st.caption("Invite-only is enabled. Ask an admin for an invite.")
             return
 
+        email = st.text_input("Your email", placeholder="name@example.com", key="auth_request_access_email")
+        email_clean = (email or "").strip()
+        is_valid = bool(re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", email_clean))
+
+        if not is_valid and email_clean:
+            st.error("Please enter a valid email.")
+
+        st.caption("Email client required for Request Access.")
         to = ",".join(admins)
-        subject = quote("QuantifI access request")
-        body = quote(
-            "Hi,\n\nCould I get an invite to QuantifI?\n\nThanks!"
+        subject = "QuantifI access request"
+        email_line = f"My email: {email_clean}" if email_clean else "My email:"
+        body = (
+            "Hi,\n\n"
+            "Could I get an invite to QuantifI?\n\n"
+            f"{email_line}\n\n"
+            "Thanks!"
         )
         mailto = f"mailto:{to}?subject={subject}&body={body}"
-        st.link_button("Request access", mailto, use_container_width=True)
+        if email_clean and is_valid:
+            st.link_button("Request access", mailto, use_container_width=True)
+        else:
+            st.button("Request access", use_container_width=True, disabled=True)
+
+        with st.expander("Trouble opening your email client?"):
+            st.caption("Copy the details below and paste them into your email client.")
+            st.text_input("To", value=to, disabled=True)
+            st.text_input("Subject", value=subject, disabled=True)
+            st.text_area("Body", value=body, height=160, disabled=True)
 
     @staticmethod
     def _handle_login():
@@ -107,6 +128,8 @@ class AuthUI:
     @staticmethod
     def render_login_tab():
         st.subheader("Sign In")
+        if AuthUI._invite_only_enabled():
+            st.caption("New here? Request access to get an invite link.")
 
         email = st.text_input("Email", key="auth_login_email")
 
@@ -119,7 +142,7 @@ class AuthUI:
             st.session_state.login_error = None
         
         if AuthUI._invite_only_enabled():
-            AuthUI._render_request_access()
+            pass
         else:
             if st.button("Forgot password?", type="secondary"):
                 st.session_state.show_password_reset = True
@@ -143,6 +166,11 @@ class AuthUI:
         if st.session_state.get("signup_error"):
             st.error(f"Sign up failed: {st.session_state.signup_error}")
             st.session_state.signup_error = None
+
+    @staticmethod
+    def render_request_access_tab():
+        st.subheader("Request Access")
+        AuthUI._render_request_access()
 
     @staticmethod
     def render_recovery_form():

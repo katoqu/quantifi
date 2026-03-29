@@ -96,3 +96,36 @@ pages.tracker_page()
 
     assert len(at.exception) == 0
     assert any(el.value == "changes-ok" for el in at.text)
+
+
+def test_tracker_page_add_renders_filtered_dropdown(monkeypatch):
+    """Add view renders pills filter and dropdown metric selector."""
+    import logging
+
+    logging.getLogger(
+        "streamlit.runtime.scriptrunner_utils.script_run_context"
+    ).setLevel(logging.ERROR)
+
+    script = """
+import streamlit as st
+from ui import pages
+
+pages.models.get_metrics = lambda include_archived=True: [
+    {"id": "m1", "name": "sleep", "unit_name": "hrs"},
+    {"id": "m2", "name": "mood", "unit_name": "score"},
+]
+
+pages.models.get_all_entries_bulk = lambda: [
+    {"metric_id": "m2", "recorded_at": "2024-01-01T00:00:00Z", "value": 5}
+]
+
+pages.tracker_page()
+"""
+
+    at = AppTest.from_string(script)
+    at.session_state["tracker_view_selector"] = "Add"
+    at.session_state["tracker_subview_cat_filter"] = "Recent"
+    at.run()
+
+    assert len(at.exception) == 0
+    assert len(at.selectbox) == 1

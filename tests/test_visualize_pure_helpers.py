@@ -6,7 +6,7 @@ pytest.importorskip("streamlit")
 
 import pandas as pd  # noqa: E402
 
-from ui.chart_data import resolve_period, resample_to_plot_df  # noqa: E402
+from ui.chart_data import resolve_period, resample_to_plot_df, collapse_to_daily  # noqa: E402
 
 
 def test_resolve_period_all_long_span_uses_month_start():
@@ -60,3 +60,20 @@ def test_resample_to_plot_df_score_missing_is_zero_uses_median():
     assert agg == "median"
     assert plot_df.shape[0] == 1
     assert plot_df["value"].iloc[0] == pytest.approx(0.0)
+
+
+def test_collapse_to_daily_supports_median_agg():
+    df = pd.DataFrame(
+        {
+            "recorded_at": [
+                "2026-03-02T08:00:00Z",
+                "2026-03-02T12:00:00Z",
+                "2026-03-02T18:00:00Z",
+            ],
+            "value": [1, 5, 9],
+        }
+    )
+    df["recorded_at"] = pd.to_datetime(df["recorded_at"], utc=True)
+    daily = collapse_to_daily(df, "median")
+    assert daily.shape[0] == 1
+    assert daily["value"].iloc[0] == pytest.approx(5.0)
