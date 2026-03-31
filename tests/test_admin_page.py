@@ -52,7 +52,7 @@ def _session_get(at: AppTest, key: str, default):  # type: ignore
         return default
 
 
-def test_admin_page_password_reset_flow():
+def test_admin_page_allowlist_flow():
     script = """
 import streamlit as st
 import types
@@ -69,17 +69,17 @@ from ui import admin_page
 
 CALLS_KEY = "__admin_calls"
 if CALLS_KEY not in st.session_state:
-    st.session_state[CALLS_KEY] = {"reset": []}
+    st.session_state[CALLS_KEY] = {"allowlist": []}
 
 def _fake_is_admin():
     return True
 
-def _fake_request_reset(email):
-    st.session_state[CALLS_KEY]["reset"].append(email)
+def _fake_add_allowlist(email):
+    st.session_state[CALLS_KEY]["allowlist"].append(email)
     return True, None
 
 auth.is_admin = _fake_is_admin
-AuthEngine.request_reset = staticmethod(_fake_request_reset)
+AuthEngine.add_allowlist_email = staticmethod(_fake_add_allowlist)
 
 admin_page.render_admin_page()
 """
@@ -87,9 +87,9 @@ admin_page.render_admin_page()
     at = AppTest.from_string(script)
     at.run()
 
-    _input_text(at, label="Password reset email", value="a@example.com")
-    _click_button(at, label="Send Password Reset")
+    _input_text(at, label="Allowlist email", value="a@example.com")
+    _click_button(at, label="Approve Signup")
     at.run()
 
     calls = _session_get(at, "__admin_calls", {})
-    assert calls["reset"] == ["a@example.com"]
+    assert calls["allowlist"] == ["a@example.com"]

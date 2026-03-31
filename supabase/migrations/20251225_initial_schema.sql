@@ -39,6 +39,11 @@ create table entries (
   created_at timestamptz default now()
 );
 
+create table signup_allowlist (
+  email text primary key,
+  created_at timestamptz not null default now()
+);
+
 -- 3. INDEXES
 -- Enforce case-insensitive uniqueness per user
 create unique index categories_name_user_idx on categories (lower(name), user_id);
@@ -55,6 +60,7 @@ alter table categories enable row level security;
 alter table units enable row level security;
 alter table metrics enable row level security;
 alter table entries enable row level security;
+alter table signup_allowlist enable row level security;
 
 -- 5. POLICIES
 -- Create policies for all tables using a standardized naming convention

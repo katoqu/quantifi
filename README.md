@@ -10,7 +10,7 @@ A minimal Streamlit app for manual metric tracking using Supabase (Postgres + Au
 
 - Supabase Auth sign-in + row-level security (RLS)
 - Mobile-friendly tracker UI (home / add / log / stats / edit)
-- Invite-only mode (optional) with in-app admin invites
+- Allowlist-based signup approval (no email required)
 - Import/export + basic DB admin tooling (`manage_db.py`)
 
 ## Quick start (local)
@@ -41,11 +41,14 @@ Create `.streamlit/secrets.toml` (never commit real keys):
 ```toml
 SUPABASE_URL = "https://<project-ref>.supabase.co"
 SUPABASE_KEY = "<anon-key>"
-SUPABASE_SERVICE_ROLE_KEY = "<service-role-key>"  # needed for admin invites / manage_db
+SUPABASE_SERVICE_ROLE_KEY = "<service-role-key>"  # needed for admin allowlist / manage_db
 REDIRECT_URL = "http://localhost:8501"
 
-# Optional (invite-only)
-INVITE_ONLY = true
+# Optional (allowlist signups without email)
+SIGNUP_ALLOWLIST_ENABLED = true
+SIGNUP_ALLOWLIST_TABLE = "signup_allowlist"
+
+# Optional
 ADMIN_EMAILS = "you@example.com,other@example.com"
 
 # Optional (manage_db DB connection)
@@ -108,39 +111,28 @@ If you want users to authenticate **only via Supabase**:
 2) Add the same secrets in the Streamlit Cloud “Secrets” UI.
 3) In Supabase Auth, add your deployed app URL to allowed redirects (Auth → URL configuration).
 
-## Inviting users (Streamlit vs Supabase)
+### Allowlist signup (no email)
 
-There are **two different “invite” concepts** that can look similar:
+If you want users to sign up **only after you approve them**, without sending any emails:
 
-- **Streamlit Community Cloud sharing invite** (viewer/collaborator for a *private* app)  
-  This requires the user to **log in to Streamlit** before they can reach your app.
-- **Supabase Auth invite** (creates an *app account* and emails an invite link)  
-  This is what the app’s **Admin → Send Invite** uses.
+1) Create an allowlist table in Supabase (see SQL below).
+2) Set `SIGNUP_ALLOWLIST_ENABLED = true` in Streamlit secrets.
+3) Set `ADMIN_EMAILS` in Streamlit secrets to enable the Admin page.
+4) Use **Admin → Approve Signup** to add emails to the allowlist.
 
-### Invite-only access
+Allowlist table SQL:
 
-For invite-only:
-
-1) In Supabase Auth settings, disable self sign-ups.
-2) Set `INVITE_ONLY = true` in Streamlit secrets (hides Sign Up UI + blocks sign-ups in code).
-3) Set `ADMIN_EMAILS` in Streamlit secrets to enable the Admin page for those accounts.
-4) Use **Admin → Send Invite** to email Supabase invite links.
-
-The login screen shows a **Request access** button (mailto) when `INVITE_ONLY = true` and `ADMIN_EMAILS` is set.
+```sql
+create table if not exists public.signup_allowlist (
+  email text primary key,
+  created_at timestamptz not null default now()
+);
+```
 
 ## Security notes
 
 - Keep `SUPABASE_SERVICE_ROLE_KEY` secret. In Streamlit it stays server-side, but never print/log it.
 - `.streamlit/` is ignored by git in this repo; rotate keys immediately if you ever commit them by accident.
-
-## Inviting users (Streamlit vs Supabase)
-
-There are **two different “invite” concepts** that can look similar:
-
-- **Streamlit Community Cloud sharing invite** (adds someone as a viewer/collaborator for a *private* app)  
-  This requires the user to **log in to Streamlit** before they can even reach your app.
-- **Supabase Auth invite** (creates an *app account* in Supabase and emails the user an invite link)  
-  This is what `auth.py` / `auth_engine.py` implement for in-app sign-in and user identity.
 
 ### Recommended setup (single login)
 
@@ -149,21 +141,11 @@ If you want users to only authenticate once (via Supabase):
 1. Set the deployed Streamlit app visibility to **Public/Unlisted** (not Private).
 2. Use Supabase Auth for sign-in/sign-up (the UI in this repo).
 
-### Invite-only access (optional)
-
-If you want invite-only:
-
-- Set the Streamlit app visibility to **Public/Unlisted** (so users don’t need a Streamlit account).
-- Disable self-signups in **Supabase Auth** settings (so only invited users can create accounts).
-- Set `INVITE_ONLY = true` in Streamlit secrets (this hides the Sign Up UI and blocks sign-ups in code).
-- Set `ADMIN_EMAILS` in Streamlit secrets (comma-separated) to enable the **Admin** page.
-- Use the app’s **Admin → Send Invite** to send a Supabase Auth invite email.
-- The login screen shows a **Request access** button (mailto) when `INVITE_ONLY = true` and `ADMIN_EMAILS` is set.
-
 Secrets used:
-- `REDIRECT_URL`: where Supabase will redirect after email links (password recovery / invite / verification).
+- `REDIRECT_URL`: where Supabase will redirect after email links (password recovery / verification).
 - `ADMIN_EMAILS`: comma-separated list of admin emails (e.g. `"you@example.com,other@example.com"`).
-- `INVITE_ONLY`: boolean (`true`/`false`) to disable self sign-ups in the app UI/logic.
+- `SIGNUP_ALLOWLIST_ENABLED`: boolean (`true`/`false`) to require allowlisted emails for signup.
+- `SIGNUP_ALLOWLIST_TABLE`: Supabase table name for allowlist (default `signup_allowlist`).
 - `PERSIST_LOGIN`: boolean (`true`/`false`) to enable cookie-based session restore (default: `true`).
 - `SESSION_ENC_KEY`: Fernet key used to encrypt Supabase tokens before storing them in `app_sessions` (required for persistent login).
 

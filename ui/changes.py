@@ -63,6 +63,7 @@ def show_changes():
             notes = st.text_area(
                 "Notes (Markdown supported)",
                 placeholder="Optional context, routine details, exceptions…",
+                height=260,
             )
 
             date_input = dt.date.today()
@@ -117,12 +118,11 @@ def show_changes():
             ts = _parse_iso_datetime(ev.get("recorded_at"))
             ts_label = ts.strftime("%Y-%m-%d %H:%M") if ts else str(ev.get("recorded_at"))
 
-            with st.container(border=True):
-                col_main, col_edit, col_delete = st.columns([8, 2, 2])
-                with col_main:
-                    st.markdown(f"**{cat_label}:** {ev.get('title', '')}")
-                    st.caption(ts_label)
-
+            title = ev.get("title", "")
+            expanded = st.session_state.get("edit_change_event_id") == ev_id
+            label = f"{cat_label}: {title} — {ts_label}"
+            with st.expander(label, expanded=expanded):
+                col_edit, col_delete = st.columns([1, 1])
                 with col_edit:
                     if ev_id and st.button("Edit", key=f"edit_change_{ev_id}", use_container_width=True):
                         st.session_state["edit_change_event_id"] = ev_id
@@ -159,6 +159,7 @@ def show_changes():
                             "Notes (Markdown supported)",
                             value=ev.get("notes") or "",
                             key=f"edit_change_notes_{ev_id}",
+                            height=260,
                         )
 
                         base_dt = ts or dt.datetime.now().replace(second=0, microsecond=0)

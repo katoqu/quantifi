@@ -56,6 +56,7 @@ def run_hard_reset():
         ]::uuid[];
         target_id uuid;
     BEGIN
+        DELETE FROM signup_allowlist;
         FOREACH target_id IN ARRAY user_ids LOOP
             DELETE FROM entries WHERE user_id = target_id;
             DELETE FROM metrics WHERE user_id = target_id;

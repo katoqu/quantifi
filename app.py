@@ -15,15 +15,16 @@ def _bridge_hash_params():
         """
 <script>
 (function() {
-  const hash = window.location.hash || "";
+  const target = (window.parent && window.parent.location) ? window.parent : (window.top && window.top.location ? window.top : window);
+  const hash = target.location.hash || "";
   if (!hash || hash.length < 2) return;
   const hashParams = new URLSearchParams(hash.slice(1));
   if (!hashParams.get("access_token")) return;
-  const qs = new URLSearchParams(window.location.search);
+  const qs = new URLSearchParams(target.location.search);
   if (qs.get("access_token")) return; // already bridged
   hashParams.forEach((v, k) => qs.set(k, v));
-  const newUrl = window.location.pathname + "?" + qs.toString();
-  window.location.replace(newUrl);
+  const newUrl = target.location.pathname + "?" + qs.toString();
+  target.location.replace(newUrl);
 })();
 </script>
         """,
@@ -34,14 +35,9 @@ def _bridge_hash_params():
 def _force_auth_flow_from_params() -> bool:
     params = st.query_params
     token_type = str(params.get("type", "")).strip().lower()
-    if token_type in {"invite", "recovery"}:
+    if token_type == "recovery":
         return True
-    if token_type == "" and auth.is_invite_only():
-        if "token_hash" in params or "code" in params:
-            return True
-        if "access_token" in params and "refresh_token" in params:
-            return True
-    return False
+    return "token_hash" in params or "code" in params or ("access_token" in params and "refresh_token" in params)
 
 # 0. Ensure hash-based tokens are available as query params early
 _bridge_hash_params()
@@ -76,7 +72,7 @@ my_pages = [
     st.Page(pages.configure_page, title="Configure", icon="⚙️"),
 ]
 
-# Optional admin page (invite users, etc.)
+# Optional admin page (allowlist approvals, etc.)
 if auth.is_admin():
     my_pages.append(st.Page(pages.admin_page, title="Admin", icon="🛡️"))
 

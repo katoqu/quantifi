@@ -10,8 +10,19 @@ import auth_persistence
 import cache_control
 import time
 
-def is_invite_only() -> bool:
-    return AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False))
+def _admin_emails() -> list[str]:
+    raw = (st.secrets.get("ADMIN_EMAILS", "") or "").strip()
+    if not raw:
+        return []
+    emails = [e.strip().lower() for e in raw.split(",") if e.strip()]
+    # preserve order but de-dupe
+    seen = set()
+    out = []
+    for e in emails:
+        if e not in seen:
+            seen.add(e)
+            out.append(e)
+    return out
 
 def _persist_session_tokens(session):
     payload = AuthEngine.session_to_payload(session)
@@ -49,7 +60,6 @@ def init_session_state():
         "app_just_woke_up": True, 
         "show_recovery_form": False,
         "show_password_reset": False,
-        "auth_show_request_access": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
@@ -116,7 +126,7 @@ def is_admin() -> bool:
     user = get_current_user()
     if not user or not getattr(user, "email", None):
         return False
-    admins = set(AuthUI._admin_emails())
+    admins = set(_admin_emails())
     if not admins:
         return False
     return user.email.strip().lower() in admins
@@ -137,7 +147,6 @@ def sign_out():
 def handle_link_tokens() -> bool:
     params = st.query_params
     token_type = str(params.get("type", "")).strip().lower()
-    invite_only = is_invite_only()
 
     if "access_token" in params and "refresh_token" in params:
         try:
@@ -148,7 +157,6 @@ def handle_link_tokens() -> bool:
             cache_control.bump()
             if err:
                 st.error(f"Link invalid or expired: {err}")
-                st.session_state.auth_show_request_access = True
                 return True
 
             if user:
@@ -156,18 +164,15 @@ def handle_link_tokens() -> bool:
             if session:
                 _persist_session_tokens(session)
 
-            if token_type in {"recovery", "invite"} or (invite_only and token_type == ""):
-                st.session_state.recovery_type = token_type or "invite"
+            if token_type == "recovery":
+                st.session_state.recovery_type = "recovery"
                 st.session_state.show_recovery_form = True
-                st.session_state.auth_show_request_access = False
             else:
                 st.session_state.recovery_type = None
                 st.session_state.show_recovery_form = False
-                st.session_state.auth_show_request_access = False
             return True
         except Exception as e:
             st.error(f"Link invalid or expired: {e}")
-            st.session_state.auth_show_request_access = True
             return True
 
     if "code" in params:
@@ -178,7 +183,6 @@ def handle_link_tokens() -> bool:
             cache_control.bump()
             if err:
                 st.error(f"Link invalid or expired: {err}")
-                st.session_state.auth_show_request_access = True
                 return True
 
             if user:
@@ -186,14 +190,12 @@ def handle_link_tokens() -> bool:
             if session:
                 _persist_session_tokens(session)
 
-            if token_type in {"recovery", "invite"} or (invite_only and token_type == ""):
-                st.session_state.recovery_type = token_type or "invite"
+            if token_type == "recovery":
+                st.session_state.recovery_type = "recovery"
                 st.session_state.show_recovery_form = True
-                st.session_state.auth_show_request_access = False
             else:
                 st.session_state.recovery_type = None
                 st.session_state.show_recovery_form = False
-                st.session_state.auth_show_request_access = False
 
             return True
         except Exception as e:
@@ -208,8 +210,8 @@ def handle_link_tokens() -> bool:
         st.query_params.clear()
         cache_control.bump() 
 
-        if token_type in {"recovery", "invite"} or (invite_only and token_type == ""):
-            st.session_state.recovery_type = token_type or "invite"
+        if token_type == "recovery":
+            st.session_state.recovery_type = "recovery"
             st.session_state.show_recovery_form = True
             return True
 
@@ -225,12 +227,10 @@ def handle_link_tokens() -> bool:
             st.session_state.user = user
         if session:
             _persist_session_tokens(session)
-        st.session_state.auth_show_request_access = False
 
         return True
     except Exception as e:
         st.error(f"Link invalid or expired: {e}")
-        st.session_state.auth_show_request_access = True
         return True
 
 def auth_page():
@@ -240,11 +240,12 @@ def auth_page():
             """
 <script>
 (function() {
-  const hash = window.location.hash || "";
+  const target = (window.parent && window.parent.location) ? window.parent : (window.top && window.top.location ? window.top : window);
+  const hash = target.location.hash || "";
   if (!hash || hash.length < 2) return;
   const hashParams = new URLSearchParams(hash.slice(1));
   if (!hashParams.get("access_token")) return;
-  const qs = new URLSearchParams(window.location.search);
+  const qs = new URLSearchParams(target.location.search);
   if (qs.get("access_token")) return; // already bridged
   // If Supabase didn't include type in the redirect, try to recover it from the referrer.
   if (!hashParams.get("type") && !qs.get("type") && document.referrer) {
@@ -257,8 +258,8 @@ def auth_page():
     } catch (e) {}
   }
   hashParams.forEach((v, k) => qs.set(k, v));
-  const newUrl = window.location.pathname + "?" + qs.toString();
-  window.location.replace(newUrl);
+  const newUrl = target.location.pathname + "?" + qs.toString();
+  target.location.replace(newUrl);
 })();
 </script>
             """,
@@ -313,26 +314,9 @@ def auth_page():
     
     else:
         st.title("QuantifI")
-        if is_invite_only():
-            st.caption("Invite-only access is enabled. Ask an admin for an invite.")
-            if st.session_state.get("auth_show_request_access"):
-                st.info("Invite link invalid or expired. Request a new invite.")
-                tab1, tab2 = st.tabs(["Request Access", "Sign In"])
-                with tab1:
-                    AuthUI.render_request_access_tab()
-                with tab2:
-                    AuthUI.render_login_tab()
-            else:
-                tab1, tab2 = st.tabs(["Sign In", "Request Access"])
-                with tab1:
-                    AuthUI.render_login_tab()
-                with tab2:
-                    AuthUI.render_request_access_tab()
-            st.session_state.auth_show_request_access = False
-        else:
-            # Render the tabbed interface for traditional authentication
-            tab1, tab2 = st.tabs(["Sign In", "Sign Up"])
-            with tab1:
-                AuthUI.render_login_tab()
-            with tab2:
-                AuthUI.render_signup_tab()
+        # Render the tabbed interface for traditional authentication
+        tab1, tab2 = st.tabs(["Sign In", "Sign Up"])
+        with tab1:
+            AuthUI.render_login_tab()
+        with tab2:
+            AuthUI.render_signup_tab()

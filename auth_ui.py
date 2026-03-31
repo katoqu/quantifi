@@ -1,6 +1,5 @@
 import streamlit as st
 import time
-import re
 from auth_engine import AuthEngine
 import cache_control
 import auth_persistence
@@ -13,61 +12,6 @@ class AuthUI:
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
-
-    @staticmethod
-    def _invite_only_enabled() -> bool:
-        return AuthUI._secrets_truthy(st.secrets.get("INVITE_ONLY", False))
-
-    @staticmethod
-    def _admin_emails() -> list[str]:
-        raw = (st.secrets.get("ADMIN_EMAILS", "") or "").strip()
-        if not raw:
-            return []
-        emails = [e.strip().lower() for e in raw.split(",") if e.strip()]
-        # preserve order but de-dupe
-        seen = set()
-        out = []
-        for e in emails:
-            if e not in seen:
-                seen.add(e)
-                out.append(e)
-        return out
-
-    @staticmethod
-    def _render_request_access():
-        admins = AuthUI._admin_emails()
-        if not admins:
-            st.caption("Invite-only is enabled. Ask an admin for an invite.")
-            return
-
-        email = st.text_input("Your email", placeholder="name@example.com", key="auth_request_access_email")
-        email_clean = (email or "").strip()
-        is_valid = bool(re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", email_clean))
-
-        if not is_valid and email_clean:
-            st.error("Please enter a valid email.")
-
-        st.caption("Email client required for Request Access.")
-        to = ",".join(admins)
-        subject = "QuantifI access request"
-        email_line = f"My email: {email_clean}" if email_clean else "My email:"
-        body = (
-            "Hi,\n\n"
-            "Could I get an invite to QuantifI?\n\n"
-            f"{email_line}\n\n"
-            "Thanks!"
-        )
-        mailto = f"mailto:{to}?subject={subject}&body={body}"
-        if email_clean and is_valid:
-            st.link_button("Request access", mailto, use_container_width=True)
-        else:
-            st.button("Request access", use_container_width=True, disabled=True)
-
-        with st.expander("Trouble opening your email client?"):
-            st.caption("Copy the details below and paste them into your email client.")
-            st.text_input("To", value=to, disabled=True)
-            st.text_input("Subject", value=subject, disabled=True)
-            st.text_area("Body", value=body, height=160, disabled=True)
 
     @staticmethod
     def _handle_login():
@@ -128,8 +72,6 @@ class AuthUI:
     @staticmethod
     def render_login_tab():
         st.subheader("Sign In")
-        if AuthUI._invite_only_enabled():
-            st.caption("New here? Request access to get an invite link.")
 
         email = st.text_input("Email", key="auth_login_email")
 
@@ -140,58 +82,60 @@ class AuthUI:
         if st.session_state.get("login_error"):
             st.error(f"Login failed: {st.session_state.login_error}")
             st.session_state.login_error = None
-        
-        if AuthUI._invite_only_enabled():
-            pass
-        else:
-            if st.button("Forgot password?", type="secondary"):
-                st.session_state.show_password_reset = True
-                st.rerun()
+
+        if st.button("Forgot password?", type="secondary"):
+            st.session_state.show_password_reset = True
+            st.rerun()
 
     @staticmethod
     def render_signup_tab():
-        if AuthUI._invite_only_enabled():
-            st.info("Invite-only access is enabled. Ask an admin for an invite.")
-            AuthUI._render_request_access()
-            return
-
         st.subheader("Create an Account")
-        
         email = st.text_input("Email", key="auth_signup_email")
-        
-        with st.form("password_signup_form", border=False):
-            pwd = st.text_input("Password", type="password", key="auth_signup_password")
-            st.form_submit_button("Sign up", use_container_width=True, type="primary", on_click=AuthUI._handle_signup)
+
+        if AuthEngine.allowlist_enabled():
+            verified_email = st.session_state.get("allowlist_verified_email")
+            email_clean = (email or "").strip().lower()
+            if verified_email != email_clean:
+                st.session_state.allowlist_verified_email = None
+
+            if st.button("Continue", type="primary", use_container_width=True):
+                ok, err = AuthEngine.is_email_allowlisted(email)
+                if ok:
+                    st.session_state.allowlist_verified_email = email_clean
+                    st.session_state.signup_error = None
+                else:
+                    st.session_state.signup_error = err or "This email is not approved yet."
+
+            if st.session_state.get("allowlist_verified_email") != email_clean:
+                st.caption("Only approved emails can create accounts.")
+            else:
+                with st.form("password_signup_form", border=False):
+                    pwd = st.text_input("Password", type="password", key="auth_signup_password")
+                    st.form_submit_button("Sign up", use_container_width=True, type="primary", on_click=AuthUI._handle_signup)
+        else:
+            with st.form("password_signup_form", border=False):
+                pwd = st.text_input("Password", type="password", key="auth_signup_password")
+                st.form_submit_button("Sign up", use_container_width=True, type="primary", on_click=AuthUI._handle_signup)
             
         if st.session_state.get("signup_error"):
             st.error(f"Sign up failed: {st.session_state.signup_error}")
             st.session_state.signup_error = None
 
     @staticmethod
-    def render_request_access_tab():
-        st.subheader("Request Access")
-        AuthUI._render_request_access()
-
     @staticmethod
     def render_recovery_form():
         recovery_type = str(st.session_state.get("recovery_type") or "").strip().lower()
-        if recovery_type == "invite":
-            st.title("Create Your Account")
-        else:
-            st.title("Set New Password")
+        st.title("Set New Password")
         with st.container(border=True):
             new_p = st.text_input("New Password", type="password")
             conf_p = st.text_input("Confirm Password", type="password")
-            button_label = "Create account" if recovery_type == "invite" else "Update password"
+            button_label = "Update password"
             if st.button(button_label, type="primary", use_container_width=True):
                 if new_p == conf_p and new_p:
                     success, err = AuthEngine.update_password(new_p)
                     if success:
                         cache_control.bump()
-                        if recovery_type == "invite":
-                            st.success("Account created! Redirecting to login...")
-                        else:
-                            st.success("Updated! Redirecting to login...")
+                        st.success("Updated! Redirecting to login...")
                         st.query_params.clear()
                         st.session_state.show_recovery_form = False
                         st.session_state.recovery_type = None

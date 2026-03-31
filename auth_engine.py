@@ -50,6 +50,49 @@ class AuthEngine:
             raise RuntimeError("Network operation failed unexpectedly.")
 
     @staticmethod
+    def allowlist_enabled() -> bool:
+        return AuthEngine._secrets_truthy(st.secrets.get("SIGNUP_ALLOWLIST_ENABLED", False))
+
+    @staticmethod
+    def _allowlist_table() -> str:
+        raw = (st.secrets.get("SIGNUP_ALLOWLIST_TABLE", "") or "").strip()
+        return raw or "signup_allowlist"
+
+    @staticmethod
+    def is_email_allowlisted(email: str):
+        try:
+            if not AuthEngine.allowlist_enabled():
+                return True, None
+            email_clean = (email or "").strip().lower()
+            if not email_clean:
+                return False, "Email is required."
+            table = AuthEngine._allowlist_table()
+            res = sb_admin.table(table).select("email").eq("email", email_clean).limit(1).execute()
+            data = getattr(res, "data", None) if res else None
+            if isinstance(res, dict):
+                data = res.get("data") or data
+            return bool(data), None if data else "This email is not approved yet."
+        except Exception as e:
+            return False, str(e)
+
+    @staticmethod
+    def add_allowlist_email(email: str):
+        try:
+            email_clean = (email or "").strip().lower()
+            if not email_clean:
+                return False, "Email is required."
+            table = AuthEngine._allowlist_table()
+            payload = {"email": email_clean}
+            # Prefer upsert to avoid duplicate errors where supported.
+            try:
+                sb_admin.table(table).upsert(payload, on_conflict="email").execute()
+            except Exception:
+                sb_admin.table(table).insert(payload).execute()
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    @staticmethod
     def sign_in(email, password):
         try:
             email_clean = email.strip().lower()
@@ -100,8 +143,10 @@ class AuthEngine:
 
     @staticmethod
     def sign_up(email, password):
-        if AuthEngine._secrets_truthy(st.secrets.get("INVITE_ONLY", False)):
-            return None, None, "Sign-ups are disabled. Ask an admin for an invite."
+        if AuthEngine.allowlist_enabled():
+            ok, err = AuthEngine.is_email_allowlisted(email)
+            if not ok:
+                return None, None, err or "This email is not approved yet."
         try:
             email_clean = email.strip().lower()
             pwd_clean = AuthEngine.normalize_input(password)
@@ -131,23 +176,11 @@ class AuthEngine:
         except Exception as e:
             return False, str(e)
 
-    @staticmethod
-    def invite_user(email):
-        try:
-            email_clean = (email or "").strip().lower()
-            if not email_clean:
-                return False, "Email is required."
-            url = st.secrets.get("REDIRECT_URL", "http://localhost:8501").strip()
-            sb_admin.auth.admin.invite_user_by_email(email_clean, {"redirect_to": url})
-            return True, None
-        except Exception as e:
-            return False, str(e)
-
 
     @staticmethod
     def exchange_code_for_session(code: str):
         """
-        Exchanges a PKCE auth code for a session (used by invite/magic link flows).
+        Exchanges a PKCE auth code for a session (used by magic link flows).
         Tries multiple payload shapes to stay compatible across supabase-py versions.
         """
         try:

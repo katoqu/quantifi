@@ -63,6 +63,11 @@ create table change_events (
   created_at timestamptz default now()
 );
 
+create table signup_allowlist (
+  email text primary key,
+  created_at timestamptz not null default now()
+);
+
 -- 3. INDEXES
 create unique index categories_name_user_idx on categories (lower(name), user_id);
 create index entries_metric_id_idx on entries (metric_id);
@@ -78,6 +83,7 @@ alter table categories enable row level security;
 alter table metrics enable row level security;
 alter table entries enable row level security;
 alter table change_events enable row level security;
+alter table signup_allowlist enable row level security;
 
 -- 5. POLICIES
 create policy "Users can manage their own categories" on categories

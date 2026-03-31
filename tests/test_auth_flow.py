@@ -128,7 +128,7 @@ def test_handle_link_tokens_code_error(monkeypatch):
     auth.auth_persistence.mount = lambda: None
     auth.init_session_state()
     st.query_params["code"] = "abc"
-    st.query_params["type"] = "invite"
+    st.query_params["type"] = "recovery"
 
     auth.AuthEngine.exchange_code_for_session = staticmethod(lambda _c: (None, None, "bad"))
 

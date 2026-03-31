@@ -109,7 +109,7 @@ changes.show_changes()
     at.run()
 
     _input_text(at, label="Title", value="Started vegetarian nutrition")
-    _input_area(at, label="Notes", value="No meat, fish ok.")
+    _input_area(at, label="Notes (Markdown supported)", value="No meat, fish ok.")
     _click_button(at, label="Add Change")
     at.run()
 
