@@ -34,6 +34,10 @@ class AuthUI:
             
             if access_token and refresh_token:
                 auth_persistence.save_tokens(access_token, refresh_token)
+            else:
+                payload = AuthEngine.get_session_payload()
+                if payload and payload.get("access_token") and payload.get("refresh_token"):
+                    auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
 
             cache_control.bump()
             st.session_state.user = user
@@ -62,6 +66,10 @@ class AuthUI:
             
             if access_token and refresh_token:
                 auth_persistence.save_tokens(access_token, refresh_token)
+            else:
+                payload = AuthEngine.get_session_payload()
+                if payload and payload.get("access_token") and payload.get("refresh_token"):
+                    auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
 
             cache_control.bump()
             st.session_state.user = user

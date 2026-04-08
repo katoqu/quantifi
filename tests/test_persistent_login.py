@@ -54,53 +54,8 @@ def _install_cookie_manager_stub(monkeypatch):
     return stx
 
 
-def test_auth_persistence_roundtrip_tokens(monkeypatch):
-    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
-    _install_cookie_manager_stub(monkeypatch)
-
-    auth_persistence = _import_fresh("auth_persistence")
-
-    assert auth_persistence.save_tokens("access-token-123", "refresh-token-456", max_age_days=7) is True
-    loaded = auth_persistence.load()
-    assert loaded is not None
-    assert loaded["access_token"] == "access-token-123"
-    assert loaded["refresh_token"] == "refresh-token-456"
-
-    assert auth_persistence.clear() is True
-    assert auth_persistence.load() is None
-
-
-def test_auth_persistence_loads_legacy_token_payload(monkeypatch):
-    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
-    _install_cookie_manager_stub(monkeypatch)
-
-    auth_persistence = _import_fresh("auth_persistence")
-
-    cm = auth_persistence._cookie_manager()
-    legacy = {"access_token": "a", "refresh_token": "r", "expires_at": 123}
-    cm.set(auth_persistence.COOKIE_NAME, auth_persistence._encode(legacy), expires_at=30)
-
-    out = auth_persistence.load()
-    assert isinstance(out, dict)
-    assert out["access_token"] == "a"
-    assert out["refresh_token"] == "r"
-
-
-def test_session_store_encrypts_server_side(monkeypatch):
-    pytest.importorskip("cryptography")
-    from cryptography.fernet import Fernet
-
-    key = Fernet.generate_key().decode("utf-8")
-    _install_streamlit_stub(
-        monkeypatch,
-        secrets={
-            "PERSIST_LOGIN": True,
-            "SESSION_ENC_KEY": key,
-            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
-        },
-    )
-
-    # Stub supabase_config.sb_admin with an in-memory table.
+def _install_supabase_admin_stub(monkeypatch):
+    sys.modules.pop("supabase_config", None)
     store: dict[str, dict] = {}
 
     class _Result:
@@ -177,6 +132,57 @@ def test_session_store_encrypts_server_side(monkeypatch):
 
     supabase_config = types.SimpleNamespace(sb_admin=_SbAdmin())
     monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    return store
+
+
+def test_auth_persistence_roundtrip_tokens(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
+    _install_cookie_manager_stub(monkeypatch)
+
+    auth_persistence = _import_fresh("auth_persistence")
+
+    assert auth_persistence.save_tokens("access-token-123", "refresh-token-456", max_age_days=7) is True
+    loaded = auth_persistence.load()
+    assert loaded is not None
+    assert loaded["access_token"] == "access-token-123"
+    assert loaded["refresh_token"] == "refresh-token-456"
+
+    assert auth_persistence.clear() is True
+    assert auth_persistence.load() is None
+
+
+def test_auth_persistence_loads_legacy_token_payload(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
+    _install_cookie_manager_stub(monkeypatch)
+
+    auth_persistence = _import_fresh("auth_persistence")
+
+    cm = auth_persistence._cookie_manager()
+    legacy = {"access_token": "a", "refresh_token": "r", "expires_at": 123}
+    cm.set(auth_persistence.COOKIE_NAME, auth_persistence._encode(legacy), expires_at=30)
+
+    out = auth_persistence.load()
+    assert isinstance(out, dict)
+    assert out["access_token"] == "a"
+    assert out["refresh_token"] == "r"
+
+
+def test_session_store_encrypts_server_side(monkeypatch):
+    pytest.importorskip("cryptography")
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode("utf-8")
+    _install_streamlit_stub(
+        monkeypatch,
+        secrets={
+            "PERSIST_LOGIN": True,
+            "SESSION_ENC_KEY": key,
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+        },
+    )
+
+    # Stub supabase_config.sb_admin with an in-memory table.
+    store = _install_supabase_admin_stub(monkeypatch)
 
     session_store = _import_fresh("session_store")
 
@@ -193,3 +199,93 @@ def test_session_store_encrypts_server_side(monkeypatch):
 
     assert session_store.revoke_session(sid) is True
     assert session_store.load_session_payload(sid) is None
+
+
+def test_auth_persistence_roundtrip_sid_cookie(monkeypatch):
+    pytest.importorskip("cryptography")
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode("utf-8")
+    st = _install_streamlit_stub(
+        monkeypatch,
+        secrets={
+            "PERSIST_LOGIN": True,
+            "SESSION_ENC_KEY": key,
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+        },
+    )
+    _install_cookie_manager_stub(monkeypatch)
+    store = _install_supabase_admin_stub(monkeypatch)
+
+    sys.modules.pop("session_store", None)
+    auth_persistence = _import_fresh("auth_persistence")
+    st.session_state["user"] = types.SimpleNamespace(id="u-1")
+
+    assert auth_persistence.save_tokens("access-1", "refresh-1") is True
+
+    cm = auth_persistence._cookie_manager()
+    raw_cookie = cm.get(auth_persistence.COOKIE_NAME)
+    decoded = auth_persistence._decode(raw_cookie)
+    assert isinstance(decoded, dict)
+    assert "sid" in decoded
+    assert "access_token" not in decoded
+
+    loaded = auth_persistence.load()
+    assert loaded == {"access_token": "access-1", "refresh_token": "refresh-1"}
+
+    sid = decoded["sid"]
+    assert sid in store
+
+    assert auth_persistence.clear() is True
+    assert store[sid].get("revoked_at") is not None
+
+
+def test_auth_persistence_legacy_cookie_with_session_store_enabled(monkeypatch):
+    pytest.importorskip("cryptography")
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode("utf-8")
+    _install_streamlit_stub(
+        monkeypatch,
+        secrets={
+            "PERSIST_LOGIN": True,
+            "SESSION_ENC_KEY": key,
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+        },
+    )
+    _install_cookie_manager_stub(monkeypatch)
+    _install_supabase_admin_stub(monkeypatch)
+
+    sys.modules.pop("session_store", None)
+    auth_persistence = _import_fresh("auth_persistence")
+
+    cm = auth_persistence._cookie_manager()
+    legacy = {"access_token": "a", "refresh_token": "r", "expires_at": 123}
+    cm.set(auth_persistence.COOKIE_NAME, auth_persistence._encode(legacy), expires_at=30)
+
+    out = auth_persistence.load()
+    assert isinstance(out, dict)
+    assert out["access_token"] == "a"
+    assert out["refresh_token"] == "r"
+
+
+def test_auth_persistence_falls_back_when_session_store_disabled(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
+    _install_cookie_manager_stub(monkeypatch)
+
+    # Ensure no session_store module is cached and no admin stub is installed.
+    sys.modules.pop("session_store", None)
+    sys.modules.pop("supabase_config", None)
+
+    auth_persistence = _import_fresh("auth_persistence")
+
+    assert auth_persistence.save_tokens("access-x", "refresh-y") is True
+    cm = auth_persistence._cookie_manager()
+    raw_cookie = cm.get(auth_persistence.COOKIE_NAME)
+    decoded = auth_persistence._decode(raw_cookie)
+    assert isinstance(decoded, dict)
+    assert decoded.get("access_token") == "access-x"
+    assert decoded.get("refresh_token") == "refresh-y"
+
+    loaded = auth_persistence.load()
+    assert loaded == {"access_token": "access-x", "refresh_token": "refresh-y"}

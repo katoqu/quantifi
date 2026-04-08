@@ -1,8 +1,10 @@
 import datetime
 import base64
 import json
+import uuid
 from typing import Any
 import streamlit as st
+import session_store
 
 # Constants
 COOKIE_NAME = "quantifi_auth"
@@ -58,19 +60,60 @@ def _decode(value: str) -> dict[str, Any] | None:
     except Exception:
         return None
 
-def load() -> dict[str, str] | None:
-    """Loads persisted Supabase access and refresh tokens from the browser cookie."""
+def _session_store_enabled() -> bool:
+    try:
+        return session_store.enabled()
+    except Exception:
+        return False
+
+def _read_cookie_value() -> str | None:
     if not _cookies_enabled():
         return None
     cm = _cookie_manager()
     if cm is None:
         return None
-    
     value = cm.get(COOKIE_NAME)
+    return str(value) if value else None
+
+def _extract_sid(value: str | None) -> str | None:
+    if not value:
+        return None
+    decoded = _decode(value)
+    if isinstance(decoded, dict):
+        sid = decoded.get("sid")
+        if isinstance(sid, str) and sid:
+            return sid
+    # If cookie is raw SID, accept UUID-ish values.
+    try:
+        sid = str(value).strip()
+        if not sid:
+            return None
+        uuid.UUID(sid)
+        return sid
+    except Exception:
+        return None
+
+def load() -> dict[str, str] | None:
+    """Loads persisted Supabase access and refresh tokens from the browser cookie."""
+    if not _cookies_enabled():
+        return None
+    value = _read_cookie_value()
     if not value:
         return None
 
-    decoded = _decode(str(value))
+    # Preferred: server-side session store with SID cookie.
+    if _session_store_enabled():
+        sid = _extract_sid(value)
+        if sid:
+            try:
+                payload = session_store.load_session_payload(sid)
+                if isinstance(payload, dict) and payload.get("access_token") and payload.get("refresh_token"):
+                    return payload
+            except Exception:
+                pass
+
+    # Legacy fallback: tokens stored directly in cookie.
+    decoded = _decode(value)
     if isinstance(decoded, dict) and decoded.get("access_token") and decoded.get("refresh_token"):
         return decoded
     return None
@@ -85,7 +128,31 @@ def save_tokens(access_token: str, refresh_token: str, max_age_days: int = 30) -
         
     payload = {"access_token": access_token, "refresh_token": refresh_token}
     expiration_date = datetime.datetime.now() + datetime.timedelta(days=max_age_days)
-    
+
+    # Preferred: store tokens server-side and persist only SID in cookie.
+    if _session_store_enabled():
+        try:
+            existing_sid = _extract_sid(_read_cookie_value())
+            if existing_sid:
+                if session_store.update_session(sid=existing_sid, session_payload=payload):
+                    cm.set(COOKIE_NAME, _encode({"sid": existing_sid}), expires_at=expiration_date)
+                    return True
+            user = st.session_state.get("user")
+            user_id = getattr(user, "id", None) if user is not None else None
+            if not user_id:
+                user_id = "unknown"
+            sid = session_store.create_session(
+                user_id=str(user_id),
+                session_payload=payload,
+                max_age_days=max_age_days,
+            )
+            if sid:
+                cm.set(COOKIE_NAME, _encode({"sid": sid}), expires_at=expiration_date)
+                return True
+        except Exception:
+            # Fall back to legacy cookie storage if server-side persistence fails.
+            pass
+
     cm.set(COOKIE_NAME, _encode(payload), expires_at=expiration_date)
     return True
 
@@ -98,6 +165,13 @@ def clear() -> bool:
         return False
         
     try:
+        if _session_store_enabled():
+            sid = _extract_sid(_read_cookie_value())
+            if sid:
+                try:
+                    session_store.revoke_session(sid)
+                except Exception:
+                    pass
         cm.delete(COOKIE_NAME)
     except KeyError:
         pass 
