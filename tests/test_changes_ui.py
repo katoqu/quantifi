@@ -99,6 +99,7 @@ changes.models.update_change_event = lambda _id, payload: None
 # Streamlit testing can be sensitive to some newer widgets; keep this test focused.
 # In particular, some Streamlit versions have issues serializing `st.pills` state under AppTest.
 changes.st.pills = lambda *a, **k: "Today"
+changes.st.segmented_control = lambda *a, **k: "New Log"
 changes.st.date_input = lambda *a, **k: dt.date.today()
 changes.st.time_input = lambda *a, **k: dt.datetime.now().time().replace(second=0, microsecond=0)
 
@@ -171,6 +172,7 @@ changes.models.update_change_event = _update_change_event
 # Streamlit testing can be sensitive to some newer widgets; keep this test focused.
 # In particular, some Streamlit versions have issues serializing `st.pills` state under AppTest.
 changes.st.pills = lambda *a, **k: "Today"
+changes.st.segmented_control = lambda *a, **k: "Browse"
 changes.st.date_input = lambda *a, **k: dt.date(2026, 2, 1)
 changes.st.time_input = lambda *a, **k: dt.time(12, 0)
 
@@ -251,6 +253,7 @@ changes.models.delete_change_event = lambda _id: None
 changes.models.update_change_event = _update_change_event
 
 changes.st.pills = lambda *a, **k: "Today"
+changes.st.segmented_control = lambda *a, **k: "Browse"
 changes.st.date_input = lambda *a, **k: dt.date(2026, 2, 5)
 changes.st.time_input = lambda *a, **k: dt.time(9, 30)
 
@@ -324,6 +327,7 @@ changes.models.delete_change_event = lambda _id: None
 changes.models.update_change_event = _update_change_event
 
 changes.st.pills = lambda *a, **k: "Today"
+changes.st.segmented_control = lambda *a, **k: "Browse"
 changes.st.date_input = lambda *a, **k: dt.date(2026, 2, 20)
 changes.st.time_input = lambda *a, **k: dt.time(8, 15)
 

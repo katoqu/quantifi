@@ -9,7 +9,10 @@ import utils
 _EDIT_KEY = "edit_change_event_id"
 _END_KEY = "end_change_event_id"
 _REVIVE_KEY = "revive_change_event_id"
-_ARCHIVE_TOGGLE_KEY = "show_archived_changes"
+_FILTER_PILL_KEY = "change_filter_pill"
+_SHOW_ARCHIVED_KEY = "show_archived_changes"
+_SECTION_KEY = "changes_section_selector"
+_RECENT_LIMIT = 8
 
 
 def _parse_iso_datetime(value):
@@ -30,14 +33,26 @@ def _render_markdown_notes(notes: str | None):
     st.markdown(notes)
 
 
+def _format_dt_short(value) -> str:
+    ts = _parse_iso_datetime(value)
+    return ts.strftime("%Y-%m-%d %H:%M") if ts else "Unknown"
+
+
 def _sort_event_desc(event):
     ts = _parse_iso_datetime(event.get("recorded_at"))
     return ts.timestamp() if ts else float("-inf")
 
 
-def _sort_archived_desc(event):
+def _sort_recent_desc(event):
     ts = _parse_iso_datetime(event.get("end_at")) or _parse_iso_datetime(event.get("recorded_at"))
     return ts.timestamp() if ts else float("-inf")
+
+
+def _truncate(text: str, limit: int = 72) -> str:
+    text = str(text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "..."
 
 
 def _clear_transient_event_actions():
@@ -51,19 +66,10 @@ def _clear_all_event_modes():
 
 
 def _event_label(ev):
-    cat_name = (ev.get("categories") or {}).get("name")
-    cat_label = cat_name.title() if cat_name else "Uncategorized"
-    title = ev.get("title", "")
-
-    start_ts = _parse_iso_datetime(ev.get("recorded_at"))
-    start_label = start_ts.strftime("%Y-%m-%d %H:%M") if start_ts else str(ev.get("recorded_at"))
-
+    title = _truncate(ev.get("title") or "Untitled change")
     if ev.get("is_archived"):
-        end_ts = _parse_iso_datetime(ev.get("end_at"))
-        end_label = end_ts.strftime("%Y-%m-%d %H:%M") if end_ts else "Unknown"
-        return f"{cat_label}: {title} - started {start_label}, ended {end_label}"
-
-    return f"{cat_label}: {title} - started {start_label}"
+        return f"[Archived] {title}"
+    return title
 
 
 def _persist_change_update(event_id, payload, success_msg, icon):
@@ -73,6 +79,46 @@ def _persist_change_update(event_id, payload, success_msg, icon):
     _clear_all_event_modes()
     utils.finalize_action(success_msg, icon=icon)
     st.rerun()
+
+
+def _pills_value(label: str, *, options: list, key: str, label_visibility: str = "visible", format_func=None):
+    selected = st.pills(
+        label,
+        options=options,
+        key=key,
+        selection_mode="single",
+        label_visibility=label_visibility,
+        format_func=format_func,
+    )
+    if selected in options:
+        return selected
+    existing = st.session_state.get(key)
+    if existing in options:
+        return existing
+    return options[0] if options else None
+
+
+def _render_event_meta(ev):
+    cat_name = (ev.get("categories") or {}).get("name")
+    cat_label = cat_name.title() if cat_name else "Uncategorized"
+
+    started = _format_dt_short(ev.get("recorded_at"))
+    ended = _format_dt_short(ev.get("end_at")) if ev.get("is_archived") else None
+
+    if ended:
+        st.caption(f"Category: {cat_label} | Started: {started} | Ended: {ended}")
+    else:
+        st.caption(f"Category: {cat_label} | Started: {started}")
+
+
+def _category_label_for_event(ev, cat_labels):
+    cat_name = (ev.get("categories") or {}).get("name")
+    if cat_name:
+        return cat_name.title()
+    cat_id = ev.get("category_id")
+    if cat_id is None:
+        return "Uncategorized"
+    return cat_labels.get(cat_id, "Uncategorized")
 
 
 def _render_end_form(ev):
@@ -227,7 +273,7 @@ def _render_event_common_actions(ev, *, archived):
     if archived:
         c1, c2, c3 = st.columns(3)
         with c1:
-            if ev_id and st.button("Revive", key=f"revive_change_{ev_id}", use_container_width=True):
+            if ev_id and st.button("Revive", key=f"revive_change_{ev_id}", type="primary", use_container_width=True):
                 st.session_state[_REVIVE_KEY] = ev_id
                 st.session_state[_EDIT_KEY] = None
                 st.session_state[_END_KEY] = None
@@ -253,7 +299,7 @@ def _render_event_common_actions(ev, *, archived):
                 _clear_transient_event_actions()
                 st.rerun()
         with c2:
-            if ev_id and st.button("End routine", key=f"end_change_{ev_id}", use_container_width=True):
+            if ev_id and st.button("End routine", key=f"end_change_{ev_id}", type="primary", use_container_width=True):
                 st.session_state[_END_KEY] = ev_id
                 st.session_state[_EDIT_KEY] = None
                 st.session_state[_REVIVE_KEY] = None
@@ -268,47 +314,44 @@ def _render_event_common_actions(ev, *, archived):
                 st.rerun()
 
 
-def _render_events_section(events, *, archived, sorted_cat_ids, cat_labels):
+def _render_events_section(events, *, archived_override, sorted_cat_ids, cat_labels):
     for ev in events:
         ev_id = ev.get("id")
-        expanded = (
+        mode_is_active = (
             st.session_state.get(_EDIT_KEY) == ev_id
             or st.session_state.get(_END_KEY) == ev_id
             or st.session_state.get(_REVIVE_KEY) == ev_id
         )
 
-        with st.expander(_event_label(ev), expanded=expanded):
-            _render_event_common_actions(ev, archived=archived)
-            _render_end_form(ev)
-            _render_revive_form(ev)
-            _render_edit_form(ev, sorted_cat_ids, cat_labels)
+        with st.expander(_event_label(ev), expanded=mode_is_active):
+            if st.session_state.get(_END_KEY) == ev_id:
+                _render_end_form(ev)
+                continue
+            if st.session_state.get(_REVIVE_KEY) == ev_id:
+                _render_revive_form(ev)
+                continue
+            if st.session_state.get(_EDIT_KEY) == ev_id:
+                _render_edit_form(ev, sorted_cat_ids, cat_labels)
+                continue
 
-            if (
-                st.session_state.get(_EDIT_KEY) != ev_id
-                and st.session_state.get(_END_KEY) != ev_id
-                and st.session_state.get(_REVIVE_KEY) != ev_id
-            ):
-                _render_markdown_notes(ev.get("notes"))
+            _render_event_meta(ev)
+            _render_markdown_notes(ev.get("notes"))
+            st.divider()
+            event_archived = bool(ev.get("is_archived")) if archived_override is None else bool(archived_override)
+            _render_event_common_actions(ev, archived=event_archived)
 
 
-def show_changes():
-    st.subheader("Lifestyle Changes")
+def _apply_simple_filter(events, selected_filter, *, cat_labels):
+    if selected_filter == "Recent":
+        recent = sorted(events, key=_sort_recent_desc, reverse=True)[:_RECENT_LIMIT]
+        return recent, f"Recent routines (last {_RECENT_LIMIT})"
 
-    cats = models.get_categories() or []
-    if not cats:
-        st.info("Create a category first (Settings -> Categories).")
-        return
+    filtered = [ev for ev in events if _category_label_for_event(ev, cat_labels) == selected_filter]
+    filtered = sorted(filtered, key=_sort_recent_desc, reverse=True)
+    return filtered, f"Category: {selected_filter}" if filtered else "No routines match this filter yet."
 
-    if _EDIT_KEY not in st.session_state:
-        st.session_state[_EDIT_KEY] = None
-    if _END_KEY not in st.session_state:
-        st.session_state[_END_KEY] = None
-    if _REVIVE_KEY not in st.session_state:
-        st.session_state[_REVIVE_KEY] = None
 
-    cat_labels = {c["id"]: c.get("name", "").title() for c in cats}
-    sorted_cat_ids = sorted(cat_labels.keys(), key=lambda cid: cat_labels[cid].lower())
-
+def _render_create_change_panel(sorted_cat_ids, cat_labels):
     with st.container(border=True):
         st.caption("Log a change")
 
@@ -316,10 +359,9 @@ def show_changes():
         if when_key not in st.session_state:
             st.session_state[when_key] = "Today"
 
-        when_selection = st.pills(
+        when_selection = _pills_value(
             "When",
             options=["Now", "Today", "Yesterday", "Custom"],
-            selection_mode="single",
             key=when_key,
             label_visibility="collapsed",
         )
@@ -377,37 +419,73 @@ def show_changes():
                 utils.finalize_action("Change saved", icon="📝")
                 st.rerun()
 
+
+def show_changes():
+    st.subheader("Lifestyle Changes")
+
+    cats = models.get_categories() or []
+    if not cats:
+        st.info("Create a category first (Settings -> Categories).")
+        return
+
+    if _EDIT_KEY not in st.session_state:
+        st.session_state[_EDIT_KEY] = None
+    if _END_KEY not in st.session_state:
+        st.session_state[_END_KEY] = None
+    if _REVIVE_KEY not in st.session_state:
+        st.session_state[_REVIVE_KEY] = None
+
+    cat_labels = {c["id"]: c.get("name", "").title() for c in cats}
+    sorted_cat_ids = sorted(cat_labels.keys(), key=lambda cid: cat_labels[cid].lower())
+
+    section = st.segmented_control(
+        "Changes section",
+        options=["Browse", "New Log"],
+        selection_mode="single",
+        key=_SECTION_KEY,
+        label_visibility="collapsed",
+    )
+    section = section or "Browse"
+    if section == "New Log":
+        _render_create_change_panel(sorted_cat_ids, cat_labels)
+        return
+
     events = models.get_change_events() or []
     if not events:
         st.info("No changes logged yet.")
         return
 
-    active_events = sorted([ev for ev in events if not ev.get("is_archived", False)], key=_sort_event_desc, reverse=True)
-    archived_events = sorted([ev for ev in events if ev.get("is_archived", False)], key=_sort_archived_desc, reverse=True)
+    show_archived = st.toggle("Show archived routines", key=_SHOW_ARCHIVED_KEY, value=False)
 
-    if active_events:
-        with st.container(border=True):
-            st.caption("Active routines")
-            _render_events_section(
-                active_events,
-                archived=False,
-                sorted_cat_ids=sorted_cat_ids,
-                cat_labels=cat_labels,
-            )
-    else:
-        st.info("No active routines. Revive one from archived routines or log a new change.")
+    visible_events = (
+        sorted(events, key=_sort_recent_desc, reverse=True)
+        if show_archived
+        else sorted([ev for ev in events if not ev.get("is_archived", False)], key=_sort_event_desc, reverse=True)
+    )
 
-    if archived_events:
-        if _ARCHIVE_TOGGLE_KEY not in st.session_state:
-            st.session_state[_ARCHIVE_TOGGLE_KEY] = False
+    present_categories = sorted(
+        {_category_label_for_event(ev, cat_labels) for ev in visible_events},
+        key=lambda x: x.lower(),
+    )
+    filter_options = ["Recent"] + present_categories
+    selected_filter = _pills_value(
+        "Filter",
+        options=filter_options,
+        key=_FILTER_PILL_KEY,
+        label_visibility="collapsed",
+    )
 
-        show_archived = st.toggle("Show archived routines", key=_ARCHIVE_TOGGLE_KEY)
-        if show_archived:
-            with st.container(border=True):
-                st.caption("Archived routines")
-                _render_events_section(
-                    archived_events,
-                    archived=True,
-                    sorted_cat_ids=sorted_cat_ids,
-                    cat_labels=cat_labels,
-                )
+    filtered_events, section_caption = _apply_simple_filter(visible_events, selected_filter, cat_labels=cat_labels)
+
+    if not filtered_events:
+        st.info("No routines match this filter yet.")
+        return
+
+    with st.container(border=True):
+        st.caption(section_caption)
+        _render_events_section(
+            filtered_events,
+            archived_override=None,
+            sorted_cat_ids=sorted_cat_ids,
+            cat_labels=cat_labels,
+        )

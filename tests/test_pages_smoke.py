@@ -114,6 +114,7 @@ pages.models.get_metrics = lambda include_archived=True: [
     {"id": "m1", "name": "sleep", "unit_name": "hrs"},
     {"id": "m2", "name": "mood", "unit_name": "score"},
 ]
+pages.models.get_categories = lambda: []
 
 pages.models.get_all_entries_bulk = lambda: [
     {"metric_id": "m2", "recorded_at": "2024-01-01T00:00:00Z", "value": 5}
