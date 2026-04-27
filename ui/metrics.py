@@ -9,6 +9,7 @@ from .metrics_dialogs import (
     _infer_metric_kind,
     _can_convert_kind,
     _metric_matches_query,
+    _delete_phrase_matches,
     _int_or_default,
 )
 from .metrics_editor import show_edit_metrics

@@ -9,6 +9,7 @@ from .metrics_dialogs import (
     _KIND_TO_UNIT_TYPE,
     show_convert_metric_kind_dialog,
     show_confirm_metric_update_dialog,
+    show_confirm_metric_delete_dialog,
     _int_or_default,
 )
 
@@ -133,7 +134,7 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
 
         # Action row: safe or archive
         st.divider()
-        col_save, col_arch = st.columns([2, 1])
+        col_save, col_arch, col_del = st.columns([2, 1, 1])
 
         with col_save:
             if st.button("💾 Save Changes", key=f"upd_sv_{m['id']}", type="primary", use_container_width=True, disabled=range_error):
@@ -176,3 +177,12 @@ def _render_metric_editor_block(m, opt_ids, cat_options):
                     models.update_metric(m['id'], {"is_archived": False})
                     utils.finalize_action(f"Restored: {m['name'].title()}", icon="✅")
                     st.rerun()
+
+        with col_del:
+            if st.button(
+                "🗑️ Delete",
+                key=f"del_{m['id']}",
+                help="Permanently delete this metric and all related entries",
+                use_container_width=True,
+            ):
+                show_confirm_metric_delete_dialog(m)

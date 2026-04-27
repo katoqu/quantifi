@@ -48,6 +48,16 @@ def test_metrics_query_matching_tokenizes_and_matches_all_tokens():
     assert metrics._metric_matches_query(metric, cat_labels, "health weight") is False
 
 
+def test_metrics_delete_phrase_matching_requires_delete_prefix():
+    """Delete confirmation requires the expected delete phrase."""
+    from ui import metrics
+
+    assert metrics._delete_phrase_matches("sleep quality", "delete sleep quality") is True
+    assert metrics._delete_phrase_matches("Sleep Quality", " DELETE SLEEP QUALITY ") is True
+    assert metrics._delete_phrase_matches("sleep quality", "sleep quality") is False
+    assert metrics._delete_phrase_matches("sleep quality", "delete sleep") is False
+
+
 def test_landing_page_latest_value_formatting_and_kind_inference():
     """Landing page formats latest values based on kind and unit."""
     from ui import landing_page

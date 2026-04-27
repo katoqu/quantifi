@@ -58,6 +58,11 @@ def _metric_matches_query(metric, cat_labels, query: str) -> bool:
     return all(t in haystack for t in tokens)
 
 
+def _delete_phrase_matches(metric_name: str, typed_text: str) -> bool:
+    expected = f"delete {utils.normalize_name(metric_name or '')}"
+    return utils.normalize_name(typed_text or "") == expected
+
+
 @st.dialog("Convert Metric Kind")
 def show_convert_metric_kind_dialog(metric):
     """Dialog to convert metric kind while validating data constraints."""
@@ -234,6 +239,48 @@ def show_browse_metric_dialog(metrics, cat_labels, current_id):
         st.info('Refine your search or enable "Show all results".')
 
     st.button("Cancel", use_container_width=True)
+
+
+@st.dialog("Delete Metric")
+def show_confirm_metric_delete_dialog(metric):
+    """Dialog to permanently delete a metric and its entries."""
+    mid = metric.get("id")
+    if not mid:
+        st.error("Missing metric id.")
+        return
+
+    metric_name = str(metric.get("name") or "metric")
+    entry_count = models.get_entry_count(mid)
+    entry_word = "entry" if entry_count == 1 else "entries"
+
+    st.error("This permanently deletes this metric.")
+    st.caption(
+        f"It will also delete {entry_count} {entry_word} linked to this metric. This cannot be undone."
+    )
+
+    phrase = f"delete {utils.normalize_name(metric_name)}"
+    typed = st.text_input(
+        f"Type `{phrase}` to confirm",
+        key=f"metric_delete_phrase_{mid}",
+    )
+    acknowledged = st.checkbox(
+        "I understand this action is permanent.",
+        key=f"metric_delete_ack_{mid}",
+        value=False,
+    )
+    can_delete = acknowledged and _delete_phrase_matches(metric_name, typed)
+
+    if st.button(
+        "Delete metric",
+        type="primary",
+        use_container_width=True,
+        disabled=not can_delete,
+    ):
+        models.delete_metric(mid)
+        if str(st.session_state.get("last_active_mid")) == str(mid):
+            st.session_state.pop("last_active_mid", None)
+        utils.finalize_action(f"Deleted: {metric_name.title()}", icon="🗑️")
+        st.rerun()
 
 
 @st.dialog("Confirm Metric Update")
