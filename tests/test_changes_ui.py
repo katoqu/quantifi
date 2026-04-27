@@ -199,3 +199,151 @@ changes.show_changes()
     assert payload["notes"] == "New notes"
     assert payload["category_id"] == "c1"
     assert "recorded_at" in payload
+
+
+def test_changes_can_end_routine_and_archive():
+    """Ending an active routine sets end_at and archives the event."""
+    script = """
+import streamlit as st
+from ui import changes
+import datetime as dt
+
+EVENTS_KEY = "__events"
+CATS_KEY = "__cats"
+UPD_KEY = "__update_calls"
+
+if EVENTS_KEY not in st.session_state:
+    st.session_state[EVENTS_KEY] = [
+        {
+            "id": "e1",
+            "title": "Morning walk",
+            "notes": "30 min",
+            "recorded_at": "2026-02-01T12:00:00Z",
+            "end_at": None,
+            "is_archived": False,
+            "category_id": "c1",
+            "categories": {"name": "fitness"},
+        }
+    ]
+if CATS_KEY not in st.session_state:
+    st.session_state[CATS_KEY] = [{"id": "c1", "name": "fitness"}]
+if UPD_KEY not in st.session_state:
+    st.session_state[UPD_KEY] = []
+
+def _get_categories():
+    return st.session_state[CATS_KEY]
+
+def _get_change_events(limit=200):
+    return st.session_state[EVENTS_KEY]
+
+def _update_change_event(event_id, payload):
+    st.session_state[UPD_KEY].append((event_id, payload))
+    for ev in st.session_state[EVENTS_KEY]:
+        if ev["id"] == event_id:
+            ev.update(payload)
+            ev["categories"] = {"name": "fitness"}
+    return {"data": [{"id": event_id}]}
+
+changes.models.get_categories = _get_categories
+changes.models.get_change_events = _get_change_events
+changes.models.create_change_event = lambda payload: None
+changes.models.delete_change_event = lambda _id: None
+changes.models.update_change_event = _update_change_event
+
+changes.st.pills = lambda *a, **k: "Today"
+changes.st.date_input = lambda *a, **k: dt.date(2026, 2, 5)
+changes.st.time_input = lambda *a, **k: dt.time(9, 30)
+
+changes.show_changes()
+"""
+
+    at = AppTest.from_string(script)
+    at.run()
+
+    _click_button(at, key="end_change_e1")
+    at.run()
+
+    _click_button(at, label="Confirm End Date")
+    at.run()
+
+    calls = _session_get(at, "__update_calls", [])
+    assert len(calls) == 1
+    event_id, payload = calls[0]
+    assert event_id == "e1"
+    assert payload["is_archived"] is True
+    assert "end_at" in payload
+
+
+def test_changes_can_revive_archived_routine():
+    """Reviving an archived routine clears end_at and sets a new start date."""
+    script = """
+import streamlit as st
+from ui import changes
+import datetime as dt
+
+EVENTS_KEY = "__events"
+CATS_KEY = "__cats"
+UPD_KEY = "__update_calls"
+
+if EVENTS_KEY not in st.session_state:
+    st.session_state[EVENTS_KEY] = [
+        {
+            "id": "e1",
+            "title": "Morning walk",
+            "notes": "30 min",
+            "recorded_at": "2026-02-01T12:00:00Z",
+            "end_at": "2026-02-10T12:00:00Z",
+            "is_archived": True,
+            "category_id": "c1",
+            "categories": {"name": "fitness"},
+        }
+    ]
+if CATS_KEY not in st.session_state:
+    st.session_state[CATS_KEY] = [{"id": "c1", "name": "fitness"}]
+if UPD_KEY not in st.session_state:
+    st.session_state[UPD_KEY] = []
+
+def _get_categories():
+    return st.session_state[CATS_KEY]
+
+def _get_change_events(limit=200):
+    return st.session_state[EVENTS_KEY]
+
+def _update_change_event(event_id, payload):
+    st.session_state[UPD_KEY].append((event_id, payload))
+    for ev in st.session_state[EVENTS_KEY]:
+        if ev["id"] == event_id:
+            ev.update(payload)
+            ev["categories"] = {"name": "fitness"}
+    return {"data": [{"id": event_id}]}
+
+changes.models.get_categories = _get_categories
+changes.models.get_change_events = _get_change_events
+changes.models.create_change_event = lambda payload: None
+changes.models.delete_change_event = lambda _id: None
+changes.models.update_change_event = _update_change_event
+
+changes.st.pills = lambda *a, **k: "Today"
+changes.st.date_input = lambda *a, **k: dt.date(2026, 2, 20)
+changes.st.time_input = lambda *a, **k: dt.time(8, 15)
+
+changes.show_changes()
+"""
+
+    at = AppTest.from_string(script)
+    at.session_state["show_archived_changes"] = True
+    at.run()
+
+    _click_button(at, key="revive_change_e1")
+    at.run()
+
+    _click_button(at, label="Confirm New Start Date")
+    at.run()
+
+    calls = _session_get(at, "__update_calls", [])
+    assert len(calls) == 1
+    event_id, payload = calls[0]
+    assert event_id == "e1"
+    assert payload["is_archived"] is False
+    assert payload["end_at"] is None
+    assert "recorded_at" in payload

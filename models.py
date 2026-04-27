@@ -63,7 +63,7 @@ def _get_change_events_cached(user_id: str, cache_buster: int, limit: int):
     _ = (user_id, cache_buster)  # cache key only
     res = _safe_execute(
         sb.table("change_events")
-        .select("id, title, notes, recorded_at, created_at, category_id, categories(name)")
+        .select("id, title, notes, recorded_at, end_at, is_archived, created_at, category_id, categories(name)")
         .order("recorded_at", desc=True)
         .limit(limit),
         "Failed to fetch change events",
@@ -312,7 +312,7 @@ def get_flat_export_data():
         return []
 
     changes_res = _safe_execute(
-        sb.table("change_events").select("recorded_at, title, notes, categories(name)"),
+        sb.table("change_events").select("recorded_at, end_at, is_archived, title, notes, categories(name)"),
         "Failed to fetch change events for export",
     )
     changes_data = changes_res.data if changes_res and changes_res.data else []
@@ -356,6 +356,8 @@ def build_export_rows(entries_data: list[dict], change_events_data: list[dict]) 
 
     for ev in change_events_data:
         ts = pd.to_datetime(ev["recorded_at"], format="ISO8601", utc=True)
+        end_at = ev.get("end_at")
+        end_ts = pd.to_datetime(end_at, format="ISO8601", utc=True) if end_at else None
         rows.append(
             {
                 "RowType": "change",
@@ -363,7 +365,7 @@ def build_export_rows(entries_data: list[dict], change_events_data: list[dict]) 
                 "Category": (ev.get("categories", {}) or {}).get("name") if ev.get("categories") else "None",
                 "Metric": "",
                 "Description": "",
-                "Archived": "",
+                "Archived": bool(ev.get("is_archived", False)),
                 "Value": "",
                 "Unit": "",
                 "Type": "",
@@ -374,6 +376,7 @@ def build_export_rows(entries_data: list[dict], change_events_data: list[dict]) 
                 "Target": "",
                 "Title": ev.get("title", ""),
                 "Notes": ev.get("notes", "") or "",
+                "EndDate": end_ts.strftime("%Y-%m-%d %H:%M:%S") if end_ts is not None else "",
             }
         )
 

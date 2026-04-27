@@ -58,6 +58,8 @@ create table change_events (
   title text not null,
   notes text,
   recorded_at timestamp not null default now(),
+  end_at timestamp,
+  is_archived boolean not null default false,
   category_id uuid references categories(id) on delete set null,
   user_id uuid not null references auth.users default auth.uid(),
   created_at timestamptz default now()
@@ -76,6 +78,7 @@ create index metrics_category_id_idx on metrics (category_id);
 create index idx_active_metrics on metrics (user_id) where is_archived = false;
 create index change_events_user_id_idx on change_events (user_id);
 create index change_events_recorded_at_idx on change_events (recorded_at);
+create index change_events_is_archived_idx on change_events (is_archived);
 create index change_events_category_id_idx on change_events (category_id);
 
 -- 4. SECURITY (RLS)
