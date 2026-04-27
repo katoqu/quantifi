@@ -55,6 +55,7 @@ def tracker_page():
 
     # --- 2. DATA LOADING & STATE ---
     all_metrics = models.get_metrics(include_archived=True) or []
+    active_metrics = [m for m in all_metrics if not m.get("is_archived", False)]
 
     if "tracker_view_selector" not in st.session_state:
         st.session_state["tracker_view_selector"] = "Home"
@@ -86,7 +87,7 @@ def tracker_page():
     st.session_state["last_tracker_view_selection"] = view_mode
 
     # --- 4b. SUBVIEW FILTER PILLS (Add/Stats/Edit) ---
-    filtered_metrics = all_metrics
+    filtered_metrics = active_metrics
     if view_mode in ("Add", "Stats", "Edit"):
         cats = models.get_categories() or []
         cat_map = {c["id"]: c["name"].title() for c in cats}
@@ -109,7 +110,7 @@ def tracker_page():
         if current_filter == "Recent":
             recent_ids = _recent_metric_ids(models.get_all_entries_bulk(), limit=5)
         filtered_metrics = _filter_metrics_for_subview(
-            all_metrics, cat_map, current_filter, recent_ids=recent_ids
+            active_metrics, cat_map, current_filter, recent_ids=recent_ids
         )
 
         # Back Button Pill (simplified label)

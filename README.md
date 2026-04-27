@@ -148,6 +148,10 @@ Secrets used:
 - `SIGNUP_ALLOWLIST_TABLE`: Supabase table name for allowlist (default `signup_allowlist`).
 - `PERSIST_LOGIN`: boolean (`true`/`false`) to enable cookie-based session restore (default: `true`).
 - `SESSION_ENC_KEY`: Fernet key used to encrypt Supabase tokens before storing them in `app_sessions` (required for persistent login).
+- `AUTH_COOKIE_RESTORE_RETRIES`: number of extra cookie-restore reruns during wake-up (default: `2`).
+- `AUTH_COOKIE_RESTORE_DELAY_SECONDS`: delay between wake-up restore retries (default: `0.5`).
+- `AUTH_EVENT_LOG`: boolean (`true`/`false`) to write structured auth diagnostics (default: `true`).
+- `AUTH_EVENT_LOG_PATH`: JSONL file path for auth diagnostics (default: `logs/auth_events.jsonl`).
 
 ### Staying logged in (Streamlit Cloud)
 
@@ -161,6 +165,14 @@ Setup:
    - `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 
 Disable persistent login by setting `PERSIST_LOGIN = false`.
+
+### Auth diagnostics log (for hard-to-reproduce wake/logout issues)
+
+When `AUTH_EVENT_LOG` is enabled, the app appends token-safe auth events to `AUTH_EVENT_LOG_PATH`.
+This includes whether a cookie was visible, whether session restore succeeded, retry timing, and error type (`invalid_or_expired`, `transient_network`, etc.).
+
+Useful command:
+- `tail -f logs/auth_events.jsonl`
 
 ## Testing persistent login (SID cookie)
 

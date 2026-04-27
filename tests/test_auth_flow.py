@@ -1,4 +1,5 @@
 import importlib
+import json
 import sys
 import types
 
@@ -164,3 +165,202 @@ def test_init_session_state_proactive_refresh(monkeypatch):
     auth.init_session_state()
 
     assert saved["count"] == 1
+
+
+def test_init_session_state_respects_retry_config(monkeypatch):
+    st = _install_streamlit_stub(
+        monkeypatch,
+        secrets={
+            "AUTH_EVENT_LOG": False,
+            "AUTH_COOKIE_RESTORE_RETRIES": 3,
+            "AUTH_COOKIE_RESTORE_DELAY_SECONDS": 0.25,
+        },
+    )
+
+    rerun_calls = {"count": 0}
+    sleep_calls: list[float] = []
+
+    class _Auth:
+        def get_user(self):
+            return None
+
+    supabase_config = types.SimpleNamespace(
+        sb=types.SimpleNamespace(auth=_Auth()),
+        sb_admin=types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace())),
+    )
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+    auth.auth_persistence.mount = lambda: None
+    auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_missing"}
+    auth.auth_persistence.load = lambda: None
+    st.rerun = lambda: rerun_calls.__setitem__("count", rerun_calls["count"] + 1)
+    monkeypatch.setattr(auth.time, "sleep", lambda secs: sleep_calls.append(secs))
+
+    for _ in range(4):
+        auth.init_session_state()
+
+    assert rerun_calls["count"] == 3
+    assert st.session_state["_restore_attempts"] == 3
+    assert sleep_calls == [0.25, 0.25, 0.25]
+
+
+def test_init_session_state_flags_transient_restore_error(monkeypatch):
+    st = _install_streamlit_stub(monkeypatch, secrets={"AUTH_EVENT_LOG": False})
+
+    class _Auth:
+        def get_user(self):
+            return None
+
+    supabase_config = types.SimpleNamespace(
+        sb=types.SimpleNamespace(auth=_Auth()),
+        sb_admin=types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace())),
+    )
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+    auth.auth_persistence.mount = lambda: None
+    auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_present"}
+    auth.auth_persistence.load = lambda: {"access_token": "a", "refresh_token": "r"}
+    auth.AuthEngine.restore_session = staticmethod(
+        lambda _a, _r: (None, None, "Connection timeout while waking app")
+    )
+    st.rerun = lambda: None
+    monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
+
+    auth.init_session_state()
+
+    assert st.session_state["_cookie_restore_failed"] is True
+
+
+def test_init_session_state_does_not_flag_invalid_expired_error(monkeypatch):
+    st = _install_streamlit_stub(monkeypatch, secrets={"AUTH_EVENT_LOG": False})
+
+    class _Auth:
+        def get_user(self):
+            return None
+
+    supabase_config = types.SimpleNamespace(
+        sb=types.SimpleNamespace(auth=_Auth()),
+        sb_admin=types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace())),
+    )
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+    auth.auth_persistence.mount = lambda: None
+    auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_present"}
+    auth.auth_persistence.load = lambda: {"access_token": "a", "refresh_token": "r"}
+    auth.AuthEngine.restore_session = staticmethod(lambda _a, _r: (None, None, "JWT expired"))
+    st.rerun = lambda: None
+    monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
+
+    auth.init_session_state()
+
+    assert st.session_state["_cookie_restore_failed"] is False
+
+
+def test_init_session_state_appends_structured_auth_debug_events(monkeypatch):
+    st = _install_streamlit_stub(monkeypatch, secrets={"AUTH_EVENT_LOG": False})
+
+    class _Auth:
+        def get_user(self):
+            return None
+
+    supabase_config = types.SimpleNamespace(
+        sb=types.SimpleNamespace(auth=_Auth()),
+        sb_admin=types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace())),
+    )
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+    auth.auth_persistence.mount = lambda: None
+    auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_missing"}
+    auth.auth_persistence.load = lambda: None
+    st.rerun = lambda: None
+    monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
+
+    auth.init_session_state()
+
+    logs = st.session_state.get("auth_debug", [])
+    assert any(line.startswith("[init_session_state] ") for line in logs)
+    assert any(line.startswith("[persistence_state] ") for line in logs)
+
+
+def test_init_session_state_skips_file_logging_when_disabled(monkeypatch, tmp_path):
+    log_path = tmp_path / "disabled-auth.jsonl"
+    st = _install_streamlit_stub(
+        monkeypatch,
+        secrets={"AUTH_EVENT_LOG": False, "AUTH_EVENT_LOG_PATH": str(log_path)},
+    )
+
+    class _Auth:
+        def get_user(self):
+            return None
+
+    supabase_config = types.SimpleNamespace(
+        sb=types.SimpleNamespace(auth=_Auth()),
+        sb_admin=types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace())),
+    )
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+    auth.auth_persistence.mount = lambda: None
+    auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_missing"}
+    auth.auth_persistence.load = lambda: None
+    st.rerun = lambda: None
+    monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
+
+    auth.init_session_state()
+
+    assert not log_path.exists()
+
+
+def test_init_session_state_writes_file_log_when_enabled(monkeypatch, tmp_path):
+    log_path = tmp_path / "custom-auth-events.jsonl"
+    st = _install_streamlit_stub(
+        monkeypatch,
+        secrets={"AUTH_EVENT_LOG": True, "AUTH_EVENT_LOG_PATH": str(log_path)},
+    )
+
+    class _Auth:
+        def get_user(self):
+            return None
+
+    supabase_config = types.SimpleNamespace(
+        sb=types.SimpleNamespace(auth=_Auth()),
+        sb_admin=types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace())),
+    )
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+    auth.auth_persistence.mount = lambda: None
+    auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_missing"}
+    auth.auth_persistence.load = lambda: None
+    st.rerun = lambda: None
+    monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
+
+    auth.init_session_state()
+
+    assert log_path.exists()
+    lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+    assert lines
+    first = json.loads(lines[0])
+    assert first["event"] == "init_session_state"
+
+
+def test_auth_page_reconnect_path_clears_flag_on_click(monkeypatch):
+    st = _install_streamlit_stub(monkeypatch, secrets={"AUTH_EVENT_LOG": False})
+    rerun_calls = {"count": 0}
+    warning_calls = {"count": 0}
+
+    sb = types.SimpleNamespace(auth=types.SimpleNamespace())
+    sb_admin = types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace()))
+    supabase_config = types.SimpleNamespace(sb=sb, sb_admin=sb_admin)
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+
+    st.session_state["app_just_woke_up"] = False
+    st.session_state["_cookie_restore_failed"] = True
+    st.rerun = lambda: rerun_calls.__setitem__("count", rerun_calls["count"] + 1)
+    st.warning = lambda *_a, **_k: warning_calls.__setitem__("count", warning_calls["count"] + 1)
+    st.button = lambda label, **_kwargs: label == "🔄 Reconnect"
+
+    auth.auth_page()
+
+    assert warning_calls["count"] == 1
+    assert st.session_state["_cookie_restore_failed"] is False
+    assert rerun_calls["count"] == 1

@@ -129,6 +129,21 @@ def test_landing_page_select_recent_metrics_excludes_archived_and_sorts():
     assert [m["id"] for _, m, _, _ in recent] == ["m3", "m1"]
 
 
+def test_landing_page_select_recent_metrics_can_include_archived():
+    """Recent selection includes archived metrics when explicitly requested."""
+    import pandas as pd
+    from ui import landing_page
+
+    t0 = pd.Timestamp("2026-02-01T12:00:00Z")
+    scored = [
+        (t0, {"id": "m1", "is_archived": False}, {"spark_values": []}, None),
+        (t0 + pd.Timedelta(days=1), {"id": "m2", "is_archived": True}, {"spark_values": []}, None),
+        (t0 + pd.Timedelta(days=2), {"id": "m3", "is_archived": False}, {"spark_values": []}, None),
+    ]
+    recent = landing_page._select_recent_metrics(scored, limit=5, include_archived=True)
+    assert [m["id"] for _, m, _, _ in recent] == ["m3", "m2", "m1"]
+
+
 def test_manage_lookups_reconcile_notice_and_create_submit_flow():
     """Category management helpers clear notices and handle create submit paths."""
     from ui import manage_lookups

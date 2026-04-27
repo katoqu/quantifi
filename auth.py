@@ -3,6 +3,9 @@ try:  # pragma: no cover - defensive for tests without full Streamlit
     import streamlit.components.v1 as components
 except Exception:  # pragma: no cover
     components = None
+import datetime
+import json
+import os
 from supabase_config import sb
 from auth_ui import AuthUI
 from auth_engine import AuthEngine
@@ -44,6 +47,96 @@ def _persist_current_session_tokens():
     if payload and payload.get("access_token") and payload.get("refresh_token"):
         auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
 
+def _append_auth_debug(message: str):
+    debug_log = st.session_state.get("auth_debug")
+    if not isinstance(debug_log, list):
+        debug_log = []
+        st.session_state["auth_debug"] = debug_log
+    debug_log.append(message)
+    max_items = 400
+    if len(debug_log) > max_items:
+        del debug_log[0 : len(debug_log) - max_items]
+
+def _auth_log_enabled() -> bool:
+    raw = st.secrets.get("AUTH_EVENT_LOG", True)
+    return AuthEngine._secrets_truthy(raw)
+
+def _auth_log_path() -> str:
+    raw = str(st.secrets.get("AUTH_EVENT_LOG_PATH", "logs/auth_events.jsonl") or "").strip()
+    return raw or "logs/auth_events.jsonl"
+
+def _json_safe(value):
+    if value is None:
+        return None
+    if isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return value if len(value) <= 240 else f"{value[:240]}..."
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return str(value)
+
+def _auth_event(event: str, **fields):
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    payload = {"ts": ts, "event": event}
+    for key, value in fields.items():
+        payload[key] = _json_safe(value)
+    _append_auth_debug(f"[{event}] {json.dumps(payload, separators=(',', ':'), ensure_ascii=True)}")
+    if not _auth_log_enabled():
+        return
+    try:
+        path = _auth_log_path()
+        folder = os.path.dirname(path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, separators=(",", ":"), ensure_ascii=True) + "\n")
+    except Exception as e:
+        _append_auth_debug(f"Auth event log write failed: {e}")
+
+def _error_kind(err: str | None) -> str:
+    text = str(err or "").strip().lower()
+    if not text:
+        return "none"
+    if "invalid" in text or "expired" in text:
+        return "invalid_or_expired"
+    if (
+        "timeout" in text
+        or "connection" in text
+        or "network" in text
+        or "temporar" in text
+        or "unavailable" in text
+        or "dns" in text
+    ):
+        return "transient_network"
+    return "other_error"
+
+def _cookie_retry_limit() -> int:
+    raw = st.secrets.get("AUTH_COOKIE_RESTORE_RETRIES", 2)
+    try:
+        val = int(raw)
+    except Exception:
+        return 2
+    if val < 0:
+        return 0
+    if val > 8:
+        return 8
+    return val
+
+def _cookie_retry_delay_seconds() -> float:
+    raw = st.secrets.get("AUTH_COOKIE_RESTORE_DELAY_SECONDS", 0.5)
+    try:
+        val = float(raw)
+    except Exception:
+        return 0.5
+    if val < 0.05:
+        return 0.05
+    if val > 3.0:
+        return 3.0
+    return val
+
 def init_session_state():
     """Initializes session state with a persistence bridge for mobile wake-ups."""
     
@@ -58,12 +151,18 @@ def init_session_state():
         "_logout_pending": False,
         "_restore_attempts": 0,  # Safety counter for mobile wake-ups
         "app_just_woke_up": True, 
+        "_cookie_restore_failed": False,
         "show_recovery_form": False,
         "show_password_reset": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
             st.session_state[k] = v
+    _auth_event(
+        "init_session_state",
+        user_present=bool(st.session_state.get("user")),
+        restore_attempts=int(st.session_state.get("_restore_attempts", 0)),
+    )
 
     # 2. Proactive Refresh (For users who are already logged in and active)
     if st.session_state.user is not None:
@@ -77,11 +176,15 @@ def init_session_state():
             payload = AuthEngine.session_to_payload(new_session)
             if payload:
                 auth_persistence.save_tokens(payload["access_token"], payload["refresh_token"])
-                st.session_state.auth_debug.append("Workout session refreshed proactively.")
+                _auth_event("proactive_refresh_ok")
+        elif err:
+            _auth_event("proactive_refresh_err", error_kind=_error_kind(err), error=err)
         return # Skip restore logic if user is already valid in memory
 
     # 3. Restore Logic (The 'Safety Bridge' for mobile wake-up)
     if st.session_state.user is None:
+        persistence = auth_persistence.inspect_state()
+        _auth_event("persistence_state", **persistence)
         persisted = auth_persistence.load()
 
         # If a cookie is found, attempt to restore the Supabase session
@@ -92,17 +195,30 @@ def init_session_state():
             if user:
                 st.session_state.user = user
                 st.session_state._restore_attempts = 0 # Success, reset counter
+                st.session_state["_cookie_restore_failed"] = False
+                _auth_event("cookie_restore_ok")
                 return
             
             if err:
-                st.session_state.auth_debug.append(f"Cookie restore error: {err}")
+                err_kind = _error_kind(err)
+                _auth_event("cookie_restore_err", error_kind=err_kind, error=err)
+                if err_kind == "transient_network":
+                    st.session_state["_cookie_restore_failed"] = True
 
         # --- THE BRIDGE ---
         # If no cookie is found on the first try, the mobile browser is likely 
-        # still waking up. We wait 0.5 seconds and rerun ONCE to try again.
-        if st.session_state._restore_attempts < 1:
+        # still waking up. Wait briefly and rerun a limited number of times.
+        retry_limit = _cookie_retry_limit()
+        if st.session_state._restore_attempts < retry_limit:
             st.session_state._restore_attempts += 1
-            time.sleep(0.5) 
+            delay_s = _cookie_retry_delay_seconds()
+            _auth_event(
+                "cookie_retry_wait",
+                retry_index=int(st.session_state._restore_attempts),
+                retry_limit=retry_limit,
+                delay_seconds=delay_s,
+            )
+            time.sleep(delay_s)
             st.rerun()
 
     # 4. Final Fallback: Check if Supabase client already has the user in memory
@@ -111,8 +227,9 @@ def init_session_state():
         user = getattr(res, "user", None) if res else None
         if user:
             st.session_state.user = user
+            _auth_event("fallback_get_user_ok")
     except Exception as e:
-        st.session_state.auth_debug.append(f"Client memory check failed: {e}")
+        _auth_event("fallback_get_user_err", error=str(e))
 
 def is_authenticated():
     if st.session_state.get("show_recovery_form"):
@@ -135,7 +252,7 @@ def sign_out():
     try:
         sb.auth.sign_out()
     except Exception as e:
-        st.session_state.auth_debug.append(f"Sign out error: {str(e)}")
+        _auth_event("sign_out_err", error=str(e))
 
     auth_persistence.clear()
     st.session_state.user = None
@@ -143,6 +260,7 @@ def sign_out():
     cache_control.bump()
     st.session_state.show_recovery_form = False
     st.session_state.show_password_reset = False
+    _auth_event("sign_out_done")
     
 def handle_link_tokens() -> bool:
     params = st.query_params
@@ -156,11 +274,13 @@ def handle_link_tokens() -> bool:
             st.query_params.clear()
             cache_control.bump()
             if err:
+                _auth_event("link_restore_err", error_kind=_error_kind(err), error=err)
                 st.error(f"Link invalid or expired: {err}")
                 return True
 
             if user:
                 st.session_state.user = user
+                _auth_event("link_restore_ok", flow="access_refresh")
             if session:
                 _persist_session_tokens(session)
 
@@ -172,6 +292,7 @@ def handle_link_tokens() -> bool:
                 st.session_state.show_recovery_form = False
             return True
         except Exception as e:
+            _auth_event("link_restore_exception", error=str(e))
             st.error(f"Link invalid or expired: {e}")
             return True
 
@@ -182,11 +303,13 @@ def handle_link_tokens() -> bool:
             st.query_params.clear()
             cache_control.bump()
             if err:
+                _auth_event("link_exchange_err", error_kind=_error_kind(err), error=err)
                 st.error(f"Link invalid or expired: {err}")
                 return True
 
             if user:
                 st.session_state.user = user
+                _auth_event("link_exchange_ok", flow="code")
             if session:
                 _persist_session_tokens(session)
 
@@ -199,6 +322,7 @@ def handle_link_tokens() -> bool:
 
             return True
         except Exception as e:
+            _auth_event("link_exchange_exception", error=str(e))
             st.error(f"Link invalid or expired: {e}")
             return True
 
@@ -227,9 +351,11 @@ def handle_link_tokens() -> bool:
             st.session_state.user = user
         if session:
             _persist_session_tokens(session)
+        _auth_event("link_verify_otp_ok", token_type=token_type)
 
         return True
     except Exception as e:
+        _auth_event("link_verify_otp_exception", error=str(e))
         st.error(f"Link invalid or expired: {e}")
         return True
 
@@ -278,6 +404,7 @@ def auth_page():
     # give the browser 1 second to send the authentication cookies to Python.
     if st.session_state.get("app_just_woke_up", True):
         st.session_state["app_just_woke_up"] = False
+        _auth_event("wake_up_buffer")
         st.title("QuantifI")
         with st.spinner("Resuming session..."):
             import time
@@ -286,10 +413,12 @@ def auth_page():
 
     # --- Catch network blips gracefully ---
     if st.session_state.get("_cookie_restore_failed"):
+        _auth_event("cookie_restore_failed_ui")
         st.title("QuantifI")
         st.warning("Connection lost while waking the app. Tap below to reconnect.")
         if st.button("🔄 Reconnect", use_container_width=True, type="primary"):
             st.session_state["_cookie_restore_failed"] = False
+            _auth_event("cookie_restore_reconnect_clicked")
             st.rerun()
         return
 

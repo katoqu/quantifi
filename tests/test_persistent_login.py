@@ -289,3 +289,69 @@ def test_auth_persistence_falls_back_when_session_store_disabled(monkeypatch):
 
     loaded = auth_persistence.load()
     assert loaded == {"access_token": "access-x", "refresh_token": "refresh-y"}
+
+
+def test_auth_persistence_inspect_state_cookies_disabled(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": False})
+    auth_persistence = _import_fresh("auth_persistence")
+
+    out = auth_persistence.inspect_state()
+    assert out["cookies_enabled"] is False
+    assert out["reason"] == "cookies_disabled"
+
+
+def test_auth_persistence_inspect_state_cookie_manager_unavailable(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
+    _install_cookie_manager_stub(monkeypatch)
+    auth_persistence = _import_fresh("auth_persistence")
+    monkeypatch.setattr(auth_persistence, "_cookie_manager", lambda: None)
+
+    out = auth_persistence.inspect_state()
+    assert out["cookies_enabled"] is True
+    assert out["cookie_manager_ready"] is False
+    assert out["reason"] == "cookie_manager_unavailable"
+
+
+def test_auth_persistence_inspect_state_cookie_missing(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
+    _install_cookie_manager_stub(monkeypatch)
+    auth_persistence = _import_fresh("auth_persistence")
+
+    out = auth_persistence.inspect_state()
+    assert out["cookie_manager_ready"] is True
+    assert out["cookie_present"] is False
+    assert out["reason"] == "cookie_missing"
+
+
+def test_auth_persistence_inspect_state_cookie_present_without_sid(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
+    _install_cookie_manager_stub(monkeypatch)
+    auth_persistence = _import_fresh("auth_persistence")
+    cm = auth_persistence._cookie_manager()
+    cm.set(
+        auth_persistence.COOKIE_NAME,
+        auth_persistence._encode({"access_token": "a", "refresh_token": "r"}),
+        expires_at=30,
+    )
+
+    out = auth_persistence.inspect_state()
+    assert out["cookie_present"] is True
+    assert out["sid_present"] is False
+    assert out["reason"] == "cookie_present"
+
+
+def test_auth_persistence_inspect_state_cookie_present_with_sid(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
+    _install_cookie_manager_stub(monkeypatch)
+    auth_persistence = _import_fresh("auth_persistence")
+    cm = auth_persistence._cookie_manager()
+    cm.set(
+        auth_persistence.COOKIE_NAME,
+        auth_persistence._encode({"sid": "123e4567-e89b-12d3-a456-426614174000"}),
+        expires_at=30,
+    )
+
+    out = auth_persistence.inspect_state()
+    assert out["cookie_present"] is True
+    assert out["sid_present"] is True
+    assert out["reason"] == "cookie_present"

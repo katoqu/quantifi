@@ -37,18 +37,18 @@ def _compute_spark_values(m_df: pd.DataFrame, *, n: int = 12) -> list:
         return []
 
 
-def _select_recent_metrics(scored_metrics, *, limit: int = 5):
+def _select_recent_metrics(scored_metrics, *, limit: int = 5, include_archived: bool = False):
     """
     Filters + sorts the scored metrics for the "Recent" view (newest first),
     excluding archived metrics.
     """
-    recent = [
-        (ts, m, stats, target)
-        for ts, m, stats, target in scored_metrics
-        if ts is not None
-        and ts != pd.Timestamp.min.tz_localize("UTC")
-        and not m.get("is_archived", False)
-    ]
+    recent = []
+    for ts, m, stats, target in scored_metrics:
+        if ts is None or ts == pd.Timestamp.min.tz_localize("UTC"):
+            continue
+        if not include_archived and m.get("is_archived", False):
+            continue
+        recent.append((ts, m, stats, target))
     recent.sort(key=lambda x: x[0], reverse=True)
     return recent[: int(limit)]
 
@@ -114,13 +114,17 @@ def render_metric_grid(metrics_list, cats, all_entries):
     if st.session_state.get("cat_filter") is not None and st.session_state.get("cat_filter") not in cat_options:
         st.session_state["cat_filter"] = None
     
-    st.pills(
-        "Filter",
-        options=cat_options,
-        key="cat_filter",
-        label_visibility="collapsed",
-        selection_mode="single",
-    )
+    c_filters, c_toggle = st.columns([4, 1])
+    with c_toggle:
+        show_archived = st.toggle("Archived", key="home_show_archived_metrics", value=False)
+    with c_filters:
+        st.pills(
+            "Filter",
+            options=cat_options,
+            key="cat_filter",
+            label_visibility="collapsed",
+            selection_mode="single",
+        )
     current_filter = st.session_state.get("cat_filter")
 
     all_df = pd.DataFrame(all_entries)
@@ -156,7 +160,7 @@ def render_metric_grid(metrics_list, cats, all_entries):
         scored_metrics.append((latest_ts, m, stats, latest_target)) 
 
     if current_filter == "Recent":
-        recent = _select_recent_metrics(scored_metrics, limit=5)
+        recent = _select_recent_metrics(scored_metrics, limit=5, include_archived=show_archived)
         if not recent:
             st.info("No recent metrics yet — add an entry to see them here.")
             return
@@ -168,6 +172,8 @@ def render_metric_grid(metrics_list, cats, all_entries):
 
     # Now this loop will work because we appended 4 items above
     for _, m, stats, target in scored_metrics:
+        if not show_archived and m.get("is_archived", False):
+            continue
         if current_filter is None or cat_map.get(m.get('category_id')) == current_filter:
             _render_action_card(m, cat_map, stats, target)
 

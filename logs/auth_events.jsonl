@@ -1,0 +1,98 @@
+{"ts":"2026-04-27T19:42:15.607041+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T19:42:15.607820+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":false,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T19:42:15.607995+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T19:42:16.108406+00:00","event":"fallback_get_user_err","error":"'Missing required secret/env var: SUPABASE_URL'"}
+{"ts":"2026-04-27T19:42:17.127281+00:00","event":"sign_out_done"}
+{"ts":"2026-04-27T19:42:17.129492+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T19:42:17.130149+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":false,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T19:42:17.131144+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T19:42:17.631747+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T19:42:17.634202+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-04-27T19:42:17.641135+00:00","event":"init_session_state","user_present":true,"restore_attempts":0}
+{"ts":"2026-04-27T19:42:17.641791+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-04-27T20:09:12.085144+00:00","event":"sign_out_done"}
+{"ts":"2026-04-27T20:09:12.087299+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:09:12.499790+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:09:12.502683+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:09:13.003277+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T20:09:13.003923+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-04-27T20:09:13.008966+00:00","event":"init_session_state","user_present":true,"restore_attempts":0}
+{"ts":"2026-04-27T20:09:13.009455+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-04-27T20:09:13.015563+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:09:13.018015+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:09:13.020315+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:09:13.521068+00:00","event":"fallback_get_user_err","error":"'_Auth' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T20:09:13.526972+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:09:13.529218+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:09:13.529700+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:09:33.036562+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:09:35.224756+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:09:36.238445+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:09:37.735964+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:09:38.905093+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:09:42.907573+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:09:45.539001+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:09:48.875965+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:10:08.525987+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:10:10.318941+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:10:11.372527+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:10:14.804479+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:10:18.861717+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:10:28.931981+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:10:32.393176+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:10:33.593803+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:11:52.634453+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:14:10.575919+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:14:21.646292+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:14:31.962822+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:14:37.030292+00:00","event":"init_session_state","user_present":true,"restore_attempts":1}
+{"ts":"2026-04-27T20:14:55.357941+00:00","event":"sign_out_done"}
+{"ts":"2026-04-27T20:14:55.359963+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:14:55.770922+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:14:55.773141+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:14:56.273686+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T20:14:56.274256+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-04-27T20:14:56.279058+00:00","event":"init_session_state","user_present":true,"restore_attempts":0}
+{"ts":"2026-04-27T20:14:56.279186+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-04-27T20:14:56.280794+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:14:56.281402+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:14:56.282004+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:14:56.782291+00:00","event":"fallback_get_user_err","error":"'_Auth' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T20:14:56.788023+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:14:56.788720+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:14:56.788867+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:17:13.860192+00:00","event":"sign_out_done"}
+{"ts":"2026-04-27T20:17:13.867698+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:17:13.870549+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":false,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:17:13.871995+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:17:14.420835+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T20:17:14.422082+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-04-27T20:17:14.425936+00:00","event":"init_session_state","user_present":true,"restore_attempts":0}
+{"ts":"2026-04-27T20:17:14.426065+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-04-27T20:17:21.449208+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:17:21.449899+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":false,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:17:21.450050+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:17:21.950782+00:00","event":"fallback_get_user_err","error":"'Missing required secret/env var: SUPABASE_URL'"}
+{"ts":"2026-04-27T20:17:22.992610+00:00","event":"sign_out_done"}
+{"ts":"2026-04-27T20:17:22.998973+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:17:23.001322+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":false,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:17:23.003692+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:17:23.504271+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T20:17:23.504805+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-04-27T20:17:23.509412+00:00","event":"init_session_state","user_present":true,"restore_attempts":0}
+{"ts":"2026-04-27T20:17:23.509793+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-04-27T20:20:01.970806+00:00","event":"sign_out_done"}
+{"ts":"2026-04-27T20:20:01.972464+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:20:02.381391+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-04-27T20:20:02.383376+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:20:02.884009+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T20:20:02.884589+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-04-27T20:20:02.889199+00:00","event":"init_session_state","user_present":true,"restore_attempts":0}
+{"ts":"2026-04-27T20:20:02.889329+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-04-27T20:20:02.905392+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:20:02.905558+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-04-27T20:20:02.905645+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-04-27T20:20:03.405979+00:00","event":"fallback_get_user_err","error":"'_Auth' object has no attribute 'get_user'"}
+{"ts":"2026-04-27T20:20:03.411673+00:00","event":"init_session_state","user_present":false,"restore_attempts":0}
+{"ts":"2026-04-27T20:20:03.412078+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-04-27T20:20:03.412459+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}

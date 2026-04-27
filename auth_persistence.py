@@ -93,6 +93,40 @@ def _extract_sid(value: str | None) -> str | None:
     except Exception:
         return None
 
+def inspect_state() -> dict[str, Any]:
+    """
+    Returns token-safe diagnostics for auth persistence behavior.
+    """
+    out: dict[str, Any] = {
+        "cookies_enabled": _cookies_enabled(),
+        "cookie_manager_ready": False,
+        "cookie_present": False,
+        "cookie_len": 0,
+        "session_store_enabled": _session_store_enabled(),
+        "sid_present": False,
+    }
+    if not out["cookies_enabled"]:
+        out["reason"] = "cookies_disabled"
+        return out
+
+    cm = _cookie_manager()
+    out["cookie_manager_ready"] = cm is not None
+    if cm is None:
+        out["reason"] = "cookie_manager_unavailable"
+        return out
+
+    value = _read_cookie_value()
+    if not value:
+        out["reason"] = "cookie_missing"
+        return out
+
+    out["cookie_present"] = True
+    out["cookie_len"] = len(value)
+    sid = _extract_sid(value)
+    out["sid_present"] = bool(sid)
+    out["reason"] = "cookie_present"
+    return out
+
 def load() -> dict[str, str] | None:
     """Loads persisted Supabase access and refresh tokens from the browser cookie."""
     if not _cookies_enabled():

@@ -130,3 +130,42 @@ pages.tracker_page()
 
     assert len(at.exception) == 0
     assert len(at.selectbox) == 1
+
+
+def test_tracker_page_add_excludes_archived_metrics_from_selector(monkeypatch):
+    """Add view should pass only active metrics into the metric selector."""
+    import logging
+
+    logging.getLogger(
+        "streamlit.runtime.scriptrunner_utils.script_run_context"
+    ).setLevel(logging.ERROR)
+
+    script = """
+import streamlit as st
+from ui import pages
+
+pages.models.get_metrics = lambda include_archived=True: [
+    {"id": "m1", "name": "sleep", "unit_name": "hrs", "is_archived": False},
+    {"id": "m2", "name": "old_sleep", "unit_name": "hrs", "is_archived": True},
+]
+pages.models.get_categories = lambda: []
+pages.models.get_all_entries_bulk = lambda: []
+
+def _fake_select_metric_dropdown(metrics, target_id=None, label="Metric"):
+    assert [m["id"] for m in metrics] == ["m1"]
+    st.text("active-only-ok")
+    return metrics[0]
+
+pages.metrics.select_metric_dropdown = _fake_select_metric_dropdown
+pages.capture.show_tracker_suite = lambda _m: st.text("add-ok")
+
+pages.tracker_page()
+"""
+
+    at = AppTest.from_string(script)
+    at.session_state["tracker_view_selector"] = "Add"
+    at.run()
+
+    assert len(at.exception) == 0
+    assert any(el.value == "active-only-ok" for el in at.text)
+    assert any(el.value == "add-ok" for el in at.text)
