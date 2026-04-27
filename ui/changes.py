@@ -11,7 +11,6 @@ _END_KEY = "end_change_event_id"
 _REVIVE_KEY = "revive_change_event_id"
 _FILTER_PILL_KEY = "change_filter_pill"
 _SHOW_ARCHIVED_KEY = "show_archived_changes"
-_SECTION_KEY = "changes_section_selector"
 _RECENT_LIMIT = 8
 
 
@@ -352,77 +351,72 @@ def _apply_simple_filter(events, selected_filter, *, cat_labels):
 
 
 def _render_create_change_panel(sorted_cat_ids, cat_labels):
-    with st.container(border=True):
-        st.caption("Log a change")
+    when_key = "change_when"
+    if when_key not in st.session_state:
+        st.session_state[when_key] = "Today"
 
-        when_key = "change_when"
-        if when_key not in st.session_state:
-            st.session_state[when_key] = "Today"
+    when_selection = _pills_value(
+        "When",
+        options=["Now", "Today", "Yesterday", "Custom"],
+        key=when_key,
+        label_visibility="collapsed",
+    )
 
-        when_selection = _pills_value(
-            "When",
-            options=["Now", "Today", "Yesterday", "Custom"],
-            key=when_key,
-            label_visibility="collapsed",
+    with st.form("create_change_event", clear_on_submit=True, border=False):
+        category_id = st.selectbox(
+            "Category",
+            options=sorted_cat_ids,
+            format_func=lambda x: cat_labels.get(x, "Unknown"),
+        )
+        title = st.text_input("Title", placeholder="e.g., Started vegetarian nutrition")
+        notes = st.text_area(
+            "Notes (Markdown supported)",
+            placeholder="Optional context, routine details, exceptions...",
+            height=220,
         )
 
-        with st.form("create_change_event", clear_on_submit=True, border=False):
-            category_id = st.selectbox(
-                "Category",
-                options=sorted_cat_ids,
-                format_func=lambda x: cat_labels.get(x, "Unknown"),
-            )
-            title = st.text_input("Title", placeholder="e.g., Started vegetarian nutrition")
-            notes = st.text_area(
-                "Notes (Markdown supported)",
-                placeholder="Optional context, routine details, exceptions...",
-                height=260,
-            )
+        date_input = dt.date.today()
+        time_input = dt.datetime.now().time().replace(second=0, microsecond=0)
+        if when_selection == "Custom":
+            date_input = st.date_input("Date", value=date_input)
+            time_input = st.time_input("Time", value=time_input, step=60)
 
-            date_input = dt.date.today()
-            time_input = dt.datetime.now().time().replace(second=0, microsecond=0)
-            if when_selection == "Custom":
-                date_input = st.date_input("Date", value=date_input)
-                time_input = st.time_input("Time", value=time_input, step=60)
+        submitted = st.form_submit_button("Add Change", use_container_width=True, type="primary")
 
-            submitted = st.form_submit_button("Add Change", use_container_width=True, type="primary")
-
-        if submitted:
-            norm_title = title.strip()
-            if not norm_title:
-                st.warning("Please enter a title.")
-            else:
-                if when_selection == "Yesterday":
-                    recorded_at = dt.datetime.combine(
-                        dt.date.today() - dt.timedelta(days=1),
-                        dt.time(12, 0),
-                    )
-                elif when_selection == "Today":
-                    recorded_at = dt.datetime.combine(dt.date.today(), dt.time(12, 0))
-                elif when_selection == "Custom":
-                    recorded_at = dt.datetime.combine(date_input, time_input)
-                else:
-                    recorded_at = dt.datetime.now().replace(second=0, microsecond=0)
-
-                models.create_change_event(
-                    {
-                        "title": norm_title,
-                        "notes": (notes.strip() if notes and notes.strip() else None),
-                        "category_id": category_id,
-                        "recorded_at": recorded_at.isoformat(),
-                        "end_at": None,
-                        "is_archived": False,
-                    }
+    if submitted:
+        norm_title = title.strip()
+        if not norm_title:
+            st.warning("Please enter a title.")
+        else:
+            if when_selection == "Yesterday":
+                recorded_at = dt.datetime.combine(
+                    dt.date.today() - dt.timedelta(days=1),
+                    dt.time(12, 0),
                 )
-                if hasattr(models.get_change_events, "clear"):
-                    models.get_change_events.clear()
-                utils.finalize_action("Change saved", icon="📝")
-                st.rerun()
+            elif when_selection == "Today":
+                recorded_at = dt.datetime.combine(dt.date.today(), dt.time(12, 0))
+            elif when_selection == "Custom":
+                recorded_at = dt.datetime.combine(date_input, time_input)
+            else:
+                recorded_at = dt.datetime.now().replace(second=0, microsecond=0)
+
+            models.create_change_event(
+                {
+                    "title": norm_title,
+                    "notes": (notes.strip() if notes and notes.strip() else None),
+                    "category_id": category_id,
+                    "recorded_at": recorded_at.isoformat(),
+                    "end_at": None,
+                    "is_archived": False,
+                }
+            )
+            if hasattr(models.get_change_events, "clear"):
+                models.get_change_events.clear()
+            utils.finalize_action("Change saved", icon="📝")
+            st.rerun()
 
 
 def show_changes():
-    st.subheader("Lifestyle Changes")
-
     cats = models.get_categories() or []
     if not cats:
         st.info("Create a category first (Settings -> Categories).")
@@ -438,42 +432,37 @@ def show_changes():
     cat_labels = {c["id"]: c.get("name", "").title() for c in cats}
     sorted_cat_ids = sorted(cat_labels.keys(), key=lambda cid: cat_labels[cid].lower())
 
-    section = st.segmented_control(
-        "Changes section",
-        options=["Browse", "New Log"],
-        selection_mode="single",
-        key=_SECTION_KEY,
-        label_visibility="collapsed",
-    )
-    section = section or "Browse"
-    if section == "New Log":
-        _render_create_change_panel(sorted_cat_ids, cat_labels)
-        return
-
     events = models.get_change_events() or []
-    if not events:
-        st.info("No changes logged yet.")
-        return
-
-    show_archived = st.toggle("Show archived routines", key=_SHOW_ARCHIVED_KEY, value=False)
+    c_filters, c_toggle = st.columns([4, 1])
+    with c_toggle:
+        show_archived = st.toggle("Archived", key=_SHOW_ARCHIVED_KEY, value=False)
 
     visible_events = (
         sorted(events, key=_sort_recent_desc, reverse=True)
         if show_archived
         else sorted([ev for ev in events if not ev.get("is_archived", False)], key=_sort_event_desc, reverse=True)
     )
-
     present_categories = sorted(
         {_category_label_for_event(ev, cat_labels) for ev in visible_events},
         key=lambda x: x.lower(),
     )
     filter_options = ["Recent"] + present_categories
-    selected_filter = _pills_value(
-        "Filter",
-        options=filter_options,
-        key=_FILTER_PILL_KEY,
-        label_visibility="collapsed",
-    )
+    with c_filters:
+        selected_filter = _pills_value(
+            "Filter",
+            options=filter_options,
+            key=_FILTER_PILL_KEY,
+            label_visibility="collapsed",
+        )
+
+    utils.render_back_button(target_page_title="Tracker", target_tab="Home")
+
+    with st.expander("New change", expanded=False):
+        _render_create_change_panel(sorted_cat_ids, cat_labels)
+
+    if not events:
+        st.info("No changes logged yet.")
+        return
 
     filtered_events, section_caption = _apply_simple_filter(visible_events, selected_filter, cat_labels=cat_labels)
 

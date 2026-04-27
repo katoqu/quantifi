@@ -113,7 +113,7 @@ def tracker_page():
         )
 
         # Back Button Pill (simplified label)
-    if view_mode != "Home":
+    if view_mode in ("Add", "Stats", "Edit"):
         utils.render_back_button(target_page_title="Tracker", target_tab="Home")
 
 #    st.html('<div style="height: 15px;"></div>')
