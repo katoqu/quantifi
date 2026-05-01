@@ -152,6 +152,9 @@ Secrets used:
 - `AUTH_COOKIE_RESTORE_DELAY_SECONDS`: delay between wake-up restore retries (default: `0.5`).
 - `AUTH_EVENT_LOG`: boolean (`true`/`false`) to write structured auth diagnostics (default: `true`).
 - `AUTH_EVENT_LOG_PATH`: JSONL file path for auth diagnostics (default: `logs/auth_events.jsonl`).
+- `AUTH_EVENT_LOG_DB`: boolean (`true`/`false`) to also persist auth diagnostics to Supabase (default: `false`).
+- `AUTH_EVENT_LOG_TABLE`: Supabase table for auth diagnostics (default: `auth_event_logs`).
+- `ENV_NAME`: environment tag written with each auth diagnostic row (e.g. `prod`, `staging`).
 
 ### Staying logged in (Streamlit Cloud)
 
@@ -173,6 +176,9 @@ This includes whether a cookie was visible, whether session restore succeeded, r
 
 Useful command:
 - `tail -f logs/auth_events.jsonl`
+
+For durable production analysis, enable `AUTH_EVENT_LOG_DB=true` and apply migration
+`supabase/migrations/20260501_auth_event_logs.sql`.
 
 ## Testing persistent login (SID cookie)
 

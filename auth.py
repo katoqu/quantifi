@@ -9,6 +9,7 @@ import os
 from supabase_config import sb
 from auth_ui import AuthUI
 from auth_engine import AuthEngine
+import auth_event_store
 import auth_persistence
 import cache_control
 import time
@@ -84,17 +85,28 @@ def _auth_event(event: str, **fields):
     for key, value in fields.items():
         payload[key] = _json_safe(value)
     _append_auth_debug(f"[{event}] {json.dumps(payload, separators=(',', ':'), ensure_ascii=True)}")
-    if not _auth_log_enabled():
-        return
+    if _auth_log_enabled():
+        try:
+            path = _auth_log_path()
+            folder = os.path.dirname(path)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, separators=(",", ":"), ensure_ascii=True) + "\n")
+        except Exception as e:
+            _append_auth_debug(f"Auth event log write failed: {e}")
+
     try:
-        path = _auth_log_path()
-        folder = os.path.dirname(path)
-        if folder:
-            os.makedirs(folder, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, separators=(",", ":"), ensure_ascii=True) + "\n")
+        user = st.session_state.get("user")
+        user_id = str(getattr(user, "id", "")) if user is not None and getattr(user, "id", None) else None
+        sid = None
+        persistence = auth_persistence.inspect_state()
+        if persistence.get("sid_present"):
+            sid = auth_persistence._extract_sid(auth_persistence._read_cookie_value())
+        auth_event_store.write_event(event=event, payload=payload, user_id=user_id, sid=sid)
     except Exception as e:
-        _append_auth_debug(f"Auth event log write failed: {e}")
+        # DB sink is best-effort; auth flow must never fail due to logging.
+        _append_auth_debug(f"Auth DB log write failed: {e}")
 
 def _error_kind(err: str | None) -> str:
     text = str(err or "").strip().lower()
