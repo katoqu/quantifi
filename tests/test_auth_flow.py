@@ -220,6 +220,7 @@ def test_init_session_state_flags_transient_restore_error(monkeypatch):
     auth.auth_persistence.mount = lambda: None
     auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_present"}
     auth.auth_persistence.load = lambda: {"access_token": "a", "refresh_token": "r"}
+    auth.auth_persistence.clear = lambda: None
     auth.AuthEngine.restore_session = staticmethod(
         lambda _a, _r: (None, None, "Connection timeout while waking app")
     )
@@ -247,6 +248,8 @@ def test_init_session_state_does_not_flag_invalid_expired_error(monkeypatch):
     auth.auth_persistence.mount = lambda: None
     auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_present"}
     auth.auth_persistence.load = lambda: {"access_token": "a", "refresh_token": "r"}
+    clear_calls = {"count": 0}
+    auth.auth_persistence.clear = lambda: clear_calls.__setitem__("count", clear_calls["count"] + 1)
     auth.AuthEngine.restore_session = staticmethod(lambda _a, _r: (None, None, "JWT expired"))
     st.rerun = lambda: None
     monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
@@ -254,6 +257,37 @@ def test_init_session_state_does_not_flag_invalid_expired_error(monkeypatch):
     auth.init_session_state()
 
     assert st.session_state["_cookie_restore_failed"] is False
+    assert clear_calls["count"] == 1
+
+
+def test_init_session_state_restore_success_persists_rotated_tokens(monkeypatch):
+    st = _install_streamlit_stub(monkeypatch, secrets={"AUTH_EVENT_LOG": False})
+
+    class _Auth:
+        def get_user(self):
+            return None
+
+    supabase_config = types.SimpleNamespace(
+        sb=types.SimpleNamespace(auth=_Auth()),
+        sb_admin=types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace())),
+    )
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+    auth.auth_persistence.mount = lambda: None
+    auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_present"}
+    auth.auth_persistence.load = lambda: {"access_token": "a", "refresh_token": "r"}
+    auth.AuthEngine.restore_session = staticmethod(
+        lambda _a, _r: (types.SimpleNamespace(id="u1"), {"access_token": "a2", "refresh_token": "r2"}, None)
+    )
+    saved = {"count": 0}
+    auth.auth_persistence.save_tokens = lambda _a, _r: saved.__setitem__("count", saved["count"] + 1)
+    st.rerun = lambda: None
+    monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
+
+    auth.init_session_state()
+
+    assert getattr(st.session_state.get("user"), "id", None) == "u1"
+    assert saved["count"] == 1
 
 
 def test_init_session_state_appends_structured_auth_debug_events(monkeypatch):

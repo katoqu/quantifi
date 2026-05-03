@@ -153,6 +153,7 @@ def init_session_state():
     """Initializes session state with a persistence bridge for mobile wake-ups."""
     
     auth_persistence.mount()
+    now_epoch = int(time.time())
 
     # 1. Define Defaults
     defaults = {
@@ -164,16 +165,26 @@ def init_session_state():
         "_restore_attempts": 0,  # Safety counter for mobile wake-ups
         "app_just_woke_up": True, 
         "_cookie_restore_failed": False,
+        "_last_seen_epoch": None,
+        "_last_auth_user_present": None,
         "show_recovery_form": False,
         "show_password_reset": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
             st.session_state[k] = v
+    prev_seen = st.session_state.get("_last_seen_epoch")
+    inactivity_seconds = None
+    if isinstance(prev_seen, int):
+        inactivity_seconds = max(0, now_epoch - prev_seen)
+    prev_user_present = st.session_state.get("_last_auth_user_present")
+    current_user_present = bool(st.session_state.get("user"))
     _auth_event(
         "init_session_state",
-        user_present=bool(st.session_state.get("user")),
+        user_present=current_user_present,
+        prev_user_present=prev_user_present,
         restore_attempts=int(st.session_state.get("_restore_attempts", 0)),
+        inactivity_seconds=inactivity_seconds,
     )
 
     # 2. Proactive Refresh (For users who are already logged in and active)
@@ -205,15 +216,21 @@ def init_session_state():
                 persisted["access_token"], persisted["refresh_token"]
             )
             if user:
+                if session:
+                    _persist_session_tokens(session)
                 st.session_state.user = user
                 st.session_state._restore_attempts = 0 # Success, reset counter
                 st.session_state["_cookie_restore_failed"] = False
                 _auth_event("cookie_restore_ok")
+                st.session_state["_last_seen_epoch"] = now_epoch
+                st.session_state["_last_auth_user_present"] = bool(st.session_state.get("user"))
                 return
             
             if err:
                 err_kind = _error_kind(err)
                 _auth_event("cookie_restore_err", error_kind=err_kind, error=err)
+                if err_kind == "invalid_or_expired":
+                    auth_persistence.clear()
                 if err_kind == "transient_network":
                     st.session_state["_cookie_restore_failed"] = True
 
@@ -242,6 +259,16 @@ def init_session_state():
             _auth_event("fallback_get_user_ok")
     except Exception as e:
         _auth_event("fallback_get_user_err", error=str(e))
+    final_user_present = bool(st.session_state.get("user"))
+    if prev_user_present is None or bool(prev_user_present) != final_user_present:
+        _auth_event(
+            "auth_state_transition",
+            from_user_present=prev_user_present,
+            to_user_present=final_user_present,
+            inactivity_seconds=inactivity_seconds,
+        )
+    st.session_state["_last_seen_epoch"] = now_epoch
+    st.session_state["_last_auth_user_present"] = final_user_present
 
 def is_authenticated():
     if st.session_state.get("show_recovery_form"):
