@@ -230,7 +230,14 @@ def init_session_state():
                 err_kind = _error_kind(err)
                 _auth_event("cookie_restore_err", error_kind=err_kind, error=err)
                 if err_kind == "invalid_or_expired":
-                    auth_persistence.clear()
+                    cleared = False
+                    try:
+                        cleared = bool(auth_persistence.clear())
+                    except Exception as clear_err:
+                        _auth_event("persistence_clear_err", error=str(clear_err))
+                    _auth_event("persistence_cleared_invalid_token", cleared=cleared)
+                    # Do not keep retrying the same stale/used refresh token in this cycle.
+                    st.session_state._restore_attempts = _cookie_retry_limit()
                 if err_kind == "transient_network":
                     st.session_state["_cookie_restore_failed"] = True
 

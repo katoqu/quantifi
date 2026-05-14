@@ -251,13 +251,43 @@ def test_init_session_state_does_not_flag_invalid_expired_error(monkeypatch):
     clear_calls = {"count": 0}
     auth.auth_persistence.clear = lambda: clear_calls.__setitem__("count", clear_calls["count"] + 1)
     auth.AuthEngine.restore_session = staticmethod(lambda _a, _r: (None, None, "JWT expired"))
-    st.rerun = lambda: None
+    rerun_calls = {"count": 0}
+    st.rerun = lambda: rerun_calls.__setitem__("count", rerun_calls["count"] + 1)
     monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
 
     auth.init_session_state()
 
     assert st.session_state["_cookie_restore_failed"] is False
     assert clear_calls["count"] == 1
+    # invalid/expired token should short-circuit cookie retry loop in this cycle
+    assert rerun_calls["count"] == 0
+
+
+def test_init_session_state_logs_persistence_clear_result(monkeypatch):
+    st = _install_streamlit_stub(monkeypatch, secrets={"AUTH_EVENT_LOG": False})
+
+    class _Auth:
+        def get_user(self):
+            return None
+
+    supabase_config = types.SimpleNamespace(
+        sb=types.SimpleNamespace(auth=_Auth()),
+        sb_admin=types.SimpleNamespace(auth=types.SimpleNamespace(admin=types.SimpleNamespace())),
+    )
+    monkeypatch.setitem(sys.modules, "supabase_config", supabase_config)
+    auth = _import_fresh("auth")
+    auth.auth_persistence.mount = lambda: None
+    auth.auth_persistence.inspect_state = lambda: {"reason": "cookie_present"}
+    auth.auth_persistence.load = lambda: {"access_token": "a", "refresh_token": "r"}
+    auth.auth_persistence.clear = lambda: True
+    auth.AuthEngine.restore_session = staticmethod(lambda _a, _r: (None, None, "Invalid refresh token"))
+    st.rerun = lambda: None
+    monkeypatch.setattr(auth.time, "sleep", lambda _secs: None)
+
+    auth.init_session_state()
+
+    logs = st.session_state.get("auth_debug", [])
+    assert any(line.startswith("[persistence_cleared_invalid_token] ") for line in logs)
 
 
 def test_init_session_state_restore_success_persists_rotated_tokens(monkeypatch):
