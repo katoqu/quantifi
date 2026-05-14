@@ -163,3 +163,21 @@
 {"ts":"2026-05-14T10:21:59.642502+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
 {"ts":"2026-05-14T10:22:00.145432+00:00","event":"fallback_get_user_err","error":"'Missing required secret/env var: SUPABASE_URL'"}
 {"ts":"2026-05-14T10:22:00.146424+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-05-14T10:26:58.137290+00:00","event":"sign_out_done"}
+{"ts":"2026-05-14T10:26:58.552062+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-05-14T10:26:58.556595+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-05-14T10:26:58.560991+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-05-14T10:26:59.063436+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-05-14T10:26:59.068301+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-05-14T10:26:59.070610+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-05-14T10:26:59.078425+00:00","event":"init_session_state","user_present":true,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-05-14T10:26:59.080969+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-05-14T10:26:59.120735+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-05-14T10:26:59.121306+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-05-14T10:26:59.121664+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-05-14T10:26:59.622167+00:00","event":"fallback_get_user_err","error":"'_Auth' object has no attribute 'get_user'"}
+{"ts":"2026-05-14T10:26:59.624152+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-05-14T10:26:59.629598+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-05-14T10:26:59.630042+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-05-14T10:26:59.630323+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":2,"delay_seconds":0.5}
+{"ts":"2026-05-14T10:27:00.196498+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
