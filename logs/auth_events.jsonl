@@ -1,0 +1,45 @@
+{"ts":"2026-06-05T07:28:40.454436+00:00","event":"sign_out_done"}
+{"ts":"2026-06-05T07:28:40.890286+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:28:40.891333+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-06-05T07:28:40.892319+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-05T07:28:41.394438+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-06-05T07:28:41.395183+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:28:41.395718+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-06-05T07:28:41.400835+00:00","event":"init_session_state","user_present":true,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:28:41.401644+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-06-05T07:28:41.509202+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:28:41.509461+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-06-05T07:28:41.509580+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-05T07:28:42.011307+00:00","event":"fallback_get_user_err","error":"'_Auth' object has no attribute 'get_user'"}
+{"ts":"2026-06-05T07:28:42.016154+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:28:42.026867+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:28:42.027080+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-06-05T07:28:42.027226+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-05T07:28:42.559925+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:29:42.574584+00:00","event":"sign_out_done"}
+{"ts":"2026-06-05T07:29:42.578597+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:29:42.581575+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":false,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-06-05T07:29:42.582745+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-05T07:29:43.089077+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-06-05T07:29:43.089886+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:29:43.093568+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-06-05T07:29:43.126513+00:00","event":"init_session_state","user_present":true,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:29:43.127279+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-06-05T07:29:59.229687+00:00","event":"sign_out_done"}
+{"ts":"2026-06-05T07:29:59.640493+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:29:59.641624+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-06-05T07:29:59.642621+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-05T07:30:00.143450+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-06-05T07:30:00.215048+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:30:00.215823+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-06-05T07:30:00.218260+00:00","event":"init_session_state","user_present":true,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:30:00.218947+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-06-05T07:30:00.240826+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:30:00.241039+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-06-05T07:30:00.241177+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-05T07:30:00.741452+00:00","event":"fallback_get_user_err","error":"'_Auth' object has no attribute 'get_user'"}
+{"ts":"2026-06-05T07:30:00.741652+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:30:00.743557+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-05T07:30:00.743671+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-06-05T07:30:00.743783+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-05T07:30:01.291333+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}

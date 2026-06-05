@@ -147,9 +147,7 @@ def _cookie_retry_delay_seconds(retry_index: int = 1) -> float:
         val = 0.05
     if val > 3.0:
         val = 3.0
-    # Use a gentle backoff so wake-up retries have time to settle.
-    factor = 1.0 + min(max(retry_index - 1, 0), 3) * 0.5
-    return min(val * factor, 3.0)
+    return val
 
 def init_session_state():
     """Initializes session state with a persistence bridge for mobile wake-ups."""
