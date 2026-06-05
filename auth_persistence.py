@@ -72,6 +72,10 @@ def _read_cookie_value() -> str | None:
     cm = _cookie_manager()
     if cm is None:
         return None
+    try:
+        cm.get_all()
+    except Exception:
+        pass
     value = cm.get(COOKIE_NAME)
     return str(value) if value else None
 

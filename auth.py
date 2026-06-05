@@ -126,28 +126,30 @@ def _error_kind(err: str | None) -> str:
     return "other_error"
 
 def _cookie_retry_limit() -> int:
-    raw = st.secrets.get("AUTH_COOKIE_RESTORE_RETRIES", 2)
+    raw = st.secrets.get("AUTH_COOKIE_RESTORE_RETRIES", 4)
     try:
         val = int(raw)
     except Exception:
-        return 2
+        return 4
     if val < 0:
         return 0
     if val > 8:
         return 8
     return val
 
-def _cookie_retry_delay_seconds() -> float:
+def _cookie_retry_delay_seconds(retry_index: int = 1) -> float:
     raw = st.secrets.get("AUTH_COOKIE_RESTORE_DELAY_SECONDS", 0.5)
     try:
         val = float(raw)
     except Exception:
-        return 0.5
+        val = 0.5
     if val < 0.05:
-        return 0.05
+        val = 0.05
     if val > 3.0:
-        return 3.0
-    return val
+        val = 3.0
+    # Use a gentle backoff so wake-up retries have time to settle.
+    factor = 1.0 + min(max(retry_index - 1, 0), 3) * 0.5
+    return min(val * factor, 3.0)
 
 def init_session_state():
     """Initializes session state with a persistence bridge for mobile wake-ups."""
@@ -247,7 +249,7 @@ def init_session_state():
         retry_limit = _cookie_retry_limit()
         if st.session_state._restore_attempts < retry_limit:
             st.session_state._restore_attempts += 1
-            delay_s = _cookie_retry_delay_seconds()
+            delay_s = _cookie_retry_delay_seconds(int(st.session_state._restore_attempts))
             _auth_event(
                 "cookie_retry_wait",
                 retry_index=int(st.session_state._restore_attempts),
@@ -263,6 +265,8 @@ def init_session_state():
         user = getattr(res, "user", None) if res else None
         if user:
             st.session_state.user = user
+            st.session_state._restore_attempts = 0
+            st.session_state["_cookie_restore_failed"] = False
             _auth_event("fallback_get_user_ok")
     except Exception as e:
         _auth_event("fallback_get_user_err", error=str(e))
