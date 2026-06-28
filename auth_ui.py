@@ -16,6 +16,7 @@ class AuthUI:
     @staticmethod
     def _handle_login():
         """Callback to process login before the page re-renders."""
+        st.session_state.login_error = None
         email = st.session_state.get("auth_login_email", "")
         pwd = st.session_state.get("auth_login_password", "")
         
@@ -48,6 +49,7 @@ class AuthUI:
     @staticmethod
     def _handle_signup():
         """Callback to process signups before the page re-renders."""
+        st.session_state.signup_error = None
         email = st.session_state.get("auth_signup_email", "")
         pwd = st.session_state.get("auth_signup_password", "")
         
@@ -88,7 +90,8 @@ class AuthUI:
             st.form_submit_button("Sign in", use_container_width=True, type="primary", on_click=AuthUI._handle_login)
             
         if st.session_state.get("login_error"):
-            st.error(f"Login failed: {st.session_state.login_error}")
+            if not st.session_state.get("user"):
+                st.error(f"Login failed: {st.session_state.login_error}")
             st.session_state.login_error = None
 
         if st.button("Forgot password?", type="secondary"):
@@ -126,7 +129,8 @@ class AuthUI:
                 st.form_submit_button("Sign up", use_container_width=True, type="primary", on_click=AuthUI._handle_signup)
             
         if st.session_state.get("signup_error"):
-            st.error(f"Sign up failed: {st.session_state.signup_error}")
+            if not st.session_state.get("user"):
+                st.error(f"Sign up failed: {st.session_state.signup_error}")
             st.session_state.signup_error = None
 
     @staticmethod
