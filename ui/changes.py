@@ -455,7 +455,11 @@ def show_changes():
             label_visibility="collapsed",
         )
 
-    utils.render_back_button(target_page_title="Tracker", target_tab="Home")
+    utils.render_back_button(
+        target_page_title="Tracker",
+        target_tab="Home",
+        key="back_from_changes",
+    )
 
     with st.expander("New change", expanded=False):
         _render_create_change_panel(sorted_cat_ids, cat_labels)

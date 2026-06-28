@@ -139,18 +139,19 @@ def apply_mobile_table_css():
         </style>
     """, unsafe_allow_html=True)
 
-def render_back_button(target_page_title="Tracker", target_tab="Home"):
+def render_back_button(target_page_title="Tracker", target_tab="Home", *, key: str | None = None):
     """
     Renders a simple native Streamlit pill as a 'Back to Start' button.
     """
     label = "〈 Back to Start" # Simplified label
-    
+    widget_key = key or f"pnav_{target_page_title}_{target_tab}"
+
     st.pills(
         "Navigation",
         options=[label],
-        key=f"pnav_{target_page_title}_{target_tab}",
+        key=widget_key,
         label_visibility="collapsed",
-        selection_mode="single"
+        selection_mode="single",
     )
 
 # In utils.py

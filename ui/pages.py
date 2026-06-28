@@ -115,8 +115,11 @@ def tracker_page():
 
         # Back Button Pill (simplified label)
     if view_mode in ("Add", "Stats", "Edit"):
-        utils.render_back_button(target_page_title="Tracker", target_tab="Home")
-
+            utils.render_back_button(
+                target_page_title="Tracker",
+                target_tab="Home",
+                key="back_from_tracker_subview",
+            )
 #    st.html('<div style="height: 15px;"></div>')
 
     # --- 5. METRIC SELECTION (Only for sub-views) ---
@@ -210,7 +213,11 @@ def configure_page():
         st.session_state["last_config_tab_selection"] = selected_tab
         
         # Simple Back Button
-        utils.render_back_button(target_page_title="Tracker", target_tab="Home")
+        utils.render_back_button(
+            target_page_title="Tracker",
+            target_tab="Home",
+            key="back_from_settings",
+        )
         st.html('<div style="height: 10px;"></div>')
 
     # --- 4. DATA LOADING & CONTENT ROUTING ---
