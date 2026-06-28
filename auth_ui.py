@@ -120,9 +120,18 @@ class AuthUI:
             if st.session_state.get("allowlist_verified_email") != email_clean:
                 st.caption("Only approved emails can create accounts.")
             else:
-                with st.form("password_signup_form", border=False):
-                    pwd = st.text_input("Password", type="password", key="auth_signup_password")
-                    st.form_submit_button("Sign up", use_container_width=True, type="primary", on_click=AuthUI._handle_signup)
+                with st.form("password_signup_form_verified", border=False):
+                    pwd = st.text_input(
+                        "Password",
+                        type="password",
+                        key="auth_signup_password_verified",
+                    )
+                    st.form_submit_button(
+                        "Sign up",
+                        use_container_width=True,
+                        type="primary",
+                        on_click=AuthUI._handle_signup,
+                    )
         else:
             with st.form("password_signup_form", border=False):
                 pwd = st.text_input("Password", type="password", key="auth_signup_password")
