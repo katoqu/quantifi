@@ -151,6 +151,40 @@ def test_auth_persistence_roundtrip_tokens(monkeypatch):
     assert auth_persistence.load() is None
 
 
+def test_auth_persistence_renders_cookie_manager_once_per_session(monkeypatch):
+    _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
+    get_all_calls = {"count": 0}
+
+    class CookieManager:
+        def __init__(self, key=None):
+            self._cookies = {}
+            self.key = key
+
+        def get(self, key):
+            return self._cookies.get(key)
+
+        def set(self, key, value, expires_at=None):
+            _ = expires_at
+            self._cookies[key] = value
+
+        def delete(self, key):
+            self._cookies.pop(key, None)
+
+        def get_all(self):
+            get_all_calls["count"] += 1
+            return self._cookies
+
+    stx = types.SimpleNamespace(CookieManager=CookieManager)
+    monkeypatch.setitem(sys.modules, "extra_streamlit_components", stx)
+
+    auth_persistence = _import_fresh("auth_persistence")
+
+    auth_persistence.mount()
+    auth_persistence.mount()
+    assert auth_persistence.load() is None
+    assert get_all_calls["count"] == 1
+
+
 def test_auth_persistence_loads_legacy_token_payload(monkeypatch):
     _install_streamlit_stub(monkeypatch, secrets={"PERSIST_LOGIN": True})
     _install_cookie_manager_stub(monkeypatch)

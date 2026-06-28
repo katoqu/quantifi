@@ -9,6 +9,7 @@ import session_store
 # Constants
 COOKIE_NAME = "quantifi_auth"
 _CM_KEY = "_quantifi_cookie_manager"
+_CM_RENDERED_KEY = "_quantifi_cookie_manager_rendered"
 
 def _cookie_manager():
     """
@@ -23,8 +24,22 @@ def _cookie_manager():
     # Initialize once per session using a strict key
     if _CM_KEY not in st.session_state:
         st.session_state[_CM_KEY] = stx.CookieManager(key="quantifi_cm_widget")
-        
     return st.session_state[_CM_KEY]
+
+def _render_cookie_manager_once():
+    """Ensure the CookieManager component is rendered at most once per session."""
+    if st.session_state.get(_CM_RENDERED_KEY):
+        return
+
+    cm = _cookie_manager()
+    if cm is None:
+        return
+
+    try:
+        cm.get_all()
+        st.session_state[_CM_RENDERED_KEY] = True
+    except Exception:
+        pass
 
 def _cookies_enabled() -> bool:
     raw = st.secrets.get("PERSIST_LOGIN", True)
@@ -37,10 +52,7 @@ def _cookies_enabled() -> bool:
 def mount():
     """Forces the CookieManager component to render on the current page."""
     if _cookies_enabled():
-        cm = _cookie_manager()
-        if cm is not None:
-            # Calling get_all() forces the HTML/JS to inject into the DOM
-            cm.get_all()
+        _render_cookie_manager_once()
 
 def _encode(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -72,10 +84,7 @@ def _read_cookie_value() -> str | None:
     cm = _cookie_manager()
     if cm is None:
         return None
-    try:
-        cm.get_all()
-    except Exception:
-        pass
+    _render_cookie_manager_once()
     value = cm.get(COOKIE_NAME)
     return str(value) if value else None
 

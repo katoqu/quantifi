@@ -131,3 +131,21 @@
 {"ts":"2026-06-28T15:03:44.895315+00:00","event":"init_session_state","user_present":false,"prev_user_present":false,"restore_attempts":4,"inactivity_seconds":32}
 {"ts":"2026-06-28T15:03:44.902341+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":true,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_missing"}
 {"ts":"2026-06-28T15:03:46.735063+00:00","event":"init_session_state","user_present":true,"prev_user_present":false,"restore_attempts":4,"inactivity_seconds":2}
+{"ts":"2026-06-28T15:17:59.473725+00:00","event":"sign_out_done"}
+{"ts":"2026-06-28T15:17:59.486864+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-28T15:17:59.491222+00:00","event":"persistence_state","cookies_enabled":true,"cookie_manager_ready":false,"cookie_present":false,"cookie_len":0,"session_store_enabled":true,"sid_present":false,"reason":"cookie_manager_unavailable"}
+{"ts":"2026-06-28T15:17:59.495715+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-28T15:17:59.997263+00:00","event":"fallback_get_user_err","error":"'types.SimpleNamespace' object has no attribute 'get_user'"}
+{"ts":"2026-06-28T15:18:00.000154+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-06-28T15:18:00.002023+00:00","event":"link_exchange_err","error_kind":"other_error","error":"bad"}
+{"ts":"2026-06-28T15:18:00.011412+00:00","event":"init_session_state","user_present":true,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-28T15:18:00.015450+00:00","event":"proactive_refresh_ok"}
+{"ts":"2026-06-28T15:18:00.100763+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-28T15:18:00.101850+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-06-28T15:18:00.102265+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-28T15:18:00.602825+00:00","event":"fallback_get_user_err","error":"'_Auth' object has no attribute 'get_user'"}
+{"ts":"2026-06-28T15:18:00.604289+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
+{"ts":"2026-06-28T15:18:00.611704+00:00","event":"init_session_state","user_present":false,"prev_user_present":null,"restore_attempts":0,"inactivity_seconds":null}
+{"ts":"2026-06-28T15:18:00.612709+00:00","event":"persistence_state","reason":"cookie_missing"}
+{"ts":"2026-06-28T15:18:00.613422+00:00","event":"cookie_retry_wait","retry_index":1,"retry_limit":4,"delay_seconds":0.5}
+{"ts":"2026-06-28T15:18:01.349329+00:00","event":"auth_state_transition","from_user_present":null,"to_user_present":false,"inactivity_seconds":null}
