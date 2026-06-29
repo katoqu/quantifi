@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 import models
 import utils
@@ -87,6 +88,92 @@ def _get_value_input(utype, unit_name, smart_default, selected_metric, recent_va
     if step is None:
         step, fmt = _infer_float_step_and_format(smart_default)
     return st.number_input(f"Value ({unit_name})", value=float(smart_default), format=fmt, step=step)
+
+
+def _is_strength_metric(selected_metric):
+    return str(selected_metric.get("metric_kind") or "").lower() == "strength_session"
+
+
+def _format_success_value(strength_payload, value, unit_name):
+    """Build a user-friendly success message for either a strength workout or a numeric entry."""
+    if strength_payload is not None:
+        summary = strength_payload.get("summary")
+        if summary:
+            return summary
+        load_value = strength_payload.get("load_kg")
+        if load_value is not None:
+            return f"{load_value} {unit_name}".strip()
+        return str(value or "")
+
+    if value is None:
+        return unit_name.strip() if unit_name else ""
+    return f"{value} {unit_name}".strip()
+
+
+def _render_strength_workout_form(mid, unit_name):
+    st.caption("Structured workout")
+
+    default_sets = [{"load_kg": 0.0, "reps": 5}]
+    state_key = f"strength_sets_state_{mid}"
+    widget_key = f"strength_sets_editor_{mid}"
+
+    if state_key not in st.session_state:
+        st.session_state[state_key] = pd.DataFrame(default_sets)
+
+    editor_df = st.session_state[state_key]
+    if not isinstance(editor_df, pd.DataFrame):
+        editor_df = pd.DataFrame(default_sets)
+    if editor_df.empty:
+        editor_df = pd.DataFrame(default_sets)
+        st.session_state[state_key] = editor_df
+
+    edited_df = st.data_editor(
+        editor_df,
+        key=widget_key,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic",
+        column_order=["load_kg", "reps"],
+        column_config={
+            "load_kg": st.column_config.NumberColumn("Load (kg)", step=1.0, format="%.1f"),
+            "reps": st.column_config.NumberColumn("Reps", step=1, format="%d"),
+        },
+    )
+
+    if edited_df is not None:
+        if isinstance(edited_df, pd.DataFrame):
+            st.session_state[state_key] = edited_df.reset_index(drop=True)
+            editor_df = edited_df.reset_index(drop=True)
+        else:
+            st.session_state[state_key] = pd.DataFrame(default_sets)
+            editor_df = pd.DataFrame(default_sets)
+
+    if editor_df.empty:
+        st.warning("Add at least one set.")
+        return None
+
+    normalized_sets = []
+    for _, row in editor_df.iterrows():
+        load_value = row.get("load_kg")
+        reps_value = row.get("reps")
+        if pd.isna(load_value) or pd.isna(reps_value):
+            continue
+        normalized_sets.append({
+            "load_kg": float(load_value),
+            "reps": int(reps_value),
+        })
+
+    if not normalized_sets:
+        st.warning("Add at least one valid set.")
+        return None
+
+    summary_load = normalized_sets[0].get("load_kg", 0.0)
+    reps_series = [str(int(s.get("reps", 0))) for s in normalized_sets]
+    return {
+        "load_kg": float(summary_load),
+        "sets": normalized_sets,
+        "summary": f"{summary_load:.1f} kg × {'/'.join(reps_series)} reps × {len(normalized_sets)} sets",
+    }
 
 def _infer_float_step_and_format(value, default_decimals=1, max_decimals=6):
     try:
@@ -184,7 +271,11 @@ def show_capture(selected_metric):
                 date_input = st.date_input("📅 Date", key=f"capture_date_{mid}")
                 time_input = st.time_input("⏰ Time", step=60, key=f"capture_time_{mid}")
 
-            val = _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values)
+            strength_payload = None
+            if _is_strength_metric(selected_metric):
+                strength_payload = _render_strength_workout_form(mid, unit_name)
+            else:
+                val = _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values)
 
             # --- NEW LOCATION: Inside form, below value ---
             target_action = None
@@ -214,13 +305,20 @@ def show_capture(selected_metric):
                 else:
                     final_dt = dt.datetime.now().replace(second=0, microsecond=0)
                 
-                # Save to DB
-                models.create_entry({
-                    "metric_id": mid, 
-                    "value": val, 
+                entry_payload = {
+                    "metric_id": mid,
                     "recorded_at": final_dt.isoformat(),
-                    "target_action": target_action 
-                })
+                    "target_action": target_action,
+                }
+                if strength_payload is not None:
+                    entry_payload["value"] = strength_payload["load_kg"]
+                    entry_payload["load_kg"] = strength_payload["load_kg"]
+                    entry_payload["sets"] = strength_payload["sets"]
+                else:
+                    entry_payload["value"] = val
+
+                # Save to DB
+                models.create_entry(entry_payload)
                 
                 # Cleanup & Cache Clearing
                 editor_handler.reset_editor_state(f"data_{mid}", mid)
@@ -235,7 +333,8 @@ def show_capture(selected_metric):
                 # CRITICAL: Clear the landing page cache so the badge appears instantly
                 models.get_all_entries_bulk.clear()
 
-                st.success(f"Saved: {val} {unit_name}")
+                success_value = _format_success_value(strength_payload, val if "val" in locals() else None, unit_name)
+                st.success(f"Saved: {success_value}")
                 
                 # Small delay to let user see success message before reload
                 import time

@@ -38,6 +38,18 @@ def format_metric_label(metric, unit_map=None):
         label = f"{label} (Archived)"
     return label
 
+
+def format_entry_summary(entry):
+    """Render a readable summary for simple entries or structured workout sets."""
+    sets = entry.get("sets") or []
+    if isinstance(sets, list) and sets:
+        reps_series = [str(int(s.get("reps", 0))) for s in sets if isinstance(s, dict)]
+        if reps_series:
+            load_value = entry.get("load_kg") or entry.get("value") or ""
+            return f"{load_value} kg × {'/'.join(reps_series)} reps"
+    return str(entry.get("value", ""))
+
+
 def collect_data(selected_metric, unit_meta=None):
     mid = selected_metric.get("id")
     m_name = selected_metric.get("name", "Metric").title() #

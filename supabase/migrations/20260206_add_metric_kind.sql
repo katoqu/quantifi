@@ -7,7 +7,7 @@ alter table metrics
   drop constraint if exists metrics_kind_check;
 alter table metrics
   add constraint metrics_kind_check
-  check (metric_kind in ('quantitative', 'count', 'score') or metric_kind is null);
+  check (metric_kind in ('quantitative', 'count', 'score', 'strength_session') or metric_kind is null);
 
 -- For now, keep kind consistent with existing unit_type to avoid ambiguous behavior.
 alter table metrics
@@ -19,4 +19,5 @@ alter table metrics
     or (metric_kind = 'quantitative' and unit_type = 'float')
     or (metric_kind = 'count' and unit_type = 'integer')
     or (metric_kind = 'score' and unit_type = 'integer_range')
+    or (metric_kind = 'strength_session' and unit_type = 'float')
   );

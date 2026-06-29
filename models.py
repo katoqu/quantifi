@@ -254,7 +254,13 @@ def create_metric(payload: dict):
     return _safe_execute(sb.table("metrics").insert(payload), "Failed to create metric")
 
 def create_entry(payload: dict):
-    return _safe_execute(sb.table("entries").insert(payload), "Failed to save entry")
+    """Persist an entry while preserving optional structured workout sets."""
+    normalized_payload = dict(payload or {})
+    if "sets" in normalized_payload and normalized_payload["sets"] is None:
+        normalized_payload.pop("sets")
+    if "load_kg" in normalized_payload and normalized_payload["load_kg"] is None:
+        normalized_payload.pop("load_kg")
+    return _safe_execute(sb.table("entries").insert(normalized_payload), "Failed to save entry")
 
 def create_change_event(payload: dict):
     return _safe_execute(sb.table("change_events").insert(payload), "Failed to create change event")

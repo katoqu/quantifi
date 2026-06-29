@@ -694,6 +694,37 @@ class TestExecuteSave:
     @patch("logic.editor_handler.utils")
     @patch("logic.editor_handler.models")
     @patch("logic.editor_handler.st")
+    def test_execute_save_preserves_strength_workout_sets(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
+        """Should persist strength workout sets when editing an existing session row."""
+        df = pd.DataFrame({
+            "id": ["e-1"],
+            "Change Log": ["🟡"],
+            "value": [80.0],
+            "load_kg": [82.0],
+            "sets": ['[{"load_kg": 82.0, "reps": 5}]'],
+            "recorded_at": ["2026-03-01"],
+        })
+        mock_st.session_state = {
+            "draft_state": df,
+            "editor_widget": {"added_rows": []},
+            "start_date_m-1": dt.date(2026, 3, 1),
+            "end_date_m-1": dt.date(2026, 3, 7),
+            "pill_m-1": "Week",
+        }
+        mock_utils.collect_data.return_value = (df, "unit", "name")
+
+        editor_handler.execute_save("m-1", "draft_state", "editor_widget")
+
+        mock_models.update_entry.assert_called_once()
+        payload = mock_models.update_entry.call_args[0][1]
+        assert payload["value"] == 82.0
+        assert payload["load_kg"] == 82.0
+        assert payload["sets"] == [{"load_kg": 82.0, "reps": 5}]
+
+    @patch("logic.editor_handler.cache_control")
+    @patch("logic.editor_handler.utils")
+    @patch("logic.editor_handler.models")
+    @patch("logic.editor_handler.st")
     def test_execute_save_refreshes_data(self, mock_st, mock_models, mock_utils: Mock, mock_cache: Mock):
         """Should fetch fresh data after changes and refresh state."""
         df = pd.DataFrame({

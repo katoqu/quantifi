@@ -1,3 +1,4 @@
+import json
 import streamlit as st
 import pandas as pd
 import models
@@ -109,14 +110,12 @@ def reset_editor_state(state_key, mid=None):
     """
     # Define the exact columns your application logic expects
     standard_cols = ["id", "recorded_at", "value", "Change Log", "Select"]
-    
+
     if state_key in st.session_state:
-        # Re-initialize as an empty dataframe with the correct columns
         st.session_state[state_key] = pd.DataFrame(columns=standard_cols)
-    
+
     saved_key = f"saved_data_{mid}"
     if saved_key in st.session_state:
-        # Ensure the visualization data source also keeps its columns
         st.session_state[saved_key] = pd.DataFrame(columns=standard_cols)
 
     if mid:
@@ -126,6 +125,89 @@ def reset_editor_state(state_key, mid=None):
             st.session_state.get(f"end_date_{mid}")
         )
         st.session_state[f"prev_pill_{mid}"] = st.session_state.get(f"pill_{mid}")
+
+def prepare_entry_editor_frame(frame, metric_kind=None):
+    """Adds editor-friendly columns for structured strength-session rows."""
+    if frame is None:
+        return pd.DataFrame(columns=["id", "recorded_at", "value", "Change Log", "Select"])
+
+    view_df = frame.copy()
+    if metric_kind == "strength_session" or "load_kg" in view_df.columns or "sets" in view_df.columns:
+        if "load_kg" not in view_df.columns:
+            view_df["load_kg"] = pd.NA
+        if "reps_per_set" not in view_df.columns:
+            view_df["reps_per_set"] = pd.NA
+        if "set_count" not in view_df.columns:
+            view_df["set_count"] = pd.NA
+
+        for idx, row in view_df.iterrows():
+            load_value = row.get("load_kg")
+            if pd.isna(load_value) or load_value is None:
+                load_value = row.get("value")
+            if pd.notna(load_value):
+                view_df.at[idx, "load_kg"] = load_value
+
+            sets = row.get("sets") or []
+            if isinstance(sets, list) and sets:
+                reps_values = [int(s.get("reps", 0)) for s in sets if isinstance(s, dict)]
+                if reps_values:
+                    view_df.at[idx, "reps_per_set"] = reps_values[0]
+                view_df.at[idx, "set_count"] = len(sets)
+            if pd.isna(view_df.at[idx, "reps_per_set"]) or view_df.at[idx, "reps_per_set"] is None:
+                view_df.at[idx, "reps_per_set"] = 1
+            if pd.isna(view_df.at[idx, "set_count"]) or view_df.at[idx, "set_count"] is None:
+                view_df.at[idx, "set_count"] = 1
+
+        view_df["load_kg"] = pd.to_numeric(view_df["load_kg"], errors="coerce")
+        view_df["reps_per_set"] = pd.to_numeric(view_df["reps_per_set"], errors="coerce").fillna(1).astype(int)
+        view_df["set_count"] = pd.to_numeric(view_df["set_count"], errors="coerce").fillna(1).astype(int)
+
+    return view_df
+
+
+def _coerce_strength_sets(row):
+    """Extract structured set data from a row when present."""
+    raw_sets = row.get("sets")
+    if isinstance(raw_sets, list):
+        return raw_sets
+    if isinstance(raw_sets, str):
+        try:
+            parsed = json.loads(raw_sets)
+        except Exception:
+            return []
+        if isinstance(parsed, list):
+            return parsed
+    return []
+
+
+def _coerce_strength_payload(row):
+    """Build a structured strength-session payload from editable table values."""
+    payload = {}
+    raw_load = row.get("load_kg")
+    if raw_load is None or (isinstance(raw_load, float) and pd.isna(raw_load)) or (isinstance(raw_load, str) and raw_load.strip() == ""):
+        payload["load_kg"] = None
+    else:
+        payload["load_kg"] = float(raw_load)
+
+    if "reps_per_set" in row or "set_count" in row:
+        reps_per_set = row.get("reps_per_set")
+        set_count = row.get("set_count")
+        if payload["load_kg"] is None:
+            payload["load_kg"] = None
+        if reps_per_set is not None and set_count is not None:
+            reps = int(reps_per_set)
+            count = max(int(set_count), 1)
+            payload["sets"] = [
+                {"load_kg": payload["load_kg"], "reps": reps}
+                for _ in range(count)
+            ]
+        else:
+            payload["sets"] = _coerce_strength_sets(row)
+    else:
+        payload["sets"] = _coerce_strength_sets(row)
+
+    return payload
+
 
 def execute_save(mid, state_key, editor_key):
     """Commits all pending edits to the database and refreshes state."""
@@ -145,19 +227,45 @@ def execute_save(mid, state_key, editor_key):
                 db_val = None  # "not measured"
             else:
                 db_val = float(raw_val)
-            models.update_entry(row["id"], {
+
+            payload = {
                 "value": db_val,
-                "recorded_at": pd.to_datetime(row["recorded_at"]).isoformat()
-            })
+                "recorded_at": pd.to_datetime(row["recorded_at"]).isoformat(),
+            }
+            strength_payload = _coerce_strength_payload(row)
+            if "load_kg" in row or "reps_per_set" in row or "set_count" in row:
+                payload["load_kg"] = strength_payload.get("load_kg")
+                payload["value"] = strength_payload.get("load_kg") if strength_payload.get("load_kg") is not None else db_val
+                payload["sets"] = strength_payload.get("sets", [])
+            elif "load_kg" in row:
+                raw_load = row.get("load_kg")
+                if raw_load is None or (isinstance(raw_load, float) and pd.isna(raw_load)) or (isinstance(raw_load, str) and raw_load.strip() == ""):
+                    payload["load_kg"] = None
+                else:
+                    payload["load_kg"] = float(raw_load)
+                    payload["value"] = payload["load_kg"]
+            if "sets" in row and "reps_per_set" not in row and "set_count" not in row:
+                payload["sets"] = _coerce_strength_sets(row)
+            models.update_entry(row["id"], payload)
             
     # 3. Process New Rows
     for row in state.get("added_rows", []):
-        if row.get("value") is not None:
-            models.create_entry({
-                "value": float(row["value"]), 
-                "recorded_at": pd.to_datetime(row.get("recorded_at", dt.datetime.now())).isoformat(), 
-                "metric_id": mid
-            })
+        if row.get("value") is not None or row.get("load_kg") is not None or row.get("reps_per_set") is not None or row.get("set_count") is not None:
+            payload = {
+                "value": float(row["value"]) if row.get("value") is not None else None,
+                "recorded_at": pd.to_datetime(row.get("recorded_at", dt.datetime.now())).isoformat(),
+                "metric_id": mid,
+            }
+            strength_payload = _coerce_strength_payload(row)
+            if "load_kg" in row or "reps_per_set" in row or "set_count" in row:
+                payload["load_kg"] = strength_payload.get("load_kg")
+                payload["value"] = strength_payload.get("load_kg") if strength_payload.get("load_kg") is not None else payload["value"]
+                payload["sets"] = strength_payload.get("sets", [])
+            elif "load_kg" in row:
+                payload["load_kg"] = float(row.get("load_kg", 0.0)) if row.get("load_kg") is not None else None
+            if "sets" in row and "reps_per_set" not in row and "set_count" not in row:
+                payload["sets"] = row.get("sets") or []
+            models.create_entry(payload)
     
     # --- FIX: RE-FETCH FRESH DATA ---
     # Bust the per-session cache before reloading data so the UI reflects deletions.

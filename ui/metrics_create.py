@@ -24,7 +24,12 @@ def show_create_metric(cats):
         unit_name = col_unit.text_input("Unit", placeholder="e.g., km", key="create_unit")
         
         def format_metric_kind(k: str) -> str:
-            kind_labels = {"quantitative": "Quantitative", "count": "Count", "score": "Score"}
+            kind_labels = {
+                "quantitative": "Quantitative",
+                "count": "Count",
+                "score": "Score",
+                "strength_session": "Strength Session",
+            }
             return kind_labels.get(k, k)
         
         metric_kind = col_kind.selectbox(

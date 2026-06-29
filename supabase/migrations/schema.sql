@@ -34,7 +34,7 @@ create table metrics (
     (unit_type != 'integer_range')
   ),
   CONSTRAINT metrics_kind_check CHECK (
-    metric_kind in ('quantitative', 'count', 'score') OR metric_kind is null
+    metric_kind in ('quantitative', 'count', 'score', 'strength_session') OR metric_kind is null
   ),
   CONSTRAINT metrics_kind_unit_type_consistency CHECK (
     metric_kind is null
@@ -48,6 +48,8 @@ create table entries (
   id uuid primary key default gen_random_uuid(),
   metric_id uuid references metrics(id) on delete cascade,
   value numeric,
+  load_kg numeric,
+  sets jsonb default '[]'::jsonb,
   recorded_at timestamp not null, -- Support for specific times
   user_id uuid not null references auth.users default auth.uid(),
   created_at timestamptz default now()

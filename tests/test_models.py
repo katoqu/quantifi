@@ -626,6 +626,36 @@ class TestWriteOperations:
             mock_safe.assert_called_once()
 
     @patch("models.st")
+    def test_create_entry_accepts_structured_workout_sets(self, mock_st):
+        """Should preserve optional structured workout sets for strength metrics."""
+        mock_st.session_state = {"user": Mock(id="u-1")}
+
+        class FakeTable:
+            def __init__(self):
+                self.inserted_payload = None
+
+            def insert(self, payload):
+                self.inserted_payload = payload
+                return payload
+
+        fake_table = FakeTable()
+
+        with patch.object(models, "sb") as mock_sb, patch.object(models, "_safe_execute") as mock_safe:
+            mock_sb.table.return_value = fake_table
+            payload = {
+                "metric_id": "m-1",
+                "value": 80.0,
+                "recorded_at": "2026-03-07",
+                "load_kg": 80.0,
+                "sets": [{"load_kg": 80.0, "reps": 10}],
+            }
+            models.create_entry(payload)
+
+            assert mock_safe.call_count == 1
+            assert fake_table.inserted_payload["sets"] == payload["sets"]
+            assert fake_table.inserted_payload["load_kg"] == payload["load_kg"]
+
+    @patch("models.st")
     def test_update_entry(self, mock_st):
         """Should update entry with provided payload."""
         mock_st.session_state = {"user": Mock(id="u-1")}

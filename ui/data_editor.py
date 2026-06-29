@@ -35,20 +35,35 @@ def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
     editor_key = f"editor_{mid}"
     kind = selected_metric.get("metric_kind")
     utype = selected_metric.get("unit_type", "float")
+    is_strength = kind == "strength_session"
     if kind in ("count", "score"):
         step = 1
     else:
         step = 1 if "integer" in utype else 0.1
 
-    st.data_editor(
-        ui_view_df,
-        column_order=["Select", "recorded_at", "value", "Change Log"],
-        column_config={
+    if is_strength:
+        column_order = ["Select", "recorded_at", "load_kg", "reps_per_set", "set_count", "Change Log"]
+        column_config = {
+            "Select": st.column_config.CheckboxColumn("🗑️", width="small"),
+            "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM, HH:mm"),
+            "load_kg": st.column_config.NumberColumn("Load (kg)", step=1.0),
+            "reps_per_set": st.column_config.NumberColumn("Reps/set", step=1, format="%d"),
+            "set_count": st.column_config.NumberColumn("Sets", step=1, format="%d"),
+            "Change Log": st.column_config.TextColumn("Status", disabled=True),
+        }
+    else:
+        column_order = ["Select", "recorded_at", "value", "Change Log"]
+        column_config = {
             "Select": st.column_config.CheckboxColumn("🗑️", width="small"),
             "recorded_at": st.column_config.DatetimeColumn("Date", format="D MMM, HH:mm"),
             "value": st.column_config.NumberColumn(f"{m_unit}", step=step),
             "Change Log": st.column_config.TextColumn("Status", disabled=True),
-        },
+        }
+
+    st.data_editor(
+        ui_view_df,
+        column_order=column_order,
+        column_config=column_config,
         key=editor_key,
         on_change=lambda: editor_handler.sync_editor_changes(state_key, editor_key, view_df.index),
         use_container_width=True,
@@ -87,9 +102,15 @@ def show_data_management_suite(selected_metric):
 
     # Initialize states
     if state_key not in st.session_state or st.session_state[state_key].empty:
-        st.session_state[state_key] = dfe.assign(**{"Change Log": "", "Select": False})
+        st.session_state[state_key] = editor_handler.prepare_entry_editor_frame(
+            dfe.assign(**{"Change Log": "", "Select": False}),
+            metric_kind=selected_metric.get("metric_kind"),
+        )
     if f"saved_data_{mid}" not in st.session_state:
-        st.session_state[f"saved_data_{mid}"] = dfe.copy()
+        st.session_state[f"saved_data_{mid}"] = editor_handler.prepare_entry_editor_frame(
+            dfe.copy(),
+            metric_kind=selected_metric.get("metric_kind"),
+        )
 
     # 1. Unified Filters & Navigation
     abs_min, abs_max = editor_handler.get_date_bounds(dfe, mid)

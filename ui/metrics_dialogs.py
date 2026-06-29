@@ -6,8 +6,13 @@ import models
 import utils
 
 
-_METRIC_KIND_OPTIONS = ["quantitative", "count", "score"]
-_KIND_TO_UNIT_TYPE = {"quantitative": "float", "count": "integer", "score": "integer_range"}
+_METRIC_KIND_OPTIONS = ["quantitative", "count", "score", "strength_session"]
+_KIND_TO_UNIT_TYPE = {
+    "quantitative": "float",
+    "count": "integer",
+    "score": "integer_range",
+    "strength_session": "float",
+}
 
 
 def _infer_metric_kind(metric):
@@ -28,6 +33,10 @@ def _can_convert_kind(from_kind, to_kind):
     if from_kind == "score" and to_kind == "count":
         return True
     if from_kind == "count" and to_kind == "score":
+        return True
+    if from_kind in {"quantitative", "count", "score"} and to_kind == "strength_session":
+        return True
+    if from_kind == "strength_session" and to_kind in {"quantitative", "count", "score"}:
         return True
     return False
 
