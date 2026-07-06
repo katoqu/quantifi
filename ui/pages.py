@@ -28,15 +28,20 @@ def _filter_metrics_for_subview(all_metrics, cat_map, current_filter, *, recent_
     if not current_filter:
         return list(all_metrics)
     if current_filter == "Recent":
-        if not recent_ids:
-            return []
-        id_map = {str(m.get("id")): m for m in all_metrics}
-        ordered = []
-        for mid in recent_ids:
-            m = id_map.get(str(mid))
-            if m:
-                ordered.append(m)
-        return ordered
+        # Sort metrics by most recent entry date
+        if recent_ids:
+            # Create a mapping of metric_id to recency score
+            recency_map = {str(mid): idx for idx, mid in enumerate(recent_ids)}
+            # Sort metrics: those with recent entries come first, in order of recency
+            return sorted(
+                all_metrics,
+                key=lambda m: (
+                    recency_map.get(str(m.get("id")), float('inf')),
+                    m.get("name", "").lower()
+                )
+            )
+        # If no recent_ids, return all metrics sorted by name
+        return sorted(all_metrics, key=lambda m: m.get("name", "").lower())
     return [m for m in all_metrics if cat_map.get(m.get("category_id")) == current_filter]
 
 def tracker_page():

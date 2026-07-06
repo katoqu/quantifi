@@ -113,105 +113,66 @@ def _format_success_value(strength_payload, value, unit_name):
 def _render_strength_workout_form(mid, unit_name):
     st.caption("Structured workout")
 
+    default_sets = [{"load_kg": 0.0, "reps": 5}]
     state_key = f"strength_sets_state_{mid}"
+    widget_key = f"strength_sets_editor_{mid}"
 
     if state_key not in st.session_state:
-        st.session_state[state_key] = []
+        st.session_state[state_key] = pd.DataFrame(default_sets)
 
-    sets = st.session_state[state_key]
+    editor_df = st.session_state[state_key]
+    if not isinstance(editor_df, pd.DataFrame):
+        editor_df = pd.DataFrame(default_sets)
+    if editor_df.empty:
+        editor_df = pd.DataFrame(default_sets)
+        st.session_state[state_key] = editor_df
 
-    # Display existing sets with edit/delete options
-    if sets:
-        st.subheader("Your Sets")
-        for i, set_data in enumerate(sets):
-            col1, col2, col3 = st.columns([3, 1, 1])
-            with col1:
-                st.info(f"Set {i+1}: {set_data['load_kg']:.1f} kg × {set_data['reps']} reps")
-            with col2:
-                if st.button(f"✏️", key=f"edit_{mid}_{i}", help="Edit this set"):
-                    # Toggle edit mode for this set
-                    edit_key = f"editing_set_{mid}_{i}"
-                    if edit_key not in st.session_state:
-                        st.session_state[edit_key] = False
-                    st.session_state[edit_key] = not st.session_state[edit_key]
-                    st.rerun()
-            with col3:
-                if st.button(f"❌", key=f"delete_{mid}_{i}", help="Delete this set"):
-                    sets.pop(i)
-                    st.session_state[state_key] = sets
-                    # Clear any edit mode for remaining sets
-                    for j in range(len(sets)):
-                        st.session_state.pop(f"editing_set_{mid}_{j}", None)
-                    st.rerun()
-            
-            # Show edit form if in edit mode
-            edit_key = f"editing_set_{mid}_{i}"
-            if st.session_state.get(edit_key, False):
-                with st.expander(f"Edit Set {i+1}", expanded=True):
-                    col_a, col_b, col_c = st.columns([2, 1, 1])
-                    with col_a:
-                        edit_load = st.number_input(
-                            "Load (kg)",
-                            value=float(set_data['load_kg']),
-                            min_value=0.0,
-                            step=1.0,
-                            format="%.1f",
-                            key=f"edit_load_{mid}_{i}"
-                        )
-                    with col_b:
-                        edit_reps = st.number_input(
-                            "Reps",
-                            value=int(set_data['reps']),
-                            min_value=1,
-                            step=1,
-                            key=f"edit_reps_{mid}_{i}"
-                        )
-                    with col_c:
-                        st.write("")
-                        if st.button("✅ Save", key=f"save_set_{mid}_{i}"):
-                            sets[i] = {"load_kg": float(edit_load), "reps": int(edit_reps)}
-                            st.session_state[state_key] = sets
-                            st.session_state[edit_key] = False
-                            st.success(f"Set {i+1} updated!")
-                            st.rerun()
+    edited_df = st.data_editor(
+        editor_df,
+        key=widget_key,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic",
+        column_order=["load_kg", "reps"],
+        column_config={
+            "load_kg": st.column_config.NumberColumn("Load (kg)", step=1.0, format="%.1f"),
+            "reps": st.column_config.NumberColumn("Reps", step=1, format="%d"),
+        },
+    )
 
-    # Add new set form
-    with st.expander("Add New Set", expanded=len(sets) == 0):
-        col1, col2, col3 = st.columns([2, 1, 1])
-        with col1:
-            new_load = st.number_input(
-                "Load (kg)",
-                min_value=0.0,
-                step=1.0,
-                format="%.1f",
-                key=f"new_load_{mid}"
-            )
-        with col2:
-            new_reps = st.number_input(
-                "Reps",
-                min_value=1,
-                step=1,
-                value=5,
-                key=f"new_reps_{mid}"
-            )
-        with col3:
-            if st.button("✅ Add Set", key=f"add_set_{mid}", type="primary"):
-                sets.append({"load_kg": float(new_load), "reps": int(new_reps)})
-                st.session_state[state_key] = sets
-                st.success(f"Set {len(sets)} added!")
-                st.rerun()
+    if edited_df is not None:
+        if isinstance(edited_df, pd.DataFrame):
+            st.session_state[state_key] = edited_df.reset_index(drop=True)
+            editor_df = edited_df.reset_index(drop=True)
+        else:
+            st.session_state[state_key] = pd.DataFrame(default_sets)
+            editor_df = pd.DataFrame(default_sets)
 
-    if not sets:
+    if editor_df.empty:
         st.warning("Add at least one set.")
         return None
 
-    # Create summary
-    summary_load = sets[0]["load_kg"]
-    reps_series = [str(int(s["reps"])) for s in sets]
+    normalized_sets = []
+    for _, row in editor_df.iterrows():
+        load_value = row.get("load_kg")
+        reps_value = row.get("reps")
+        if pd.isna(load_value) or pd.isna(reps_value):
+            continue
+        normalized_sets.append({
+            "load_kg": float(load_value),
+            "reps": int(reps_value),
+        })
+
+    if not normalized_sets:
+        st.warning("Add at least one valid set.")
+        return None
+
+    summary_load = normalized_sets[0].get("load_kg", 0.0)
+    reps_series = [str(int(s.get("reps", 0))) for s in normalized_sets]
     return {
         "load_kg": float(summary_load),
-        "sets": sets,
-        "summary": f"{summary_load:.1f} kg × {'/'.join(reps_series)} reps × {len(sets)} sets",
+        "sets": normalized_sets,
+        "summary": f"{summary_load:.1f} kg × {'/'.join(reps_series)} reps × {len(normalized_sets)} sets",
     }
 
 def _infer_float_step_and_format(value, default_decimals=1, max_decimals=6):
@@ -298,21 +259,6 @@ def show_capture(selected_metric):
             label_visibility="collapsed",
         )
         
-        # Handle strength workout form separately (outside the main form to avoid nested form issues)
-        strength_payload = None
-        if _is_strength_metric(selected_metric):
-            # Strength workout form - must be outside the main form due to button usage
-            with st.container(border=True):
-                strength_payload = _render_strength_workout_form(mid, unit_name)
-                if strength_payload is not None:
-                    # Store workout data in session state for form submission
-                    st.session_state[f"strength_load_{mid}"] = strength_payload["load_kg"]
-                    st.session_state[f"strength_sets_{mid}"] = strength_payload["sets"]
-        else:
-            val = _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values)
-            # Store the value in session state for form submission
-            st.session_state[f"numeric_value_{mid}"] = val
-
         # 3. Form Start
         with st.form(f"capture_entry_submit_{mid}", border=False):
             date_input = st.session_state.get(f"capture_date_{mid}", dt.date.today())
@@ -324,6 +270,12 @@ def show_capture(selected_metric):
             if when_selection == "Custom":
                 date_input = st.date_input("📅 Date", key=f"capture_date_{mid}")
                 time_input = st.time_input("⏰ Time", step=60, key=f"capture_time_{mid}")
+
+            strength_payload = None
+            if _is_strength_metric(selected_metric):
+                strength_payload = _render_strength_workout_form(mid, unit_name)
+            else:
+                val = _get_value_input(utype, unit_name, smart_default, selected_metric, recent_values)
 
             # --- NEW LOCATION: Inside form, below value ---
             target_action = None
@@ -358,12 +310,12 @@ def show_capture(selected_metric):
                     "recorded_at": final_dt.isoformat(),
                     "target_action": target_action,
                 }
-                if _is_strength_metric(selected_metric):
-                    entry_payload["value"] = st.session_state[f"strength_load_{mid}"]
-                    entry_payload["load_kg"] = st.session_state[f"strength_load_{mid}"]
-                    entry_payload["sets"] = st.session_state[f"strength_sets_{mid}"]
+                if strength_payload is not None:
+                    entry_payload["value"] = strength_payload["load_kg"]
+                    entry_payload["load_kg"] = strength_payload["load_kg"]
+                    entry_payload["sets"] = strength_payload["sets"]
                 else:
-                    entry_payload["value"] = st.session_state[f"numeric_value_{mid}"]
+                    entry_payload["value"] = val
 
                 # Save to DB
                 models.create_entry(entry_payload)
@@ -381,16 +333,7 @@ def show_capture(selected_metric):
                 # CRITICAL: Clear the landing page cache so the badge appears instantly
                 models.get_all_entries_bulk.clear()
 
-                # Get the value for success message
-                if _is_strength_metric(selected_metric):
-                    success_strength_payload = {
-                        "load_kg": st.session_state[f"strength_load_{mid}"],
-                        "sets": st.session_state[f"strength_sets_{mid}"],
-                        "summary": f"{st.session_state[f'strength_load_{mid}']:.1f} kg workout"
-                    }
-                    success_value = _format_success_value(success_strength_payload, None, unit_name)
-                else:
-                    success_value = _format_success_value(None, st.session_state[f"numeric_value_{mid}"], unit_name)
+                success_value = _format_success_value(strength_payload, val if "val" in locals() else None, unit_name)
                 st.success(f"Saved: {success_value}")
                 
                 # Small delay to let user see success message before reload

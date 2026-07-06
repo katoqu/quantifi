@@ -424,7 +424,7 @@ def show_visualizations(
         # Option A: single aggregation from raw data (skip daily collapse),
         # except when daily semantics are required (count/score) or missing_is_zero.
         use_daily_for_plot = policy.missing_policy == "missing_is_zero" or kind in ("count", "score")
-        if use_daily_for_plot:
+        if ily_for_plot:
             if kind == "count":
                 daily_agg = "sum"
             elif kind == "score":
