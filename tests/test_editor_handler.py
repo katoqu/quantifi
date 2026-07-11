@@ -524,7 +524,7 @@ class TestResetEditorState:
 
         df = mock_st.session_state["draft_state"]
         assert len(df) == 0  # No rows
-        assert list(df.columns) == ["id", "recorded_at", "value", "Change Log", "Select"]
+        assert list(df.columns) == ["id", "recorded_at", "value", "Change Log", "Select", "session_group", "original_id", "set_index"]
 
     @patch("logic.editor_handler.st")
     def test_reset_editor_state_clears_saved_data(self, mock_st):
@@ -542,6 +542,9 @@ class TestResetEditorState:
             "value",
             "Change Log",
             "Select",
+            "session_group",
+            "original_id",
+            "set_index",
         ]
 
     @patch("logic.editor_handler.st")
@@ -900,3 +903,161 @@ class TestIntegration:
         # Verify database operations were called
         mock_models.delete_entry.assert_called()
         mock_models.update_entry.assert_called()
+
+
+class TestStrengthSessionStatusSync:
+    """Test status synchronization for strength sessions with expanded sets."""
+
+    @patch("logic.editor_handler.st")
+    def test_strength_session_edit_propagates_status_to_all_sets(self, mock_st):
+        """Test that editing one set in a strength session marks all sets as modified."""
+        # Create strength session with 3 sets
+        df = pd.DataFrame({
+            "id": [1, 1, 1],
+            "original_id": [1, 1, 1],
+            "set_index": [0, 1, 2],
+            "recorded_at": pd.to_datetime(["2026-03-01 10:00", "2026-03-01 10:00", "2026-03-01 10:00"]),
+            "load_kg": [100.0, 100.0, 100.0],
+            "reps_per_set": [5, 5, 5],
+            "set_count": [3, 3, 3],
+            "Change Log": ["", "", ""],
+            "Select": [False, False, False],
+        })
+
+        mock_st.session_state = {
+            "draft_state": df.copy(),
+            "editor_widget": {
+                "edited_rows": {
+                    0: {"load_kg": 105.0}  # Edit first set only
+                },
+                "added_rows": []
+            }
+        }
+
+        # Sync changes
+        editor_handler.sync_editor_changes("draft_state", "editor_widget", view_df_indices=[0, 1, 2])
+
+        # Verify all sets in the session are marked as modified
+        result_df = mock_st.session_state["draft_state"]
+        assert all(result_df["Change Log"] == "🟡"), "All sets should have yellow status"
+        assert len(result_df[result_df["Change Log"] == "🟡"]) == 3, "All 3 sets should be marked"
+
+    @patch("logic.editor_handler.st")
+    def test_strength_session_deletion_propagates_to_all_sets(self, mock_st):
+        """Test that marking one set for deletion marks all sets in session for deletion."""
+        # Create strength session with 3 sets
+        df = pd.DataFrame({
+            "id": [2, 2, 2],
+            "original_id": [2, 2, 2],
+            "set_index": [0, 1, 2],
+            "recorded_at": pd.to_datetime(["2026-03-02 10:00", "2026-03-02 10:00", "2026-03-02 10:00"]),
+            "load_kg": [80.0, 80.0, 80.0],
+            "reps_per_set": [6, 6, 6],
+            "set_count": [3, 3, 3],
+            "Change Log": ["", "", ""],
+            "Select": [False, False, False],
+        })
+
+        mock_st.session_state = {
+            "draft_state": df.copy(),
+            "editor_widget": {
+                "edited_rows": {
+                    1: {"Select": True}  # Mark second set for deletion
+                },
+                "added_rows": []
+            }
+        }
+
+        # Sync changes
+        editor_handler.sync_editor_changes("draft_state", "editor_widget", view_df_indices=[0, 1, 2])
+
+        # Verify all sets in the session are marked for deletion and selected
+        result_df = mock_st.session_state["draft_state"]
+        assert all(result_df["Change Log"] == "🔴"), "All sets should have red status"
+        assert all(result_df["Select"] == True), "All sets should be selected"
+        assert len(result_df[result_df["Change Log"] == "🔴"]) == 3, "All 3 sets should be marked for deletion"
+
+    @patch("logic.editor_handler.st")
+    def test_strength_session_mixed_changes(self, mock_st):
+        """Test that deletion takes precedence over modification in mixed scenarios."""
+        # Create strength session with 4 sets
+        df = pd.DataFrame({
+            "id": [3, 3, 3, 3],
+            "original_id": [3, 3, 3, 3],
+            "set_index": [0, 1, 2, 3],
+            "recorded_at": pd.to_datetime(["2026-03-03 10:00"] * 4),
+            "load_kg": [90.0, 90.0, 90.0, 90.0],
+            "reps_per_set": [8, 8, 8, 8],
+            "set_count": [4, 4, 4, 4],
+            "Change Log": ["", "", "", ""],
+            "Select": [False, False, False, False],
+        })
+
+        mock_st.session_state = {
+            "draft_state": df.copy(),
+            "editor_widget": {
+                "edited_rows": {
+                    0: {"load_kg": 95.0},  # Edit first set
+                    2: {"Select": True}    # Mark third set for deletion
+                },
+                "added_rows": []
+            }
+        }
+
+        # Sync changes
+        editor_handler.sync_editor_changes("draft_state", "editor_widget", view_df_indices=[0, 1, 2, 3])
+
+        # Verify deletion takes precedence - all sets should be marked for deletion
+        result_df = mock_st.session_state["draft_state"]
+        assert all(result_df["Change Log"] == "🔴"), "All sets should have red status when any set is deleted"
+        assert all(result_df["Select"] == True), "All sets should be selected when any set is deleted"
+
+
+class TestStrengthSessionIndexMapping:
+    """Test index mapping for strength sessions with multiple sessions."""
+
+    @patch("logic.editor_handler.st")
+    def test_multi_session_index_mapping(self, mock_st):
+        """Test that editing works correctly with multiple strength sessions."""
+        # Create data with 2 sessions, 2 sets each
+        df = pd.DataFrame({
+            "id": [1, 1, 2, 2],
+            "original_id": [1, 1, 2, 2],
+            "set_index": [0, 1, 0, 1],
+            "recorded_at": pd.to_datetime([
+                "2026-03-01 10:00", "2026-03-01 10:00",  # Session 1
+                "2026-03-02 10:00", "2026-03-02 10:00",  # Session 2
+            ]),
+            "load_kg": [100.0, 100.0, 200.0, 200.0],
+            "reps_per_set": [5, 5, 6, 6],
+            "set_count": [2, 2, 2, 2],
+            "Change Log": ["", "", "", ""],
+            "Select": [False, False, False, False],
+        })
+
+        mock_st.session_state = {
+            "draft_state": df.copy(),
+            "editor_widget": {
+                "edited_rows": {0: {"load_kg": 205.0}},  # Edit row 0 in session UI (maps to master index 2)
+                "added_rows": []
+            }
+        }
+
+        # Simulate the correct index mapping (session 2 has indices [2, 3] in master df)
+        session_to_master_index = pd.Index([2, 3])
+        
+        # Sync changes with correct mapping
+        editor_handler.sync_editor_changes("draft_state", "editor_widget", session_to_master_index)
+
+        result_df = mock_st.session_state["draft_state"]
+        
+        # Verify that session 2, set 0 was edited (should be at master index 2)
+        assert result_df.loc[2, "load_kg"] == 205.0, "Session 2, set 0 should have load_kg=205.0"
+        assert result_df.loc[2, "Change Log"] == "🟡", "Session 2, set 0 should have yellow status"
+        
+        # Verify that session 1 was not affected
+        assert result_df.loc[0, "load_kg"] == 100.0, "Session 1, set 0 should be unchanged"
+        assert result_df.loc[1, "load_kg"] == 100.0, "Session 1, set 1 should be unchanged"
+        
+        # Verify session-level synchronization within session 2
+        assert result_df.loc[3, "Change Log"] == "🟡", "All sets in session 2 should have yellow status"

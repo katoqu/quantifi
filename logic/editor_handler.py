@@ -92,16 +92,62 @@ def sync_editor_changes(state_key, editor_key, view_df_indices):
                 df.at[actual_idx, "Change Log"] = "🔴" if val else ""
             elif "🔴" not in str(df.at[actual_idx, "Change Log"]):
                 df.at[actual_idx, "Change Log"] = "🟡"
+    
+    # Handle session-level grouping for strength metrics
+    if "session_group" in df.columns or "original_id" in df.columns:
+        _sync_session_level_changes(df)
+
+def _sync_session_level_changes(df):
+    """Ensures session-level consistency for strength metrics."""
+    # Determine grouping column based on data structure
+    group_col = "original_id" if "original_id" in df.columns else "session_group"
+    
+    # Group by session and ensure all sets in a session have the same change status
+    session_groups = df.groupby(group_col)
+    
+    for session_id, session_df in session_groups:
+        # If any set in the session is marked for deletion, mark all sets
+        if (session_df["Change Log"] == "🔴").any():
+            for idx in session_df.index:
+                df.at[idx, "Change Log"] = "🔴"
+                df.at[idx, "Select"] = True
+        # If any set in the session is modified, mark all as modified for consistency
+        elif (session_df["Change Log"] == "🟡").any():
+            for idx in session_df.index:
+                current_status = str(df.at[idx, "Change Log"])
+                if current_status == "":
+                    df.at[idx, "Change Log"] = "🟡"
 
 def get_change_summary(state_key, editor_key):
     """Counts pending updates for the confirmation dialog."""
     df = st.session_state[state_key]
     state = st.session_state.get(editor_key, {})
-    return {
-        "del": len(df[df["Change Log"] == "🔴"]),
-        "upd": len(df[df["Change Log"] == "🟡"]),
-        "add": len(state.get("added_rows", []))
-    }
+    
+    # For strength sessions, count unique sessions instead of individual rows
+    if "original_id" in df.columns:
+        # Use original_id for expanded sets
+        deleted_sessions = df[df["Change Log"] == "🔴"]["original_id"].unique()
+        updated_sessions = df[df["Change Log"] == "🟡"]["original_id"].unique()
+        return {
+            "del": len(deleted_sessions),
+            "upd": len(updated_sessions),
+            "add": len(state.get("added_rows", []))
+        }
+    elif "session_group" in df.columns:
+        # Fallback for non-expanded strength data
+        deleted_sessions = df[df["Change Log"] == "🔴"]["session_group"].unique()
+        updated_sessions = df[df["Change Log"] == "🟡"]["session_group"].unique()
+        return {
+            "del": len(deleted_sessions),
+            "upd": len(updated_sessions),
+            "add": len(state.get("added_rows", []))
+        }
+    else:
+        return {
+            "del": len(df[df["Change Log"] == "🔴"]),
+            "upd": len(df[df["Change Log"] == "🟡"]),
+            "add": len(state.get("added_rows", []))
+        }
 
 def reset_editor_state(state_key, mid=None):
     """
@@ -109,7 +155,7 @@ def reset_editor_state(state_key, mid=None):
     Ensures that columns remain present to avoid KeyErrors in visualizations.
     """
     # Define the exact columns your application logic expects
-    standard_cols = ["id", "recorded_at", "value", "Change Log", "Select"]
+    standard_cols = ["id", "recorded_at", "value", "Change Log", "Select", "session_group", "original_id", "set_index"]
 
     if state_key in st.session_state:
         st.session_state[state_key] = pd.DataFrame(columns=standard_cols)
@@ -161,8 +207,52 @@ def prepare_entry_editor_frame(frame, metric_kind=None):
         view_df["load_kg"] = pd.to_numeric(view_df["load_kg"], errors="coerce")
         view_df["reps_per_set"] = pd.to_numeric(view_df["reps_per_set"], errors="coerce").fillna(1).astype(int)
         view_df["set_count"] = pd.to_numeric(view_df["set_count"], errors="coerce").fillna(1).astype(int)
+        
+        # Expand sets into individual rows for strength sessions
+        if metric_kind == "strength_session":
+            view_df = _expand_strength_sets_into_rows(view_df)
+        else:
+            # For backward compatibility, add session grouping for non-expanded strength data
+            view_df["session_group"] = view_df["recorded_at"].dt.floor("1s")
 
     return view_df
+
+
+def _expand_strength_sets_into_rows(df):
+    """Expand strength session entries with sets arrays into individual set rows."""
+    expanded_rows = []
+    
+    for idx, row in df.iterrows():
+        sets = row.get("sets") or []
+        if isinstance(sets, list) and sets:
+            # Expand each set into its own row
+            for set_idx, set_data in enumerate(sets):
+                if isinstance(set_data, dict):
+                    set_row = row.copy()
+                    set_row["original_id"] = row["id"]  # Track original database entry
+                    set_row["set_index"] = set_idx  # Track position in session
+                    set_row["load_kg"] = set_data.get("load_kg", row.get("load_kg", row.get("value")))
+                    set_row["reps_per_set"] = set_data.get("reps", row.get("reps_per_set", 1))
+                    set_row["set_count"] = len(sets)  # Total sets in session
+                    expanded_rows.append(set_row)
+        else:
+            # No sets data, keep as single row
+            row_copy = row.copy()
+            row_copy["original_id"] = row["id"]
+            row_copy["set_index"] = 0
+            expanded_rows.append(row_copy)
+    
+    if expanded_rows:
+        expanded_df = pd.DataFrame(expanded_rows)
+        # Reset index to ensure unique indices for each row
+        expanded_df = expanded_df.reset_index(drop=True)
+        # Add session grouping by original_id for proper session grouping
+        expanded_df["session_group"] = expanded_df["original_id"]
+        return expanded_df
+    else:
+        # Fallback to original dataframe
+        df["session_group"] = df["recorded_at"].dt.floor("1s")
+        return df
 
 
 def _coerce_strength_sets(row):
@@ -178,6 +268,38 @@ def _coerce_strength_sets(row):
         if isinstance(parsed, list):
             return parsed
     return []
+
+
+def _aggregate_expanded_sets_back(df):
+    """Aggregate expanded set rows back into original database format."""
+    if "original_id" not in df.columns:
+        return df  # No expansion, return as-is
+    
+    # Group by original_id to reconstruct sessions
+    aggregated_data = []
+    session_groups = df.groupby("original_id")
+    
+    for original_id, session_df in session_groups:
+        # Get the base row (first row has all the metadata)
+        base_row = session_df.iloc[0].copy()
+        
+        # Reconstruct the sets array from individual rows
+        sets = []
+        for _, set_row in session_df.iterrows():
+            set_data = {
+                "load_kg": set_row["load_kg"],
+                "reps": set_row["reps_per_set"]
+            }
+            sets.append(set_data)
+        
+        # Sort sets by set_index to maintain original order
+        sets_sorted = sorted(sets, key=lambda x: session_df[session_df["load_kg"] == x["load_kg"]]["set_index"].iloc[0] if len(session_df[session_df["load_kg"] == x["load_kg"]]) > 0 else 0)
+        
+        base_row["sets"] = sets_sorted
+        base_row["id"] = original_id  # Restore original ID
+        aggregated_data.append(base_row)
+    
+    return pd.DataFrame(aggregated_data)
 
 
 def _coerce_strength_payload(row):
@@ -215,12 +337,36 @@ def execute_save(mid, state_key, editor_key):
     state = st.session_state.get(editor_key, {})
     
     # 1. Process Deletions (using the markers defined in sync_editor_changes)
-    for _, row in df[df["Change Log"] == "🔴"].iterrows():
-        if pd.notna(row.get("id")): 
-            models.delete_entry(row["id"])
+    # For strength sessions with expanded sets, delete by original_id
+    if "original_id" in df.columns:
+        # Group by original_id and delete entire sessions
+        deletion_groups = df[df["Change Log"] == "🔴"].groupby("original_id")
+        for original_id, session_rows in deletion_groups:
+            # Get the original entry ID (all rows in session have same original_id)
+            entry_id = session_rows["id"].iloc[0] if pd.notna(session_rows["id"].iloc[0]) else session_rows["original_id"].iloc[0]
+            if pd.notna(entry_id):
+                models.delete_entry(entry_id)
+    elif "session_group" in df.columns:
+        # Group by session and delete entire sessions (fallback)
+        deletion_groups = df[df["Change Log"] == "🔴"].groupby("session_group")
+        for session_time, session_rows in deletion_groups:
+            for _, row in session_rows.iterrows():
+                if pd.notna(row.get("id")): 
+                    models.delete_entry(row["id"])
+    else:
+        # Regular deletion for non-strength metrics
+        for _, row in df[df["Change Log"] == "🔴"].iterrows():
+            if pd.notna(row.get("id")): 
+                models.delete_entry(row["id"])
             
     # 2. Process Updates
-    for _, row in df[df["Change Log"] == "🟡"].iterrows():
+    # For expanded sets, aggregate back to original format first
+    if "original_id" in df.columns:
+        df_to_process = _aggregate_expanded_sets_back(df)
+    else:
+        df_to_process = df
+    
+    for _, row in df_to_process[df_to_process["Change Log"] == "🟡"].iterrows():
         if pd.notna(row.get("id")):
             raw_val = row.get("value")
             if raw_val is None or (isinstance(raw_val, float) and pd.isna(raw_val)) or (isinstance(raw_val, str) and raw_val.strip() == ""):
