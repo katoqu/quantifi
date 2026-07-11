@@ -18,6 +18,57 @@ from .chart_annotations import build_hierarchical_annotations
 from .chart_stats import get_metric_stats
 
 
+def _compute_strength_value(row, agg_type: str) -> float:
+    """Compute strength metric value from sets data based on aggregation type."""
+    sets = row.get("sets")
+    
+    # Backward compatibility: if no sets data, use fallback
+    if not sets or not isinstance(sets, list):
+        base_value = float(row.get("value") or row.get("load_kg") or 0)
+        if agg_type == "Total Volume":
+            # Assume 3 sets of 10 reps each: Total Volume = value * 10 * 3
+            return base_value * 10 * 3
+        elif agg_type == "Max e1RM":
+            # Assume each set has same load (value/3), reps=10, number of sets=3
+            # e1RM = load * (1 + reps/30) = (value/3) * (1 + 10/30) = (value/3) * (4/3)
+            per_set_load = base_value / 3
+            return per_set_load * (1 + 10 / 30)
+        return base_value
+    
+    # Extract loads and reps from sets
+    set_data = []
+    for s in sets:
+        if s and isinstance(s, dict):
+            load = float(s.get("load_kg", 0))
+            reps = int(s.get("reps", 10))  # Default to 10 reps if missing
+            set_data.append({"load_kg": load, "reps": reps})
+    
+    if not set_data:
+        base_value = float(row.get("value") or row.get("load_kg") or 0)
+        if agg_type == "Total Volume":
+            return base_value * 10 * 3
+        elif agg_type == "Max e1RM":
+            per_set_load = base_value / 3
+            return per_set_load * (1 + 10 / 30)
+        return base_value
+    
+    if agg_type == "Total Volume":
+        # Sum of (reps * load) for all sets
+        return sum(sd["load_kg"] * sd["reps"] for sd in set_data)
+    elif agg_type == "Max Load":
+        # Maximum single set load
+        return max(sd["load_kg"] for sd in set_data)
+    elif agg_type == "Average Load":
+        # Average across all sets
+        return sum(sd["load_kg"] for sd in set_data) / len(set_data)
+    elif agg_type == "Max e1RM":
+        # Max e1RM across all sets using Epley formula: load * (1 + reps/30)
+        e1rms = [sd["load_kg"] * (1 + sd["reps"] / 30) for sd in set_data]
+        return max(e1rms)
+    else:
+        return sum(sd["load_kg"] for sd in set_data)
+
+
 def _stable_metric_key(metric_id: str | None, metric_name: str | None) -> str:
     if metric_id:
         return str(metric_id).strip()
@@ -206,10 +257,11 @@ def show_visualizations(
                 )
             else:
                 range_choice = st.segmented_control(
-                    label="",
+                    label="Period",
                     options=period_options,
                     default=default_val,
                     key=range_key,
+                    label_visibility="collapsed",
                 )
         with c2:
             initial_missing_is_zero = policy.missing_policy == "missing_is_zero"
@@ -225,8 +277,35 @@ def show_visualizations(
                     missing_policy="missing_is_zero" if missing_is_zero else "ignore_missing",
                     daily_agg=policy.daily_agg,
                 )
+
+        # Strength metric aggregation toggle
+        if metric_kind == "strength_session":
+            strength_agg_key = f"strength_agg_{widget_key}"
+            strength_agg_options = ["Total Volume", "Max Load", "Average Load", "Max e1RM"]
+            default_agg = strength_agg_options[0]
+            strength_agg = st.selectbox(
+                "Strength metric:",
+                options=strength_agg_options,
+                index=0,
+                key=strength_agg_key,
+                label_visibility="collapsed",
+                help="Choose how to visualize strength sessions",
+            )
+        else:
+            strength_agg = None
     else:
         range_choice = external_range
+        strength_agg = None
+
+    # Apply strength metric transformation if needed
+    if strength_agg and metric_kind == "strength_session" and hasattr(dfe, 'columns'):
+        try:
+            if "sets" in dfe.columns:
+                dfe = dfe.copy()
+                dfe["value"] = dfe.apply(lambda row: _compute_strength_value(row, strength_agg), axis=1)
+        except Exception:
+            # If transformation fails, keep original values
+            pass
 
     last_ts = dfe["recorded_at"].max()
     
@@ -424,7 +503,7 @@ def show_visualizations(
         # Option A: single aggregation from raw data (skip daily collapse),
         # except when daily semantics are required (count/score) or missing_is_zero.
         use_daily_for_plot = policy.missing_policy == "missing_is_zero" or kind in ("count", "score")
-        if ily_for_plot:
+        if use_daily_for_plot:
             if kind == "count":
                 daily_agg = "sum"
             elif kind == "score":
