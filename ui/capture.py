@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from ui import visualize
 from logic import editor_handler
 from metric_policy import resolve_metric_policy
+from supabase_config import sb
 
 @st.fragment
 def _capture_fragment(selected_metric):
@@ -110,6 +111,30 @@ def _format_success_value(strength_payload, value, unit_name):
     return f"{value} {unit_name}".strip()
 
 
+def _get_previous_strength_session(mid):
+    """Fetch the most recent strength session for baseline comparison."""
+    try:
+        res = sb.table("entries") \
+            .select("*") \
+            .eq("metric_id", mid) \
+            .order("recorded_at", desc=True) \
+            .limit(1) \
+            .execute()
+        if res and res.data:
+            entry = res.data[0]
+            sets = entry.get("sets", [])
+            if sets:
+                return {
+                    "load_kg": entry.get("load_kg"),
+                    "sets": sets,
+                    "recorded_at": entry.get("recorded_at"),
+                    "id": entry.get("id")
+                }
+    except Exception:
+        pass
+    return None
+
+
 def _render_strength_workout_form(mid, unit_name):
     st.caption("Structured workout")
 
@@ -119,36 +144,60 @@ def _render_strength_workout_form(mid, unit_name):
         st.session_state[state_key] = []
 
     sets = st.session_state[state_key]
+    
+    # Show previous session as baseline
+    previous_session = _get_previous_strength_session(mid)
+    if previous_session:
+        with st.expander("📊 Previous Session (Baseline)", expanded=False):
+            prev_sets = previous_session.get("sets", [])
+            if prev_sets:
+                prev_date = previous_session.get("recorded_at", "")
+                if prev_date:
+                    try:
+                        prev_date_str = pd.to_datetime(prev_date).strftime('%d %b %Y')
+                    except:
+                        prev_date_str = "Unknown"
+                else:
+                    prev_date_str = "Unknown"
+                
+                # Show individual sets on one line with separator
+                if prev_sets:
+                    set_strs = [f"Set {i+1}: {s.get('load_kg', 0):.1f} kg × {s.get('reps', 0)} reps" 
+                               for i, s in enumerate(prev_sets) if isinstance(s, dict)]
+                    if set_strs:
+                        st.caption(" — ".join(set_strs))
+            else:
+                st.caption("No set data available")
 
-    # Display existing sets with edit/delete options
+    # Display existing sets with edit/delete options - compact layout
     if sets:
         st.subheader("Your Sets")
         for i, set_data in enumerate(sets):
-            col1, col2, col3 = st.columns([3, 1, 1])
+            col1, col2 = st.columns([4, 1])
             with col1:
                 st.info(f"Set {i+1}: {set_data['load_kg']:.1f} kg × {set_data['reps']} reps")
             with col2:
-                if st.button(f"✏️", key=f"edit_{mid}_{i}", help="Edit this set"):
-                    # Toggle edit mode for this set
-                    edit_key = f"editing_set_{mid}_{i}"
-                    if edit_key not in st.session_state:
-                        st.session_state[edit_key] = False
-                    st.session_state[edit_key] = not st.session_state[edit_key]
-                    st.rerun()
-            with col3:
-                if st.button(f"❌", key=f"delete_{mid}_{i}", help="Delete this set"):
-                    sets.pop(i)
-                    st.session_state[state_key] = sets
-                    # Clear any edit mode for remaining sets
-                    for j in range(len(sets)):
-                        st.session_state.pop(f"editing_set_{mid}_{j}", None)
-                    st.rerun()
+                col_edit, col_del = st.columns([1, 1])
+                with col_edit:
+                    if st.button("✏️", key=f"edit_{mid}_{i}", help="Edit", use_container_width=True):
+                        edit_key = f"editing_set_{mid}_{i}"
+                        if edit_key not in st.session_state:
+                            st.session_state[edit_key] = False
+                        st.session_state[edit_key] = not st.session_state[edit_key]
+                        st.rerun()
+                with col_del:
+                    if st.button("❌", key=f"delete_{mid}_{i}", help="Delete", use_container_width=True):
+                        sets.pop(i)
+                        st.session_state[state_key] = sets
+                        for j in range(len(sets)):
+                            st.session_state.pop(f"editing_set_{mid}_{j}", None)
+                        st.rerun()
             
             # Show edit form if in edit mode
             edit_key = f"editing_set_{mid}_{i}"
             if st.session_state.get(edit_key, False):
                 with st.expander(f"Edit Set {i+1}", expanded=True):
-                    col_a, col_b, col_c = st.columns([2, 1, 1])
+                    col_a, col_b = st.columns([3, 1])
                     with col_a:
                         edit_load = st.number_input(
                             "Load (kg)",
@@ -156,7 +205,8 @@ def _render_strength_workout_form(mid, unit_name):
                             min_value=0.0,
                             step=1.0,
                             format="%.1f",
-                            key=f"edit_load_{mid}_{i}"
+                            key=f"edit_load_{mid}_{i}",
+                            label_visibility="collapsed"
                         )
                     with col_b:
                         edit_reps = st.number_input(
@@ -164,27 +214,27 @@ def _render_strength_workout_form(mid, unit_name):
                             value=int(set_data['reps']),
                             min_value=1,
                             step=1,
-                            key=f"edit_reps_{mid}_{i}"
+                            key=f"edit_reps_{mid}_{i}",
+                            label_visibility="collapsed"
                         )
-                    with col_c:
-                        st.write("")
-                        if st.button("✅ Save", key=f"save_set_{mid}_{i}"):
-                            sets[i] = {"load_kg": float(edit_load), "reps": int(edit_reps)}
-                            st.session_state[state_key] = sets
-                            st.session_state[edit_key] = False
-                            st.success(f"Set {i+1} updated!")
-                            st.rerun()
+                    if st.button("✅ Save", key=f"save_set_{mid}_{i}", type="primary", use_container_width=True):
+                        sets[i] = {"load_kg": float(edit_load), "reps": int(edit_reps)}
+                        st.session_state[state_key] = sets
+                        st.session_state[edit_key] = False
+                        st.success(f"Set {i+1} updated!")
+                        st.rerun()
 
-    # Add new set form
-    with st.expander("Add New Set", expanded=len(sets) == 0):
-        col1, col2, col3 = st.columns([2, 1, 1])
+    # Add new set form - compact layout for mobile
+    with st.expander("➕ Add Set", expanded=len(sets) == 0):
+        col1, col2 = st.columns([3, 1])
         with col1:
             new_load = st.number_input(
                 "Load (kg)",
                 min_value=0.0,
                 step=1.0,
                 format="%.1f",
-                key=f"new_load_{mid}"
+                key=f"new_load_{mid}",
+                label_visibility="collapsed"
             )
         with col2:
             new_reps = st.number_input(
@@ -192,14 +242,15 @@ def _render_strength_workout_form(mid, unit_name):
                 min_value=1,
                 step=1,
                 value=5,
-                key=f"new_reps_{mid}"
+                key=f"new_reps_{mid}",
+                label_visibility="collapsed"
             )
-        with col3:
-            if st.button("✅ Add Set", key=f"add_set_{mid}", type="primary"):
-                sets.append({"load_kg": float(new_load), "reps": int(new_reps)})
-                st.session_state[state_key] = sets
-                st.success(f"Set {len(sets)} added!")
-                st.rerun()
+        # Button below the inputs for better mobile layout
+        if st.button("✅ Add Set", key=f"add_set_{mid}", type="primary", use_container_width=True):
+            sets.append({"load_kg": float(new_load), "reps": int(new_reps)})
+            st.session_state[state_key] = sets
+            st.success(f"Set {len(sets)} added!")
+            st.rerun()
 
     if not sets:
         st.warning("Add at least one set.")
@@ -211,7 +262,7 @@ def _render_strength_workout_form(mid, unit_name):
     return {
         "load_kg": float(summary_load),
         "sets": sets,
-        "summary": f"{summary_load:.1f} kg × {'/'.join(reps_series)} reps × {len(sets)} sets",
+        "summary": None,  # Removed summary as requested
     }
 
 def _infer_float_step_and_format(value, default_decimals=1, max_decimals=6):

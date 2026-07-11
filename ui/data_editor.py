@@ -20,14 +20,14 @@ def _prepare_strength_data_for_visualization(df):
         
         # Aggregate set information
         session_row["set_count"] = len(session_df)
-        session_row["reps_per_set"] = session_df["reps_per_set"].iloc[0] if not session_df["reps_per_set"].empty else 1
+        session_row["reps_per_set"] = session_df["reps_per_set"].iloc[0] if "reps_per_set" in session_df.columns and not session_df["reps_per_set"].empty else 1
         
         # Create sets data structure for visualization
         sets_data = []
         for _, row in session_df.iterrows():
             sets_data.append({
-                "load_kg": row["load_kg"],
-                "reps": row["reps_per_set"]
+                "load_kg": row.get("load_kg"),
+                "reps": row.get("reps_per_set", row.get("reps", 1))
             })
         
         session_row["sets"] = sets_data
@@ -100,6 +100,7 @@ def _confirm_save_dialog(mid, editor_key, state_key):
     """Review changes before committing to the database."""
     summary = editor_handler.get_change_summary(state_key, editor_key)
     master_draft = st.session_state[state_key]
+    saved_data = st.session_state.get(f"saved_data_{mid}")
     
     st.markdown("### 📋 Review Edits")
     st.write(f"✅ **New:** {summary['add']} | 📝 **Edited:** {summary['upd']} | 🗑️ **Deleted:** {summary['del']}")
@@ -108,41 +109,77 @@ def _confirm_save_dialog(mid, editor_key, state_key):
     changes = master_draft[master_draft["Change Log"] != ""]
     if not changes.empty:
         # Check if this is a strength session with session grouping
-        if "original_id" in changes.columns:
-            # Group changes by original_id (session)
-            session_groups = changes.groupby("original_id")
+        if "original_id" in changes.columns or "session_group" in changes.columns:
+            # For strength sessions, group by session and show individual changed sets
+            group_col = "original_id" if "original_id" in changes.columns else "session_group"
+            session_groups = changes.groupby(group_col)
+            
             for session_id, session_changes in session_groups:
                 with st.container(border=True):
-                    if session_changes["Change Log"].iloc[0] == "🔴":
+                    # Determine if this is a deletion
+                    is_deletion = session_changes["Change Log"].iloc[0] == "🔴"
+                    if is_deletion:
                         st.markdown("**🔴 DELETING SESSION**")
                     else:
                         st.markdown("**🟡 UPDATED SESSION**")
                     
-                    # Show session details
+                    # Show session time
                     session_time = session_changes["recorded_at"].iloc[0]
-                    session_load = session_changes["load_kg"].iloc[0] if not session_changes["load_kg"].empty else "N/A"
-                    session_reps = session_changes["reps_per_set"].iloc[0] if "reps_per_set" in session_changes.columns and not session_changes["reps_per_set"].empty else "N/A"
-                    total_sets = len(session_changes)
-                    
-                    st.write(f"**Load:** {session_load} kg | **Reps/set:** {session_reps} | **Sets:** {total_sets}")
                     st.caption(f"📅 {session_time.strftime('%d %b, %H:%M')}")
-        elif "session_group" in changes.columns:
-            # Group changes by session (fallback)
-            session_groups = changes.groupby("session_group")
-            for session_time, session_changes in session_groups:
-                with st.container(border=True):
-                    if session_changes["Change Log"].iloc[0] == "🔴":
-                        st.markdown("**🔴 DELETING SESSION**")
-                    else:
-                        st.markdown("**🟡 UPDATED SESSION**")
                     
-                    # Show session details
-                    session_load = session_changes["load_kg"].iloc[0] if not session_changes["load_kg"].empty else "N/A"
-                    session_reps = session_changes["reps_per_set"].iloc[0] if not session_changes["reps_per_set"].empty else "N/A"
-                    total_sets = len(session_changes)
-                    
-                    st.write(f"**Load:** {session_load} kg | **Reps/set:** {session_reps} | **Sets:** {total_sets}")
-                    st.caption(f"📅 {session_time.strftime('%d %b, %H:%M')}")
+                    # Show each set individually with from → to
+                    for _, set_row in session_changes.iterrows():
+                        load_new = set_row.get("load_kg")
+                        reps_new = set_row.get("reps_per_set")
+                        set_index = set_row.get("set_index", 0)
+                        change_status = set_row.get("Change Log", "")
+                        original_id = set_row.get("original_id", session_id)
+                        
+                        if change_status == "🔴":
+                            status_text = "🔴 "
+                            st.write(f"{status_text}**Set {set_index + 1}:** Deleted")
+                        elif change_status == "🟡":
+                            status_text = "🟡 "
+                            # Get original values from saved_data
+                            load_old = "N/A"
+                            reps_old = "N/A"
+                            if saved_data is not None and not saved_data.empty:
+                                # Find matching row in saved_data
+                                if "original_id" in saved_data.columns:
+                                    orig_rows = saved_data[saved_data["original_id"] == original_id]
+                                else:
+                                    orig_rows = saved_data[saved_data["session_group"] == session_id]
+                                
+                                if not orig_rows.empty and "set_index" in orig_rows.columns:
+                                    orig_set = orig_rows[orig_rows["set_index"] == set_index]
+                                    if not orig_set.empty:
+                                        orig_row = orig_set.iloc[0]
+                                        load_old_val = orig_row.get("load_kg")
+                                        reps_old_val = orig_row.get("reps_per_set")
+                                        load_old = f"{float(load_old_val):.1f}" if load_old_val is not None and not pd.isna(load_old_val) else "N/A"
+                                        reps_old = str(int(reps_old_val)) if reps_old_val is not None and not pd.isna(reps_old_val) else "N/A"
+                            
+                            # Format new values
+                            load_new_str = f"{float(load_new):.1f}" if load_new is not None and not pd.isna(load_new) else "N/A"
+                            reps_new_str = str(int(reps_new)) if reps_new is not None and not pd.isna(reps_new) else "N/A"
+                            
+                            # Build change description
+                            changes_parts = []
+                            if load_old != load_new_str:
+                                changes_parts.append(f"{load_old}→{load_new_str} kg")
+                            else:
+                                changes_parts.append(f"{load_new_str} kg")
+                            if reps_old != reps_new_str:
+                                changes_parts.append(f"{reps_old}→{reps_new_str} reps")
+                            else:
+                                changes_parts.append(f"{reps_new_str} reps")
+                            
+                            st.write(f"{status_text}**Set {set_index + 1}:** {' × '.join(changes_parts)}")
+                        else:
+                            # No change status but still in changes - show current values
+                            load_str = f"{float(load_new):.1f}" if load_new is not None and not pd.isna(load_new) else "N/A"
+                            reps_str = str(int(reps_new)) if reps_new is not None and not pd.isna(reps_new) else "N/A"
+                            st.write(f"**Set {set_index + 1}:** {load_str} kg × {reps_str} reps")
         else:
             # Regular non-strength metric changes
             for _, row in changes.iterrows():
@@ -198,8 +235,8 @@ def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
             
             with st.expander(session_header, expanded=True):
                 # Show session-level information
-                session_load = session_df["load_kg"].iloc[0] if not session_df["load_kg"].empty else "N/A"
-                session_reps = session_df["reps_per_set"].iloc[0] if not session_df["reps_per_set"].empty else "N/A"
+                session_load = session_df["load_kg"].iloc[0] if "load_kg" in session_df.columns and not session_df["load_kg"].empty else "N/A"
+                session_reps = session_df["reps_per_set"].iloc[0] if "reps_per_set" in session_df.columns and not session_df["reps_per_set"].empty else "N/A"
                 total_sets = len(session_df)
                 
                 st.caption(f"Load: {session_load} kg | Reps/set: {session_reps} | Total sets: {total_sets}")
@@ -208,7 +245,7 @@ def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
                 sorted_session_df = session_df.sort_values("set_index" if "set_index" in session_df.columns else "recorded_at")
                 
                 # Create mapping from session local index to master dataframe index
-                session_to_master_index = session_df.index
+                session_to_master_index = sorted_session_df.index
                 
                 # Render the session rows
                 st.data_editor(
@@ -223,7 +260,7 @@ def _render_editable_table(view_df, m_unit, mid, state_key, selected_metric):
                         "Change Log": st.column_config.TextColumn("Status", disabled=True),
                     },
                     key=session_editor_key,
-                    on_change=lambda: editor_handler.sync_editor_changes(state_key, session_editor_key, session_to_master_index),
+                    on_change=lambda k=session_editor_key, m=session_to_master_index: editor_handler.sync_editor_changes(state_key, k, m),
                     use_container_width=True,
                     num_rows="dynamic",
                     hide_index=True
