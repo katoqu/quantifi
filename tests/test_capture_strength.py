@@ -29,6 +29,9 @@ def test_format_success_value_falls_back_to_numeric_value():
 def test_render_strength_workout_form_initializes_empty_state():
     import streamlit as st
 
+    # Save original session state
+    original_session_state = getattr(st, '_original_session_state', st.session_state)
+    
     # Mock session_state
     class MockSessionState:
         _data = {}
@@ -51,19 +54,26 @@ def test_render_strength_workout_form_initializes_empty_state():
 
     st.session_state = MockSessionState()
     
-    result = capture._render_strength_workout_form("test_metric", "kg")
-    
-    # Should return None when no sets are added
-    assert result is None
-    
-    # State should be initialized
-    assert "strength_sets_state_test_metric" in st.session_state
-    assert st.session_state["strength_sets_state_test_metric"] == []
+    try:
+        result = capture._render_strength_workout_form("test_metric", "kg")
+        
+        # Should return None when no sets are added
+        assert result is None
+        
+        # State should be initialized
+        assert "strength_sets_state_test_metric" in st.session_state
+        assert st.session_state["strength_sets_state_test_metric"] == []
+    finally:
+        # Restore original session state
+        st.session_state = original_session_state
 
 
 def test_render_strength_workout_form_adds_and_returns_sets():
     import streamlit as st
 
+    # Save original session state
+    original_session_state = getattr(st, '_original_session_state', st.session_state)
+    
     # Mock session_state
     class MockSessionState:
         _data = {}
@@ -86,34 +96,41 @@ def test_render_strength_workout_form_adds_and_returns_sets():
 
     st.session_state = MockSessionState()
     
-    # First call initializes state
-    result = capture._render_strength_workout_form("test_metric", "kg")
-    assert result is None
-    
-    # Simulate adding sets through session state (as the UI would)
-    state_key = "strength_sets_state_test_metric"
-    st.session_state[state_key] = [
-        {"load_kg": 80.0, "reps": 5},
-        {"load_kg": 82.5, "reps": 3}
-    ]
-    
-    # Call again to get the result
-    result = capture._render_strength_workout_form("test_metric", "kg")
-    
-    # Should return the correct summary and sets
-    assert result is not None
-    assert result["summary"] == "80.0 kg × 5/3 reps × 2 sets"
-    assert len(result["sets"]) == 2
-    assert result["sets"][0]["load_kg"] == 80.0
-    assert result["sets"][0]["reps"] == 5
-    assert result["sets"][1]["load_kg"] == 82.5
-    assert result["sets"][1]["reps"] == 3
-    assert result["load_kg"] == 80.0
+    try:
+        # First call initializes state
+        result = capture._render_strength_workout_form("test_metric", "kg")
+        assert result is None
+        
+        # Simulate adding sets through session state (as the UI would)
+        state_key = "strength_sets_state_test_metric"
+        st.session_state[state_key] = [
+            {"load_kg": 80.0, "reps": 5},
+            {"load_kg": 82.5, "reps": 3}
+        ]
+        
+        # Call again to get the result
+        result = capture._render_strength_workout_form("test_metric", "kg")
+        
+        # Should return the correct summary and sets
+        assert result is not None
+        assert result["summary"] == "80.0 kg × 5/3 reps × 2 sets"
+        assert len(result["sets"]) == 2
+        assert result["sets"][0]["load_kg"] == 80.0
+        assert result["sets"][0]["reps"] == 5
+        assert result["sets"][1]["load_kg"] == 82.5
+        assert result["sets"][1]["reps"] == 3
+        assert result["load_kg"] == 80.0
+    finally:
+        # Restore original session state
+        st.session_state = original_session_state
 
 
 def test_render_strength_workout_form_persists_data_across_calls():
     import streamlit as st
 
+    # Save original session state
+    original_session_state = getattr(st, '_original_session_state', st.session_state)
+    
     # Mock session_state
     class MockSessionState:
         _data = {}
@@ -136,20 +153,24 @@ def test_render_strength_workout_form_persists_data_across_calls():
 
     st.session_state = MockSessionState()
     
-    # First call
-    capture._render_strength_workout_form("persist_test", "kg")
-    state_key = "strength_sets_state_persist_test"
-    
-    # Verify state is initialized
-    assert state_key in st.session_state
-    assert st.session_state[state_key] == []
-    
-    # Add a set
-    st.session_state[state_key].append({"load_kg": 60.0, "reps": 8})
-    
-    # Second call should still have the set
-    result = capture._render_strength_workout_form("persist_test", "kg")
-    assert result is not None
-    assert len(result["sets"]) == 1
-    assert result["sets"][0]["load_kg"] == 60.0
-    assert result["sets"][0]["reps"] == 8
+    try:
+        # First call
+        capture._render_strength_workout_form("persist_test", "kg")
+        state_key = "strength_sets_state_persist_test"
+        
+        # Verify state is initialized
+        assert state_key in st.session_state
+        assert st.session_state[state_key] == []
+        
+        # Add a set
+        st.session_state[state_key].append({"load_kg": 60.0, "reps": 8})
+        
+        # Second call should still have the set
+        result = capture._render_strength_workout_form("persist_test", "kg")
+        assert result is not None
+        assert len(result["sets"]) == 1
+        assert result["sets"][0]["load_kg"] == 60.0
+        assert result["sets"][0]["reps"] == 8
+    finally:
+        # Restore original session state
+        st.session_state = original_session_state
