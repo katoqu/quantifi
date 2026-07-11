@@ -18,21 +18,37 @@ A minimal Streamlit app for manual metric tracking using Supabase (Postgres + Au
 **Prereqs**
 - Python 3.12 recommended
 - A Supabase project (hosted or local)
+- UV (recommended) or pip for dependency management
 
-1) Create and activate a virtual environment
+### Virtual Environment Setup
+
+This project supports two virtual environments:
+- `.venv/` (primary, recommended) - Uses Python 3.12.3
+- `venv/` (backup) - Older environment for compatibility
+
+**Recommended: Use `.venv/` with UV (fast and reproducible)**
 
 ```bash
+# Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install dependencies using UV (recommended)
+uv sync
+```
+
+**Alternative: Traditional pip approach**
+
+```bash
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies using pip
+python3 -m pip install -r requirements.txt
 ```
 
 If your IDE shows import resolution errors (e.g. `streamlit` / `pandas`), point it at `.venv/bin/python` (VS Code also picks this up from `.vscode/settings.json`).
-
-2) Install dependencies
-
-```bash
-python3 -m pip install -r requirements.txt
-```
 
 3) Configure Streamlit secrets
 
@@ -74,6 +90,69 @@ npx supabase db push
 streamlit run app.py
 ```
 
+## UV vs Traditional Virtual Environments
+
+This project supports both modern UV and traditional pip workflows:
+
+### UV (UltraViolet) - Recommended
+
+**Features:**
+- ✅ Very fast dependency resolution (Rust-based)
+- ✅ Automatic lock file (`uv.lock`) for reproducibility
+- ✅ Uses `pyproject.toml` as primary dependency source
+- ✅ Excellent for production deployments
+
+**Commands:**
+```bash
+# Install UV (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Add a dependency
+uv add package-name
+
+# Update lock file
+uv lock
+
+# Sync dependencies (install from lock file)
+uv sync
+
+# Install globally (for production)
+uv sync --system
+```
+
+### Traditional Pip Approach
+
+**Features:**
+- ✅ Familiar workflow for Python developers
+- ✅ Uses `requirements.txt` as primary dependency source
+- ✅ Works without additional tools
+- ⚠️ Slower dependency resolution
+
+**Commands:**
+```bash
+# Create virtual environment
+python3 -m venv .venv
+
+# Activate
+source .venv/bin/activate
+
+# Install dependencies
+python3 -m pip install -r requirements.txt
+
+# Freeze dependencies (manual lock)
+pip freeze > requirements.txt
+```
+
+### Key Differences
+
+| Aspect | UV Approach | Traditional Pip Approach |
+|--------|-------------|--------------------------|
+| **Dependency File** | `pyproject.toml` + `uv.lock` | `requirements.txt` |
+| **Speed** | Very fast (Rust-based) | Slower (Python-based) |
+| **Lock File** | Automatic (`uv.lock`) | Manual (`pip freeze`) |
+| **Reproducibility** | Excellent | Good |
+| **Ecosystem** | Modern (PEP 621) | Traditional |
+
 ## Testing
 
 ```bash
@@ -105,6 +184,25 @@ The `manage_db.py` script is a development/admin helper (reads connection detail
 
 ## Deployment (Streamlit Community Cloud)
 
+### Production Deployment with UV (Recommended)
+
+```bash
+# Install dependencies globally using UV
+uv sync --system
+
+# OR install in a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+uv sync
+```
+
+### Traditional Pip Deployment
+
+```bash
+# Install dependencies using pip
+python3 -m pip install -r requirements.txt
+```
+
 If you want users to authenticate **only via Supabase**:
 
 1) Set the Streamlit app visibility to **Public/Unlisted** (not Private), so users are not forced to log in to Streamlit.
@@ -127,6 +225,45 @@ create table if not exists public.signup_allowlist (
   email text primary key,
   created_at timestamptz not null default now()
 );
+```
+
+## Virtual Environment Troubleshooting
+
+### Common Issues and Solutions
+
+**Issue: "Module not found" after activation**
+- Ensure you're using the correct Python interpreter: `.venv/bin/python`
+- Check that dependencies are installed in the active environment
+- Try reinstalling: `uv sync` or `pip install -r requirements.txt`
+
+**Issue: UV commands not found**
+- Install UV first: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Ensure `~/.local/bin` is in your PATH
+
+**Issue: Dependency conflicts**
+- Delete the lock file and regenerate: `rm uv.lock && uv lock`
+- Or recreate virtual environment: `rm -rf .venv && python3 -m venv .venv`
+
+**Issue: Slow dependency installation**
+- Use UV instead of pip for faster resolution: `uv sync`
+- UV is typically 10-100x faster than pip
+
+**Issue: Production deployment failures**
+- Ensure `uv.lock` is committed and up-to-date
+- Use `uv sync --system` for global installation
+- Check Python version compatibility (requires 3.12+)
+
+### Switching Between Environments
+
+```bash
+# Deactivate current environment
+deactivate
+
+# Activate .venv (recommended)
+source .venv/bin/activate
+
+# Activate venv (backup)
+source venv/bin/activate
 ```
 
 ## Security notes
