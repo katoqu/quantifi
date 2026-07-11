@@ -29,10 +29,9 @@ def _compute_strength_value(row, agg_type: str) -> float:
             # Assume 3 sets of 10 reps each: Total Volume = value * 10 * 3
             return base_value * 10 * 3
         elif agg_type == "Max e1RM":
-            # Assume each set has same load (value/3), reps=10, number of sets=3
-            # e1RM = load * (1 + reps/30) = (value/3) * (1 + 10/30) = (value/3) * (4/3)
-            per_set_load = base_value / 3
-            return per_set_load * (1 + 10 / 30)
+            # Assume total reps = 30 for the session (not 3 sets of 10)
+            # e1RM = load * (1 + reps/30) = base_value * (1 + 30/30) = base_value * 2
+            return base_value * (1 + 30 / 30)
         return base_value
     
     # Extract loads and reps from sets
@@ -48,8 +47,9 @@ def _compute_strength_value(row, agg_type: str) -> float:
         if agg_type == "Total Volume":
             return base_value * 10 * 3
         elif agg_type == "Max e1RM":
-            per_set_load = base_value / 3
-            return per_set_load * (1 + 10 / 30)
+            # Assume total reps = 30 for the session (not 3 sets of 10)
+            # e1RM = load * (1 + reps/30) = base_value * (1 + 30/30) = base_value * 2
+            return base_value * (1 + 30 / 30)
         return base_value
     
     if agg_type == "Total Volume":
