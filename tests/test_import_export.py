@@ -49,6 +49,41 @@ def test_build_export_rows_includes_entries_and_changes():
     assert change_row["Category"] == "health"
 
 
+def test_build_export_rows_preserves_strength_session_payload():
+    """Strength-session rows should keep structured workout data in the CSV-friendly export."""
+    from models import build_export_rows
+
+    rows = build_export_rows(
+        [
+            {
+                "recorded_at": "2026-02-01T12:00:00Z",
+                "value": 80,
+                "load_kg": 80,
+                "sets": [{"load_kg": 80, "reps": 5}, {"load_kg": 82.5, "reps": 3}],
+                "target_action": "Increase",
+                "metrics": {
+                    "name": "bench",
+                    "description": "Bench press",
+                    "unit_name": "kg",
+                    "unit_type": "float",
+                    "metric_kind": "strength_session",
+                    "higher_is_better": False,
+                    "range_start": None,
+                    "range_end": None,
+                    "is_archived": False,
+                    "categories": {"name": "gym"},
+                },
+            }
+        ],
+        [],
+    )
+
+    strength_row = next(r for r in rows if r["RowType"] == "entry")
+    assert strength_row["Kind"] == "strength_session"
+    assert strength_row["LoadKg"] == 80
+    assert strength_row["Sets"] == '[{"load_kg": 80, "reps": 5}, {"load_kg": 82.5, "reps": 3}]'
+
+
 def test_parse_import_frames_backward_compatible_without_rowtype():
     """Importer treats legacy CSVs (no RowType column) as entry-only."""
     from ui.importer import parse_import_frames
@@ -97,4 +132,27 @@ def test_validate_import_frames_reports_entry_and_change_errors():
     errors = validate_import_frames(df_entries, df_changes)
     assert any("Invalid Type" in e for e in errors)
     assert any("Change Title cannot be empty" in e for e in errors)
+
+
+def test_validate_import_frames_accepts_strength_session_kind():
+    """Importer should treat strength_session as a valid metric kind for round-trip CSV import."""
+    from ui.importer import validate_import_frames
+
+    df_entries = pd.DataFrame(
+        [
+            {
+                "Metric": "bench",
+                "Value": 80,
+                "Date": "2026-02-01 12:00:00",
+                "Type": "float",
+                "Kind": "strength_session",
+                "Archived": False,
+                "LoadKg": 80,
+                "Sets": '[{"load_kg": 80, "reps": 5}]',
+            }
+        ]
+    )
+
+    errors = validate_import_frames(df_entries, pd.DataFrame())
+    assert errors == []
 

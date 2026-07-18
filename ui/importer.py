@@ -1,4 +1,5 @@
 # importer.py
+import json
 import streamlit as st
 import pandas as pd
 import models
@@ -9,7 +10,7 @@ from datetime import datetime
 import cache_control
 
 ALLOWED_TYPES = ["float", "integer", "integer_range"]
-ALLOWED_KINDS = ["quantitative", "count", "score"]
+ALLOWED_KINDS = ["quantitative", "count", "score", "strength_session"]
 
 
 def parse_import_frames(df_import: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -240,6 +241,16 @@ def _handle_import_logic(uploaded_file, wipe_first):
                         payload = {"metric_id": m_id, "value": val, "recorded_at": formatted_date}
                         if "Target" in df_entries.columns and pd.notna(row.get("Target")) and str(row.get("Target")).strip():
                             payload["target_action"] = str(row.get("Target")).strip()
+                        if "LoadKg" in df_entries.columns and pd.notna(row.get("LoadKg")):
+                            try:
+                                payload["load_kg"] = float(row.get("LoadKg"))
+                            except (TypeError, ValueError):
+                                payload["load_kg"] = None
+                        if "Sets" in df_entries.columns and pd.notna(row.get("Sets")) and str(row.get("Sets")).strip():
+                            try:
+                                payload["sets"] = json.loads(str(row.get("Sets")))
+                            except Exception:
+                                payload["sets"] = []
                         models.create_entry(payload)
                         success_entries += 1
                     progress_bar.progress((i + 1) / total_rows)

@@ -310,7 +310,7 @@ def get_flat_export_data():
     """
     entries_res = _safe_execute(
         sb.table("entries").select(
-            "recorded_at, value, target_action, metrics(name, description, unit_name, unit_type, metric_kind, higher_is_better, range_start, range_end, is_archived, categories(name))"
+            "recorded_at, value, load_kg, sets, target_action, metrics(name, description, unit_name, unit_type, metric_kind, higher_is_better, range_start, range_end, is_archived, categories(name))"
         ),
         "Failed to fetch export data"
     )
@@ -339,6 +339,13 @@ def build_export_rows(entries_data: list[dict], change_events_data: list[dict]) 
     for entry in entries_data:
         ts = pd.to_datetime(entry["recorded_at"], format="ISO8601", utc=True)
         m_meta = entry.get("metrics", {})
+        sets_payload = entry.get("sets")
+        sets_text = ""
+        if isinstance(sets_payload, list):
+            sets_text = json.dumps(sets_payload)
+        elif sets_payload is not None:
+            sets_text = str(sets_payload)
+
         rows.append(
             {
                 "RowType": "entry",
@@ -355,6 +362,8 @@ def build_export_rows(entries_data: list[dict], change_events_data: list[dict]) 
                 "Max": m_meta.get("range_end"),
                 "HigherIsBetter": m_meta.get("higher_is_better", True),
                 "Target": entry.get("target_action", ""),
+                "LoadKg": entry.get("load_kg"),
+                "Sets": sets_text,
                 "Title": "",
                 "Notes": "",
             }

@@ -17,14 +17,9 @@ def setup_streamlit_environment():
         mod_config = types.ModuleType("streamlit.config")
         # Satisfy the logger's specific method call
         mod_config.get_config = lambda *a, **k: None # type: ignore
+        mod_config._config_options = {}
         modules_any["streamlit.config"] = mod_config
 
-    # 2. Mock other internal paths required for runtime initialization
-    paths = [
-        "streamlit.runtime",
-        "streamlit.runtime.scriptrunner",
-        "streamlit.runtime.scriptrunner.script_run_context"
-    ]
-    for path in paths:
-        if path not in modules_any:
-            modules_any[path] = types.ModuleType(path)
+    # 2. Keep the real Streamlit runtime package intact.
+    # Some test runs only need the config module to expose the logger state
+    # expected during import, so we patch just that minimal surface here.
