@@ -259,10 +259,11 @@ def _render_strength_workout_form(mid, unit_name):
     # Create summary
     summary_load = sets[0]["load_kg"]
     reps_series = [str(int(s["reps"])) for s in sets]
+    summary = f"{summary_load:.1f} kg × {'/'.join(reps_series)} reps × {len(sets)} sets"
     return {
         "load_kg": float(summary_load),
         "sets": sets,
-        "summary": None,  # Removed summary as requested
+        "summary": summary,
     }
 
 def _infer_float_step_and_format(value, default_decimals=1, max_decimals=6):

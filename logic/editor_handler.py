@@ -111,8 +111,11 @@ def _sync_session_level_changes(df):
             for idx in session_df.index:
                 df.at[idx, "Change Log"] = "🔴"
                 df.at[idx, "Select"] = True
-        # Note: We don't propagate 🟡 status to all sets - only the edited set gets marked
-        # This allows individual set tracking within a session
+        # If any set in the session is marked as modified (🟡), mark all sets
+        elif (session_df["Change Log"] == "🟡").any():
+            for idx in session_df.index:
+                if df.at[idx, "Change Log"] != "🔴":  # Don't override deletion marks
+                    df.at[idx, "Change Log"] = "🟡"
 
 def get_change_summary(state_key, editor_key):
     """Counts pending updates for the confirmation dialog."""
