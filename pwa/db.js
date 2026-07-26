@@ -281,43 +281,47 @@ export async function getMetricByName(name) {
   return metrics.find((metric) => String(metric.name || '').trim().toLowerCase() === normalized) || null;
 }
 
-function parseCsvLine(line) {
-  const cells = [];
-  let current = '';
+function parseCsvText(text) {
+  const rows = [];
+  let currentRow = [];
+  let currentCell = '';
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    const next = line[i + 1];
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const nextChar = text[i + 1];
 
     if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
+      if (inQuotes && nextChar === '"') {
+        currentCell += '"';
         i += 1;
       } else {
         inQuotes = !inQuotes;
       }
-      continue;
+    } else if (char === ',' && !inQuotes) {
+      currentRow.push(currentCell);
+      currentCell = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i += 1;
+      }
+      currentRow.push(currentCell);
+      if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      currentCell = '';
+    } else {
+      currentCell += char;
     }
-
-    if (char === ',' && !inQuotes) {
-      cells.push(current);
-      current = '';
-      continue;
-    }
-
-    current += char;
   }
 
-  cells.push(current);
-  return cells;
-}
-
-function parseCsvText(text) {
-  const rows = text
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0)
-    .map((line) => parseCsvLine(line));
+  if (currentCell !== '' || currentRow.length > 0) {
+    currentRow.push(currentCell);
+    if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+      rows.push(currentRow);
+    }
+  }
 
   if (!rows.length) {
     return [];
@@ -356,7 +360,83 @@ function coerceNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export async function cleanupDuplicates() {
+  const [entries, changeEvents] = await Promise.all([
+    listEntries(),
+    listChangeEvents(),
+  ]);
+
+  const getNaiveKeys = (dStr) => {
+    if (!dStr) return [];
+    const d = new Date(dStr);
+    if (Number.isNaN(d.getTime())) return [String(dStr).trim().toLowerCase()];
+    const pad = (num) => String(num).padStart(2, '0');
+    const localStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const utcStr = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    return [localStr, utcStr];
+  };
+
+  // 1. Deduplicate Entries
+  const entryGroups = {};
+  for (const entry of entries) {
+    const naiveKeys = getNaiveKeys(entry.recordedAt);
+    const key = `${entry.metricId}_${naiveKeys[0]}`;
+    if (!entryGroups[key]) {
+      entryGroups[key] = [];
+    }
+    entryGroups[key].push(entry);
+  }
+
+  for (const group of Object.values(entryGroups)) {
+    if (group.length > 1) {
+      group.sort((a, b) => {
+        const aSets = Array.isArray(a.sets) ? a.sets.length : 0;
+        const bSets = Array.isArray(b.sets) ? b.sets.length : 0;
+        if (aSets !== bSets) return bSets - aSets;
+        const aVal = a.value !== null && a.value !== undefined ? 1 : 0;
+        const bVal = b.value !== null && b.value !== undefined ? 1 : 0;
+        if (aVal !== bVal) return bVal - aVal;
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
+
+      for (let i = 1; i < group.length; i++) {
+        await deleteEntry(group[i].id);
+      }
+    }
+  }
+
+  // 2. Deduplicate Change Events
+  const changeGroups = {};
+  for (const change of changeEvents) {
+    const title = String(change.title || '').trim().toLowerCase();
+    const naiveKeys = getNaiveKeys(change.recordedAt);
+    const key = `${title}_${naiveKeys[0]}`;
+    if (!changeGroups[key]) {
+      changeGroups[key] = [];
+    }
+    changeGroups[key].push(change);
+  }
+
+  for (const group of Object.values(changeGroups)) {
+    if (group.length > 1) {
+      group.sort((a, b) => {
+        const aNotesLen = String(a.notes || '').trim().length;
+        const bNotesLen = String(b.notes || '').trim().length;
+        if (aNotesLen !== bNotesLen) return bNotesLen - aNotesLen;
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
+
+      for (let i = 1; i < group.length; i++) {
+        await deleteChangeEvent(group[i].id);
+      }
+    }
+  }
+}
+
 export async function importCsvText(csvText) {
+  // First, heal any existing duplicates in the database
+  await cleanupDuplicates();
+
   const rows = parseCsvText(csvText);
   const imported = {
     categories: 0,
@@ -364,6 +444,45 @@ export async function importCsvText(csvText) {
     entries: 0,
     changes: 0,
   };
+
+  const existingEntries = await listEntries();
+  const existingChanges = await listChangeEvents();
+
+  const normalizeDate = (dStr) => {
+    if (!dStr) return '';
+    try {
+      return new Date(dStr).toISOString();
+    } catch {
+      return dStr;
+    }
+  };
+
+  const getNaiveKeys = (dStr) => {
+    if (!dStr) return [];
+    const d = new Date(dStr);
+    if (Number.isNaN(d.getTime())) return [String(dStr).trim().toLowerCase()];
+    const pad = (num) => String(num).padStart(2, '0');
+    const localStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const utcStr = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    return [localStr, utcStr];
+  };
+
+  const entryLookup = new Set();
+  for (const e of existingEntries) {
+    const keys = getNaiveKeys(e.recordedAt);
+    for (const key of keys) {
+      entryLookup.add(`${e.metricId}_${key}`);
+    }
+  }
+
+  const changeLookup = new Set();
+  for (const c of existingChanges) {
+    const keys = getNaiveKeys(c.recordedAt);
+    const title = String(c.title || '').trim().toLowerCase();
+    for (const key of keys) {
+      changeLookup.add(`${title}_${key}`);
+    }
+  }
 
   for (const row of rows) {
     const rowType = String(row.RowType || '').trim().toLowerCase();
@@ -392,29 +511,60 @@ export async function importCsvText(csvText) {
         imported.metrics += 1;
       }
 
-      await createEntry({
-        metricId: metric.id,
-        value: coerceNumber(row.Value),
-        loadKg: coerceNumber(row.LoadKg),
-        sets: parseSetsField(row.Sets),
-        targetAction: String(row.Target || '').trim() || null,
-        recordedAt: row.Date,
-      });
-      imported.entries += 1;
+      const normalizedDate = normalizeDate(row.Date);
+      const naiveKeys = getNaiveKeys(normalizedDate);
+      let isDuplicate = false;
+      for (const key of naiveKeys) {
+        if (entryLookup.has(`${metric.id}_${key}`)) {
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      if (!isDuplicate) {
+        await createEntry({
+          metricId: metric.id,
+          value: coerceNumber(row.Value),
+          loadKg: coerceNumber(row.LoadKg),
+          sets: parseSetsField(row.Sets),
+          targetAction: String(row.Target || '').trim() || null,
+          recordedAt: normalizedDate,
+        });
+        for (const key of naiveKeys) {
+          entryLookup.add(`${metric.id}_${key}`);
+        }
+        imported.entries += 1;
+      }
     }
 
     if (rowType === 'change') {
       const categoryName = String(row.Category || '').trim().toLowerCase();
       const category = categoryName ? await getOrCreateCategory(categoryName) : null;
-      await createChangeEvent({
-        title: String(row.Title || '').trim(),
-        notes: String(row.Notes || '').trim(),
-        recordedAt: row.Date,
-        endAt: row.EndDate || null,
-        isArchived: toBoolean(row.Archived),
-        categoryId: category?.id || null,
-      });
-      imported.changes += 1;
+      const normalizedDate = normalizeDate(row.Date);
+      const changeTitle = String(row.Title || '').trim();
+      const naiveKeys = getNaiveKeys(normalizedDate);
+      let isDuplicate = false;
+      for (const key of naiveKeys) {
+        if (changeLookup.has(`${changeTitle.toLowerCase()}_${key}`)) {
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      if (!isDuplicate) {
+        await createChangeEvent({
+          title: changeTitle,
+          notes: String(row.Notes || '').trim(),
+          recordedAt: normalizedDate,
+          endAt: row.EndDate ? normalizeDate(row.EndDate) : null,
+          isArchived: toBoolean(row.Archived),
+          categoryId: category?.id || null,
+        });
+        for (const key of naiveKeys) {
+          changeLookup.add(`${changeTitle.toLowerCase()}_${key}`);
+        }
+        imported.changes += 1;
+      }
     }
   }
 

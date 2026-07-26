@@ -90,6 +90,38 @@ button.secondary {
 
 button:hover { filter: brightness(0.98); }
 
+.pills-container {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 0;
+}
+.pills-container::-webkit-scrollbar { display: none; }
+
+.pill {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pill.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -127,36 +159,129 @@ input, select, textarea {
   min-height: 44px;
 }
 
+/* High Fidelity Action Card styles based on Landing Page design */
 .metric-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr !important;
+  gap: 16px;
 }
 
-.card {
+@media (min-width: 600px) {
+  .metric-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.overview-card {
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px;
-  background: #f8fbff;
-  display: grid;
-  gap: 6px;
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
 }
 
-.card-topline {
-  color: var(--muted);
+.overview-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.overview-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.overview-cat {
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
-.card small {
-  display: block;
+.overview-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overview-spark-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+}
+
+.overview-target {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.spark-caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 4px;
+}
+
+.spark-caption-value {
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--text);
+}
+
+.spark-caption-date {
+  font-size: 0.75rem;
   color: var(--muted);
 }
 
-.card-value {
-  font-weight: 700;
-  font-size: 1.15rem;
+/* Bottom Actions inside the card */
+.card-pills {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 4px;
+}
+
+.card-pill {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  transition: background 0.15s, transform 0.1s;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-style: solid;
+}
+
+.card-pill:hover {
+  background: var(--border);
+  transform: scale(1.02);
 }
 
 .list {
@@ -196,6 +321,28 @@ main {
 
 .hidden { display: none; }
 
+.info-banner {
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.info-banner.warning {
+  background-color: #fffbeb;
+  border: 1px solid #fef3c7;
+  color: #92400e;
+}
+
+.item.edit-mode {
+  border: 2px solid var(--primary);
+  background-color: #f8fafc;
+}
+
 @media (min-width: 700px) {
   .shell {
     max-width: 980px;
@@ -203,7 +350,7 @@ main {
   }
 
   .metric-grid {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: 1fr !important;
   }
 
   .topbar {
@@ -227,4 +374,111 @@ main {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* Markdown styling inside log notes */
+.notes-content p {
+  margin: 0 0 8px 0;
+}
+.notes-content p:last-child {
+  margin-bottom: 0;
+}
+.notes-content h1, .notes-content h2, .notes-content h3 {
+  margin: 12px 0 6px 0;
+  font-weight: 700;
+}
+.notes-content h1 { font-size: 1.3rem; }
+.notes-content h2 { font-size: 1.15rem; }
+.notes-content h3 { font-size: 1rem; }
+.notes-content ul {
+  margin: 0 0 8px 0;
+  padding-left: 20px;
+}
+.notes-content code {
+  background: #f1f5f9;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  color: #0f172a;
+}
+
+/* Segmented controls and visualization controls */
+.segmented-control {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 2px;
+  border: 1px solid var(--border);
+}
+.segmented-control .segment {
+  background: transparent;
+  color: var(--text);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  flex: 1;
+  min-height: auto;
+  transition: all 0.2s ease;
+}
+.segmented-control .segment.active {
+  background: var(--primary);
+  color: white !important;
+}
+
+.chart-container svg {
+  width: 100%;
+  height: auto;
+  background: transparent;
+}
+
+/* Dark Mode support variables & styles */
+html[data-theme="dark"] {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --border: #334155;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --primary: #3b82f6;
+  --primary-strong: #60a5fa;
+  --gradient-start: #1e1b4b;
+}
+
+html[data-theme="dark"] body {
+  background: linear-gradient(180deg, var(--gradient-start) 0%, var(--bg) 100%);
+}
+
+html[data-theme="dark"] .topbar {
+  background: rgba(15, 23, 42, 0.96);
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+html[data-theme="dark"] .item {
+  background: var(--surface);
+  color: var(--text);
+}
+
+html[data-theme="dark"] button.secondary {
+  background: #111827;
+  color: #93c5fd;
+  border-color: #374151;
+}
+
+html[data-theme="dark"] .notes-content code {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .segmented-control {
+  background: #0f172a;
 }

@@ -15,7 +15,10 @@
           <h1>Quantifi</h1>
           <p>Local-first metric tracker</p>
         </div>
-        <button id="installButton" class="secondary hidden">Install PWA</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="themeToggle" class="secondary" style="padding: 6px 12px; min-height: 36px; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem;" aria-label="Toggle Theme">🌓 Theme</button>
+          <button id="installButton" class="secondary hidden">Install PWA</button>
+        </div>
       </header>
 
       <nav class="tabs" aria-label="Primary navigation">
@@ -26,15 +29,20 @@
         <button class="tab" data-view="settings">Settings</button>
       </nav>
 
+      <div id="backupReminderBanner" class="info-banner warning hidden" style="margin: 0 0 10px 0; cursor: pointer; text-align: center;">
+        ⚠️ You have added <strong id="unsavedCount">0</strong> new entries since your last backup.<br><strong>Tap here to download a quick CSV backup</strong> to secure your data.
+      </div>
+
       <main>
         <section id="view-home" class="view active">
+          <div id="homeCategoryPills" class="pills-container"></div>
           <div class="panel">
-            <h2>Overview</h2>
             <div id="metricGrid" class="metric-grid"></div>
           </div>
         </section>
 
         <section id="view-add" class="view">
+          <div id="addCategoryPills" class="pills-container"></div>
           <div class="panel">
             <h2>Add entry</h2>
             <form id="entryForm" class="stacked-form">
@@ -57,10 +65,11 @@
                 </label>
               </div>
               <div id="strengthWorkoutFields" class="hidden">
+                <div id="strengthBaseline" class="info-banner hidden"></div>
                 <div class="strength-grid">
                   <label>
                     Load (kg)
-                    <input type="number" id="strengthLoadInput" step="1" min="0" required />
+                    <input type="number" id="strengthLoadInput" step="0.5" min="0" required />
                   </label>
                   <label>
                     Reps
@@ -70,35 +79,110 @@
                 <button id="strengthAddSetButton" type="button" class="secondary">Add set</button>
                 <div id="strengthSetList" class="list"></div>
               </div>
+              <div id="targetActionField">
+                <label>
+                  Target for next session
+                  <select id="entryTargetAction">
+                    <option value="">None</option>
+                    <option value="Reduce">Reduce</option>
+                    <option value="Stay">Stay</option>
+                    <option value="Increase">Increase</option>
+                    <option value="Pause">Pause</option>
+                  </select>
+                </label>
+              </div>
               <button type="submit" class="primary">Save entry</button>
             </form>
           </div>
         </section>
 
-        <section id="view-log" class="view">
+        <section id="view-stats" class="view">
+          <div id="statsCategoryPills" class="pills-container"></div>
           <div class="panel">
-            <h2>Change log</h2>
+            <h2>Stats</h2>
+            
+            <div class="stacked-form" style="margin-bottom: 15px;">
+              <label>
+                Select Metric
+                <select id="statsMetricSelect"></select>
+              </label>
+
+              <div id="statsControls" class="viz-controls hidden" style="margin-top: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                  <div class="segmented-control" id="statsPeriodControl" style="display: flex; background: var(--secondary-background-color, #1e293b); border-radius: 8px; padding: 2px;">
+                    <button type="button" class="segment active" data-period="Month" style="background: var(--primary, #3b82f6); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Month</button>
+                    <button type="button" class="segment" data-period="Week" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Week</button>
+                    <button type="button" class="segment" data-period="6M" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">6M</button>
+                    <button type="button" class="segment" data-period="Year" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Year</button>
+                    <button type="button" class="segment" data-period="All" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">All</button>
+                  </div>
+                  <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer;">
+                    <input type="checkbox" id="statsZerosToggle" /> Zeros
+                  </label>
+                </div>
+
+                <div id="statsStrengthControl" class="hidden" style="margin-top: 12px;">
+                  <label>
+                    Strength Aggregate
+                    <select id="statsStrengthSelect">
+                      <option value="Total Volume">Total Volume</option>
+                      <option value="Max Load">Max Load</option>
+                      <option value="Average Load">Average Load</option>
+                      <option value="Max e1RM">Max e1RM</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div id="statsChartContainer" class="chart-container hidden" style="margin: 20px 0; min-height: 200px;"></div>
+            <div id="statsSummary" class="stats-summary"></div>
+          </div>
+        </section>
+
+        <section id="view-log" class="view">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div id="logCategoryPills" class="pills-container" style="margin: 0; flex: 1;"></div>
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; margin-left: 10px;">
+              <input type="checkbox" id="logShowArchived" /> Archived
+            </label>
+          </div>
+
+          <div class="panel">
+            <h2>New change</h2>
             <form id="changeForm" class="stacked-form">
+              <label>
+                Category
+                <select id="changeCategory"></select>
+              </label>
               <label>
                 Title
                 <input type="text" id="changeTitle" required />
               </label>
               <label>
-                Notes
-                <textarea id="changeNotes" rows="4"></textarea>
+                Notes (Markdown supported)
+                <textarea id="changeNotes" rows="4" placeholder="Optional context, routine details, exceptions..."></textarea>
               </label>
-              <button type="submit" class="primary">Save change</button>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <label>
+                  Date
+                  <input type="date" id="changeDate" required />
+                </label>
+                <label>
+                  Time
+                  <input type="time" id="changeTime" required />
+                </label>
+              </div>
+              <button type="submit" class="primary">Add Change</button>
             </form>
+          </div>
+
+          <div class="panel">
+            <h2>Routines</h2>
             <div id="changeList" class="list"></div>
           </div>
         </section>
 
-        <section id="view-stats" class="view">
-          <div class="panel">
-            <h2>Stats</h2>
-            <div id="statsSummary" class="stats-summary"></div>
-          </div>
-        </section>
 
         <section id="view-settings" class="view">
           <div class="panel">
@@ -139,6 +223,7 @@
                   <option value="quantitative">quantitative</option>
                   <option value="count">count</option>
                   <option value="score">score</option>
+                  <option value="strength_session">strength_session</option>
                 </select>
               </label>
               <button type="submit" class="primary">Add metric</button>
