@@ -162,13 +162,13 @@ input, select, textarea {
 /* High Fidelity Action Card styles based on Landing Page design */
 .metric-grid {
   display: grid;
-  grid-template-columns: 1fr !important;
+  grid-template-columns: 1fr;
   gap: 16px;
 }
 
 @media (min-width: 600px) {
   .metric-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
 }
 
@@ -192,21 +192,16 @@ input, select, textarea {
 
 .overview-title-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .overview-cat {
-  background: #fee2e2;
-  color: #991b1b;
-  font-size: 0.65rem;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: 0.02em;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  white-space: nowrap;
 }
 
 .overview-name {
@@ -258,10 +253,12 @@ input, select, textarea {
   display: flex;
   gap: 6px;
   margin-top: 6px;
-  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 
 .card-pill {
+  flex: 1;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
@@ -273,9 +270,7 @@ input, select, textarea {
   justify-content: center;
   font-size: 0.95rem;
   transition: background 0.15s, transform 0.1s;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
+  min-height: 32px;
   border-style: solid;
 }
 
@@ -350,7 +345,7 @@ main {
   }
 
   .metric-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
   .topbar {
