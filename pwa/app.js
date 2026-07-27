@@ -794,13 +794,17 @@ async function renderLogs() {
     const displayedTitle = event.isArchived ? `[Archived] ${event.title}` : event.title;
 
     return `
-      <div class="item" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; background: var(--surface);">
-        <strong style="font-size: 1.1rem; display: block; margin-bottom: 4px;">${displayedTitle}</strong>
-        <div class="notes-content" style="margin-bottom: 8px; font-size: 0.95rem; line-height: 1.4;">
-          ${event.notes ? renderMarkdown(event.notes) : '<span style="color: var(--muted); font-style: italic;">No notes.</span>'}
-        </div>
-        <div style="margin-bottom: 10px;"><small style="color: var(--muted); font-weight: 500;">${metadataStr}</small></div>
-        <div style="display: flex; gap: 6px;">
+      <details class="routine-item" style="margin-bottom: 8px;">
+        <summary style="padding: 12px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center;">
+          <strong style="font-size: 1.1rem;">${displayedTitle}</strong>
+          <span class="collapse-indicator">▶</span>
+        </summary>
+        <div class="item" style="padding: 12px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; margin-top: -1px; background: var(--surface);">
+          <div class="notes-content" style="margin-bottom: 8px; font-size: 0.95rem; line-height: 1.4;">
+            ${event.notes ? renderMarkdown(event.notes) : '<span style="color: var(--muted); font-style: italic;">No notes.</span>'}
+          </div>
+          <div style="margin-bottom: 10px;"><small style="color: var(--muted); font-weight: 500;">${metadataStr}</small></div>
+          <div style="display: flex; gap: 6px;">
           ${event.isArchived 
             ? `<button type="button" data-action="revive" data-id="${event.id}" class="primary" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;">Revive</button>`
             : `<button type="button" data-action="end" data-id="${event.id}" class="primary" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;">End routine</button>`
@@ -809,6 +813,7 @@ async function renderLogs() {
           <button type="button" data-action="delete-event" data-id="${event.id}" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;" class="secondary">Delete</button>
         </div>
       </div>
+      </details>
     `;
   }).join('') || '<p>No changes yet.</p>';
 }

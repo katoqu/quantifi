@@ -102,8 +102,6 @@
           <button class="back-button secondary">← Back</button>
           <div id="statsCategoryPills" class="pills-container"></div>
           <div class="panel">
-            <h2>Stats</h2>
-            
             <div class="stacked-form" style="margin-bottom: 15px;">
               <label>
                 Select Metric
@@ -152,38 +150,42 @@
             </label>
           </div>
 
-          <div class="panel">
-            <h2>New change</h2>
-            <form id="changeForm" class="stacked-form">
-              <label>
-                Category
-                <select id="changeCategory"></select>
-              </label>
-              <label>
-                Title
-                <input type="text" id="changeTitle" required />
-              </label>
-              <label>
-                Notes (Markdown supported)
-                <textarea id="changeNotes" rows="4" placeholder="Optional context, routine details, exceptions..."></textarea>
-              </label>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div class="panel collapsible-container">
+            <details class="collapsible new-change-details">
+              <summary><h2>New change</h2><span class="collapse-indicator">▼</span></summary>
+              <form id="changeForm" class="stacked-form">
                 <label>
-                  Date
-                  <input type="date" id="changeDate" required />
+                  Category
+                  <select id="changeCategory"></select>
                 </label>
                 <label>
-                  Time
-                  <input type="time" id="changeTime" required />
+                  Title
+                  <input type="text" id="changeTitle" required />
                 </label>
-              </div>
-              <button type="submit" class="primary">Add Change</button>
-            </form>
+                <label>
+                  Notes (Markdown supported)
+                  <textarea id="changeNotes" rows="4" placeholder="Optional context, routine details, exceptions..."></textarea>
+                </label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <label>
+                    Date
+                    <input type="date" id="changeDate" required />
+                  </label>
+                  <label>
+                    Time
+                    <input type="time" id="changeTime" required />
+                  </label>
+                </div>
+                <button type="submit" class="primary">Add Change</button>
+              </form>
+            </details>
           </div>
 
-          <div class="panel">
-            <h2>Routines</h2>
-            <div id="changeList" class="list"></div>
+          <div class="panel collapsible-container">
+            <details class="collapsible">
+              <summary><h2>Existing Routines</h2><span class="collapse-indicator">▼</span></summary>
+              <div id="changeList" class="list"></div>
+            </details>
           </div>
         </section>
 
