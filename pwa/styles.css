@@ -166,11 +166,7 @@ input, select, textarea {
   gap: 16px;
 }
 
-@media (min-width: 600px) {
-  .metric-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  }
-}
+
 
 .overview-card {
   border: 1px solid var(--border);
@@ -192,16 +188,36 @@ input, select, textarea {
 
 .overview-title-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .overview-cat {
-  color: var(--muted);
+  color: #c5221f;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  display: block;
+}
+
+.title-left,
+.title-right {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-value {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.metric-date {
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .overview-name {
@@ -253,17 +269,14 @@ input, select, textarea {
   display: flex;
   gap: 6px;
   margin-top: 6px;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
 }
 
 .card-pill {
-  flex: 1;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 8px;
-  padding: 6px;
+  padding: 6px 10px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -345,7 +358,7 @@ main {
   }
 
   .metric-grid {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .topbar {

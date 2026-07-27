@@ -83,7 +83,7 @@ let activeVizSettings = {
   metricId: null,
   period: 'Month',
   zeros: false,
-  strengthAgg: 'Total Volume',
+  strengthAgg: 'Max Load',
 };
 
 function renderMarkdown(text) {
@@ -530,7 +530,9 @@ async function renderHome() {
     let suffix = '';
     if (latest) {
       if (metric.metricKind === 'strength_session') {
-        latestLabel = formatStrengthSession(latest);
+        const aggValue = computeStrengthValue(latest, activeVizSettings.strengthAgg || 'Max Load');
+        latestLabel = aggValue !== null && aggValue !== undefined ? Number(aggValue).toFixed(1) : '—';
+        suffix = metric.unitName ? ` ${metric.unitName}` : '';
       } else {
         latestLabel = latest.value !== null && latest.value !== undefined ? latest.value : '—';
         suffix = metric.unitName ? ` ${metric.unitName}` : '';
@@ -559,24 +561,22 @@ async function renderHome() {
       rangeEnd: metric.rangeEnd,
     });
 
-    const captionHtml = (latestValueStr || lastDateStr) ? `
-      <div class="spark-caption">
-        ${latestValueStr ? `<div class="spark-caption-value" title="${latestValueStr}">${latestValueStr}</div>` : ''}
-        ${lastDateStr ? `<div class="spark-caption-date" title="${lastDateStr}">${lastDateStr}</div>` : ''}
-      </div>
-    ` : '';
-
     return `
       <div class="overview-card" data-metric-id="${metric.id}">
         <div class="overview-title-row">
-          <span class="overview-cat">${safeCatName}</span>
-          <span class="overview-name" title="${safeMName}">${safeMName}</span>
+          <div class="title-left">
+            <span class="overview-cat">${safeCatName}</span>
+            <span class="overview-name" title="${safeMName}">${safeMName}</span>
+          </div>
+          <div class="title-right">
+            ${latestValueStr ? `<span class="metric-value">${latestValueStr}</span>` : ''}
+            ${lastDateStr ? `<span class="metric-date">${lastDateStr}</span>` : ''}
+          </div>
         </div>
         <div class="overview-spark-wrap">
           ${targetHtml}
           ${sparkSvg}
         </div>
-        ${captionHtml}
         <div class="card-pills">
           <button class="card-pill" data-action="add" data-id="${metric.id}" title="Add Entry">➕</button>
           <button class="card-pill" data-action="stats" data-id="${metric.id}" title="View Stats">📊</button>
@@ -1585,19 +1585,6 @@ ui.metricGrid.addEventListener('click', async (event) => {
       if (settingsTab) settingsTab.click();
     }
     return;
-  }
-
-  const card = event.target.closest('.overview-card');
-  if (card) {
-    const metricId = card.dataset.metricId;
-    if (metricId) {
-      activeFilters.add = 'Recent';
-      await renderMetricDropdown();
-      ui.metricSelect.value = metricId;
-      await syncAddFormMode();
-      const addTab = document.querySelector('.tab[data-view="add"]');
-      if (addTab) addTab.click();
-    }
   }
 });
 
