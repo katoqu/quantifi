@@ -192,50 +192,54 @@
 
         <section id="view-settings" class="view">
           <button class="back-button secondary">← Back</button>
-          <div class="panel">
-            <h2>Categories</h2>
-            <form id="categoryForm" class="stacked-form inline-form">
-              <input type="text" id="categoryName" placeholder="New category" required />
-              <button type="submit" class="primary">Add category</button>
-            </form>
-            <div id="categoryList" class="list"></div>
+          <div class="panel collapsible-container">
+            <details class="collapsible">
+              <summary><h2>Categories</h2><span class="collapse-indicator">▶</span></summary>
+              <form id="categoryForm" class="stacked-form inline-form">
+                <input type="text" id="categoryName" placeholder="New category" required />
+                <button type="submit" class="primary">Add category</button>
+              </form>
+              <div id="categoryList" class="list"></div>
+            </details>
           </div>
 
-          <div class="panel">
-            <h2>Metrics</h2>
-            <form id="metricForm" class="stacked-form">
-              <label>
-                Name
-                <input type="text" id="metricName" required />
-              </label>
-              <label>
-                Category
-                <select id="metricCategory"></select>
-              </label>
-              <label>
-                Unit
-                <input type="text" id="metricUnit" placeholder="kg, steps, score" />
-              </label>
-              <label>
-                Type
-                <select id="metricType">
-                  <option value="float">float</option>
-                  <option value="integer">integer</option>
-                  <option value="integer_range">integer_range</option>
-                </select>
-              </label>
-              <label>
-                Kind
-                <select id="metricKind">
-                  <option value="quantitative">quantitative</option>
-                  <option value="count">count</option>
-                  <option value="score">score</option>
-                  <option value="strength_session">strength_session</option>
-                </select>
-              </label>
-              <button type="submit" class="primary">Add metric</button>
-            </form>
-            <div id="metricList" class="list"></div>
+          <div class="panel collapsible-container">
+            <details class="collapsible">
+              <summary><h2>Metrics</h2><span class="collapse-indicator">▶</span></summary>
+              <form id="metricForm" class="stacked-form">
+                <label>
+                  Name
+                  <input type="text" id="metricName" required />
+                </label>
+                <label>
+                  Category
+                  <select id="metricCategory"></select>
+                </label>
+                <label>
+                  Unit
+                  <input type="text" id="metricUnit" placeholder="kg, steps, score" />
+                </label>
+                <label>
+                  Type
+                  <select id="metricType">
+                    <option value="float">float</option>
+                    <option value="integer">integer</option>
+                    <option value="integer_range">integer_range</option>
+                  </select>
+                </label>
+                <label>
+                  Kind
+                  <select id="metricKind">
+                    <option value="quantitative">quantitative</option>
+                    <option value="count">count</option>
+                    <option value="score">score</option>
+                    <option value="strength_session">strength_session</option>
+                  </select>
+                </label>
+                <button type="submit" class="primary">Add metric</button>
+              </form>
+              <div id="metricList" class="list"></div>
+            </details>
           </div>
 
           <div class="panel">
