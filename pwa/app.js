@@ -1192,6 +1192,14 @@ ui.tabs.forEach((tab) => {
   });
 });
 
+// Back button handler
+document.querySelectorAll('.back-button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const homeTab = document.querySelector('.tab[data-view="home"]');
+    if (homeTab) homeTab.click();
+  });
+});
+
 ui.metricSelect.addEventListener('change', () => {
   syncAddFormMode();
 });

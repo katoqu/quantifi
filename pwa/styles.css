@@ -94,11 +94,13 @@ button:hover { filter: brightness(0.98); }
   display: flex;
   gap: 8px;
   margin: 6px 0 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-wrap: wrap;
   padding: 4px 0;
 }
-.pills-container::-webkit-scrollbar { display: none; }
+
+.back-button {
+  margin-bottom: 10px;
+}
 
 .pill {
   border: 1px solid var(--border);
