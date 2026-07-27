@@ -242,13 +242,15 @@
             </details>
           </div>
 
-          <div class="panel">
-            <h2>Backup</h2>
-            <div class="backup-actions">
-              <button id="exportButton" class="secondary" type="button">Export CSV</button>
-              <button id="importButton" class="secondary" type="button">Import CSV</button>
-              <input id="importFile" type="file" accept=".csv" hidden />
-            </div>
+          <div class="panel collapsible-container">
+            <details class="collapsible">
+              <summary><h2>Backup</h2><span class="collapse-indicator">▶</span></summary>
+              <div class="backup-actions">
+                <button id="exportButton" class="secondary" type="button">Export CSV</button>
+                <button id="importButton" class="secondary" type="button">Import CSV</button>
+                <input id="importFile" type="file" accept=".csv" hidden />
+              </div>
+            </details>
           </div>
         </section>
       </main>

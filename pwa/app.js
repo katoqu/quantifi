@@ -1215,7 +1215,12 @@ ui.tabs.forEach((tab) => {
     ui.tabs.forEach((item) => item.classList.remove('active'));
     ui.views.forEach((view) => view.classList.remove('active'));
     tab.classList.add('active');
-    document.querySelector(`#view-${tab.dataset.view}`).classList.add('active');
+    const newActiveView = document.querySelector(`#view-${tab.dataset.view}`);
+    newActiveView.classList.add('active');
+    // Reset all collapsible panels in the new view
+    newActiveView.querySelectorAll('details').forEach((d) => {
+      d.removeAttribute('open');
+    });
   });
 });
 
