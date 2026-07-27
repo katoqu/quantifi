@@ -49,6 +49,9 @@ const ui = {
   strengthBaseline: document.querySelector('#strengthBaseline'),
   entryTargetAction: document.querySelector('#entryTargetAction'),
   targetActionField: document.querySelector('#targetActionField'),
+  entryDatePills: document.querySelector('#entryDatePills'),
+  dateTimeFields: document.querySelector('#dateTimeFields'),
+  targetActionPills: document.querySelector('#targetActionPills'),
   homeCategoryPills: document.querySelector('#homeCategoryPills'),
   addCategoryPills: document.querySelector('#addCategoryPills'),
   statsCategoryPills: document.querySelector('#statsCategoryPills'),
@@ -343,6 +346,25 @@ async function renderMetricDropdown() {
   ]);
 
   renderCategoryPills('add', categories, ui.addCategoryPills);
+
+  // Render date pills
+  if (ui.entryDatePills) {
+    ui.entryDatePills.innerHTML = ['Now', 'Yesterday', 'Custom']
+      .map((opt) => `<button class="pill ${opt === 'Now' ? 'active' : ''}" data-date="${opt}">${opt}</button>`)
+      .join('');
+    
+    // Set default date/time for Now
+    const now = new Date();
+    if (ui.entryDate) ui.entryDate.value = now.toISOString().split('T')[0];
+    if (ui.entryTime) ui.entryTime.value = now.toTimeString().slice(0, 5);
+  }
+
+  // Render target action pills
+  if (ui.targetActionPills) {
+    ui.targetActionPills.innerHTML = ['None', 'Reduce', 'Stay', 'Increase', 'Pause']
+      .map((opt) => `<button class="pill ${opt === 'None' ? 'active' : ''}" data-target="${opt}">${opt}</button>`)
+      .join('');
+  }
 
   const filteredMetrics = await filterMetricsForView('add', metrics, entries, categories);
 
@@ -1265,7 +1287,9 @@ ui.entryForm.addEventListener('submit', async (event) => {
   const metric = metrics.find((item) => item.id === metricId) || null;
   const recordedAt = new Date(`${document.querySelector('#entryDate').value}T${document.querySelector('#entryTime').value}`).toISOString();
 
-  const targetAction = ui.targetActionField.classList.contains('hidden') ? null : (ui.entryTargetAction.value || null);
+  // Get target action from active pill
+  const activeTargetPill = ui.targetActionPills?.querySelector('.pill.active');
+  const targetAction = activeTargetPill ? (activeTargetPill.dataset.target === 'None' ? null : activeTargetPill.dataset.target) : null;
 
   if (metric?.metricKind === 'strength_session') {
     if (!strengthSets.length) {
@@ -1562,6 +1586,51 @@ ui.homeCategoryPills.addEventListener('click', (event) => {
 ui.addCategoryPills.addEventListener('click', (event) => {
   handlePillClick('add', event, renderMetricDropdown);
 });
+
+// Date pills handler
+if (ui.entryDatePills) {
+  ui.entryDatePills.addEventListener('click', (event) => {
+    const pill = event.target.closest('.pill');
+    if (!pill) return;
+    
+    // Update active state
+    ui.entryDatePills.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    
+    // Show/hide dateTimeFields
+    if (pill.dataset.date === 'Custom') {
+      ui.dateTimeFields.classList.remove('hidden');
+    } else {
+      ui.dateTimeFields.classList.add('hidden');
+      // Set default date/time based on selection
+      const now = new Date();
+      if (pill.dataset.date === 'Yesterday') {
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        ui.entryDate.value = yesterday.toISOString().split('T')[0];
+        ui.entryTime.value = '12:00';
+      } else {
+        ui.entryDate.value = now.toISOString().split('T')[0];
+        ui.entryTime.value = now.toTimeString().slice(0, 5);
+      }
+    }
+  });
+}
+
+// Target action pills handler
+if (ui.targetActionPills) {
+  ui.targetActionPills.addEventListener('click', (event) => {
+    const pill = event.target.closest('.pill');
+    if (!pill) return;
+    
+    // Update active state
+    ui.targetActionPills.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    
+    // Store selected target in dataset or hidden input
+    // We'll read this value when form is submitted
+  });
+}
 
 ui.statsCategoryPills.addEventListener('click', (event) => {
   handlePillClick('stats', event, renderStats);

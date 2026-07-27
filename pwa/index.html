@@ -45,7 +45,6 @@
           <button class="back-button secondary">← Back</button>
           <div id="addCategoryPills" class="pills-container"></div>
           <div class="panel">
-            <h2>Add entry</h2>
             <form id="entryForm" class="stacked-form">
               <label>
                 Metric
@@ -53,11 +52,19 @@
               </label>
               <label>
                 Date
-                <input type="date" id="entryDate" required />
-              </label>
-              <label>
-                Time
-                <input type="time" id="entryTime" required />
+                <div id="entryDatePills" class="pills-container"></div>
+                <div id="dateTimeFields" class="hidden">
+                  <div class="strength-grid">
+                    <label>
+                      Date
+                      <input type="date" id="entryDate" required />
+                    </label>
+                    <label>
+                      Time
+                      <input type="time" id="entryTime" required />
+                    </label>
+                  </div>
+                </div>
               </label>
               <div id="numericValueField">
                 <label>
@@ -83,13 +90,7 @@
               <div id="targetActionField">
                 <label>
                   Target for next session
-                  <select id="entryTargetAction">
-                    <option value="">None</option>
-                    <option value="Reduce">Reduce</option>
-                    <option value="Stay">Stay</option>
-                    <option value="Increase">Increase</option>
-                    <option value="Pause">Pause</option>
-                  </select>
+                  <div id="targetActionPills" class="pills-container"></div>
                 </label>
               </div>
               <button type="submit" class="primary">Save entry</button>

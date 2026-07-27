@@ -201,14 +201,18 @@ input, select, textarea {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  display: block;
+}
+
+.overview-cat::after {
+  content: ' • ';
 }
 
 .title-left,
 .title-right {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .metric-value {
