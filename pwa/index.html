@@ -45,7 +45,7 @@
           <button class="back-button secondary">← Back</button>
           <div id="addCategoryPills" class="pills-container"></div>
           <div class="panel">
-            <form id="entryForm" class="stacked-form">
+            <form id="entryForm" class="stacked-form" novalidate>
               <label>
                 Metric
                 <select id="metricSelect"></select>
@@ -57,11 +57,11 @@
                   <div class="strength-grid">
                     <label>
                       Date
-                      <input type="date" id="entryDate" required />
+                      <input type="date" id="entryDate" />
                     </label>
                     <label>
                       Time
-                      <input type="time" id="entryTime" required />
+                      <input type="time" id="entryTime" />
                     </label>
                   </div>
                 </div>
@@ -69,7 +69,7 @@
               <div id="numericValueField">
                 <label>
                   Value
-                  <input type="number" id="entryValue" step="any" required />
+                  <input type="number" id="entryValue" step="any" />
                 </label>
               </div>
               <div id="strengthWorkoutFields" class="hidden">
@@ -77,11 +77,11 @@
                 <div class="strength-grid">
                   <label>
                     Load (kg)
-                    <input type="number" id="strengthLoadInput" step="0.5" min="0" required />
+                    <input type="number" id="strengthLoadInput" step="0.5" min="0" />
                   </label>
                   <label>
                     Reps
-                    <input type="number" id="strengthRepsInput" step="1" min="1" value="5" required />
+                    <input type="number" id="strengthRepsInput" step="1" min="1" value="5" />
                   </label>
                 </div>
                 <button id="strengthAddSetButton" type="button" class="secondary">Add set</button>

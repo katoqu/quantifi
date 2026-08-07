@@ -5,6 +5,7 @@ import {
   createEntry,
   createMetric,
   deleteCategory,
+  deleteEntry,
   deleteMetric,
   exportDataAsCsv,
   getMetricByName,
@@ -41,6 +42,7 @@ const ui = {
   importFile: document.querySelector('#importFile'),
   installButton: document.querySelector('#installButton'),
   numericValueField: document.querySelector('#numericValueField'),
+  entryValue: document.querySelector('#entryValue'),
   strengthWorkoutFields: document.querySelector('#strengthWorkoutFields'),
   strengthLoadInput: document.querySelector('#strengthLoadInput'),
   strengthRepsInput: document.querySelector('#strengthRepsInput'),
@@ -50,6 +52,8 @@ const ui = {
   entryTargetAction: document.querySelector('#entryTargetAction'),
   targetActionField: document.querySelector('#targetActionField'),
   entryDatePills: document.querySelector('#entryDatePills'),
+  entryDate: document.querySelector('#entryDate'),
+  entryTime: document.querySelector('#entryTime'),
   dateTimeFields: document.querySelector('#dateTimeFields'),
   targetActionPills: document.querySelector('#targetActionPills'),
   homeCategoryPills: document.querySelector('#homeCategoryPills'),
@@ -238,10 +242,8 @@ function resetEntryFormDateTime() {
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
   const timeStr = now.toTimeString().slice(0, 5);
-  const dateInput = document.querySelector('#entryDate');
-  const timeInput = document.querySelector('#entryTime');
-  if (dateInput) dateInput.value = dateStr;
-  if (timeInput) timeInput.value = timeStr;
+  if (ui.entryDate) ui.entryDate.value = dateStr;
+  if (ui.entryTime) ui.entryTime.value = timeStr;
 }
 
 async function initializeDatabase() {
@@ -526,11 +528,13 @@ function renderSparkline(values, color, { kind = 'quantitative', higherIsBetter 
 }
 
 async function renderHome() {
+  console.log('renderHome called');
   const [metrics, entries, categories] = await Promise.all([
     listMetrics(true),
     listEntries(),
     listCategories(),
   ]);
+  console.log('Metrics:', metrics.length, 'Active:', metrics.filter(m => !m.isArchived).length);
 
   const activeMetrics = metrics.filter((m) => !m.isArchived);
 
@@ -1218,7 +1222,7 @@ async function renderSettings() {
 }
 
 ui.tabs.forEach((tab) => {
-  tab.addEventListener('click', () => {
+  tab.addEventListener('click', async () => {
     ui.tabs.forEach((item) => item.classList.remove('active'));
     ui.views.forEach((view) => view.classList.remove('active'));
     tab.classList.add('active');
@@ -1228,6 +1232,19 @@ ui.tabs.forEach((tab) => {
     newActiveView.querySelectorAll('details').forEach((d) => {
       d.removeAttribute('open');
     });
+    // Initialize Add form if switching to Add tab
+    if (tab.dataset.view === 'add') {
+      await renderMetricDropdown();
+      await syncAddFormMode();
+    }
+    // Render Stats when switching to Stats tab
+    if (tab.dataset.view === 'stats') {
+      await renderStats();
+    }
+    // Render Home when switching to Home tab
+    if (tab.dataset.view === 'home') {
+      await renderHome();
+    }
   });
 });
 
@@ -1297,12 +1314,28 @@ ui.strengthSetList.addEventListener('click', async (event) => {
 
 ui.entryForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const metricId = ui.metricSelect.value;
-  if (!metricId) return;
+  try {
+    const metricId = ui.metricSelect.value;
+    if (!metricId) {
+      window.alert('Please select a metric.');
+      return;
+    }
 
-  const metrics = await listMetrics(false);
-  const metric = metrics.find((item) => item.id === metricId) || null;
-  const recordedAt = new Date(`${document.querySelector('#entryDate').value}T${document.querySelector('#entryTime').value}`).toISOString();
+    const metrics = await listMetrics(false);
+    const metric = metrics.find((item) => item.id === metricId) || null;
+    const dateValue = ui.entryDate?.value;
+    const timeValue = ui.entryTime?.value;
+    const valueInput = ui.entryValue;
+    
+    if (metric?.metricKind !== 'strength_session' && !valueInput?.value) {
+      window.alert('Please enter a value.');
+      return;
+    }
+    if (!dateValue || !timeValue) {
+      window.alert(`Date: "${dateValue}", Time: "${timeValue}"`);
+      return;
+    }
+  const recordedAt = new Date(`${dateValue}T${timeValue}`).toISOString();
 
   // Get target action from active pill
   const activeTargetPill = ui.targetActionPills?.querySelector('.pill.active');
@@ -1310,7 +1343,7 @@ ui.entryForm.addEventListener('submit', async (event) => {
 
   if (editingEntryId) {
     // Update existing entry
-    const entry = await (await listEntries()).find(e => e.id === editingEntryId);
+    const entry = (await listEntries()).find(e => e.id === editingEntryId);
     if (entry) {
       if (metric?.metricKind === 'strength_session') {
         if (!strengthSets.length) {
@@ -1329,7 +1362,7 @@ ui.entryForm.addEventListener('submit', async (event) => {
       } else {
         await updateEntry(editingEntryId, {
           metricId,
-          value: Number(document.querySelector('#entryValue').value),
+          value: Number(valueInput.value),
           targetAction,
           recordedAt,
         });
@@ -1366,13 +1399,18 @@ ui.entryForm.addEventListener('submit', async (event) => {
     } else {
       await createEntry({
         metricId,
-        value: Number(document.querySelector('#entryValue').value),
+        value: Number(valueInput.value),
         targetAction,
         recordedAt,
       });
     }
   }
+  } catch (e) {
+    console.error('Form submission error:', e);
+    window.alert('Error: ' + e.message);
+  }
 
+  window.alert('Entry saved!');
   strengthSets = [];
   editingSetIndex = null;
   ui.entryForm.reset();
@@ -1810,6 +1848,9 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
   // Focus the input
   const input = valueCell.querySelector('.edit-input');
   if (input) input.focus();
+  
+  // Reset global edit state
+  editingEntryId = null;
 }
 
 window.saveInlineEdit = async function(input) {
@@ -1818,10 +1859,21 @@ window.saveInlineEdit = async function(input) {
   const newValue = Number(input.value);
   
   await updateEntry(entryId, { value: newValue });
+  editingEntryId = null;
   await renderEntriesTable(metricId); // Refresh table
+  // Refresh active views
+  const statsView = document.querySelector('#view-stats');
+  const homeView = document.querySelector('#view-home');
+  if (statsView && statsView.classList.contains('active')) {
+    await renderStats();
+  }
+  if (homeView && homeView.classList.contains('active')) {
+    await renderHome();
+  }
 }
 
 window.cancelInlineEdit = async function(input) {
+  editingEntryId = null;
   const tr = input.closest('tr');
   const metricId = tr.dataset.metricId;
   const metrics = await listMetrics(true);
@@ -1838,6 +1890,15 @@ window.handleDeleteEntry = async function(entryId, metricId, metricName) {
     const metric = metrics.find(m => m.id === metricId);
     if (metricId && metric) {
       await renderEntriesTable(metricId, metric);
+    }
+    // Refresh active views
+    const statsView = document.querySelector('#view-stats');
+    const homeView = document.querySelector('#view-home');
+    if (statsView && statsView.classList.contains('active')) {
+      await renderStats();
+    }
+    if (homeView && homeView.classList.contains('active')) {
+      await renderHome();
     }
   }
 }
