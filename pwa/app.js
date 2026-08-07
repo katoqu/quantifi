@@ -1248,6 +1248,23 @@ ui.tabs.forEach((tab) => {
   });
 });
 
+// Auto-close other collapsible panels when one is opened
+document.querySelectorAll('details').forEach((detail) => {
+  detail.addEventListener('toggle', (event) => {
+    if (event.newState === 'open') {
+      // Close all other details in the same view
+      const view = detail.closest('.view');
+      if (view) {
+        view.querySelectorAll('details').forEach((d) => {
+          if (d !== detail) {
+            d.removeAttribute('open');
+          }
+        });
+      }
+    }
+  });
+});
+
 // Back button handler
 document.querySelectorAll('.back-button').forEach((btn) => {
   btn.addEventListener('click', () => {

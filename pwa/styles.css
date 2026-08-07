@@ -240,13 +240,23 @@ label {
   font-weight: 600;
 }
 
-input, select, textarea {
+input:not([type="checkbox"]),
+select,
+textarea {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: white;
   min-height: 44px;
+}
+
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  min-height: auto;
+  accent-color: var(--primary);
 }
 
 /* High Fidelity Action Card styles based on Landing Page design */
