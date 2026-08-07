@@ -261,7 +261,7 @@ input, select, textarea {
 .overview-card {
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 16px;
+  padding: 12px;
   background: var(--surface);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
   display: flex;
@@ -280,7 +280,7 @@ input, select, textarea {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
 }
 
 .overview-cat {
@@ -300,23 +300,24 @@ input, select, textarea {
   display: flex;
   flex-direction: row;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .metric-value {
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 0.85rem;
   color: var(--text);
 }
 
 .metric-date {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--muted);
 }
 
 .overview-name {
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 0.9rem;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
