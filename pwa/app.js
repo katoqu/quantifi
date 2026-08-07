@@ -70,6 +70,11 @@ const ui = {
   statsStrengthSelect: document.querySelector('#statsStrengthSelect'),
   statsChartContainer: document.querySelector('#statsChartContainer'),
   themeToggle: document.querySelector('#themeToggle'),
+  entriesModal: document.querySelector('#entriesModal'),
+  entriesModalTitle: document.querySelector('#entriesModalTitle'),
+  entriesTableBody: document.querySelector('#entriesTableBody'),
+  closeEntriesModal: document.querySelector('#closeEntriesModal'),
+  modalOverlay: document.querySelector('.modal-overlay'),
 };
 
 let deferredPrompt = null;
@@ -79,6 +84,7 @@ let editingSetIndex = null;
 let editingEventId = null;
 let endingEventId = null;
 let revivingEventId = null;
+let editingEntryId = null;
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
 
@@ -603,6 +609,7 @@ async function renderHome() {
           <button class="card-pill" data-action="add" data-id="${metric.id}" title="Add Entry">➕</button>
           <button class="card-pill" data-action="stats" data-id="${metric.id}" title="View Stats">📊</button>
           <button class="card-pill" data-action="settings" data-id="${metric.id}" title="Edit Metric">⚙️</button>
+          <button class="card-pill" data-action="edit-entries" data-id="${metric.id}" title="Edit Entries">📋</button>
         </div>
       </div>
     `;
@@ -1301,28 +1308,69 @@ ui.entryForm.addEventListener('submit', async (event) => {
   const activeTargetPill = ui.targetActionPills?.querySelector('.pill.active');
   const targetAction = activeTargetPill ? (activeTargetPill.dataset.target === 'None' ? null : activeTargetPill.dataset.target) : null;
 
-  if (metric?.metricKind === 'strength_session') {
-    if (!strengthSets.length) {
-      window.alert('Add at least one set before saving the workout.');
-      return;
+  if (editingEntryId) {
+    // Update existing entry
+    const entry = await (await listEntries()).find(e => e.id === editingEntryId);
+    if (entry) {
+      if (metric?.metricKind === 'strength_session') {
+        if (!strengthSets.length) {
+          window.alert('Add at least one set before saving the workout.');
+          return;
+        }
+        const summaryLoad = strengthSets[0].loadKg;
+        await updateEntry(editingEntryId, {
+          metricId,
+          value: summaryLoad,
+          loadKg: summaryLoad,
+          sets: strengthSets,
+          targetAction,
+          recordedAt,
+        });
+      } else {
+        await updateEntry(editingEntryId, {
+          metricId,
+          value: Number(document.querySelector('#entryValue').value),
+          targetAction,
+          recordedAt,
+        });
+      }
+      editingEntryId = null;
+      // Refresh entries table if visible
+      const modal = ui.entriesModal;
+      if (modal && !modal.classList.contains('hidden')) {
+        const metricId = ui.metricSelect.value;
+        const metrics = await listMetrics(true);
+        const metric = metrics.find(m => m.id === metricId);
+        if (metricId && metric) {
+          await renderEntriesTable(metricId, metric);
+        }
+      }
     }
-
-    const summaryLoad = strengthSets[0].loadKg;
-    await createEntry({
-      metricId,
-      value: summaryLoad,
-      loadKg: summaryLoad,
-      sets: strengthSets,
-      targetAction,
-      recordedAt,
-    });
   } else {
-    await createEntry({
-      metricId,
-      value: Number(document.querySelector('#entryValue').value),
-      targetAction,
-      recordedAt,
-    });
+    // Create new entry
+    if (metric?.metricKind === 'strength_session') {
+      if (!strengthSets.length) {
+        window.alert('Add at least one set before saving the workout.');
+        return;
+      }
+
+      const summaryLoad = strengthSets[0].loadKg;
+      await createEntry({
+        metricId,
+        value: summaryLoad,
+        loadKg: summaryLoad,
+        sets: strengthSets,
+        targetAction,
+        recordedAt,
+      });
+    } else {
+      await createEntry({
+        metricId,
+        value: Number(document.querySelector('#entryValue').value),
+        targetAction,
+        recordedAt,
+      });
+    }
   }
 
   strengthSets = [];
@@ -1670,6 +1718,8 @@ ui.metricGrid.addEventListener('click', async (event) => {
       settingsShowMetrics = true;
       const settingsTab = document.querySelector('.tab[data-view="settings"]');
       if (settingsTab) settingsTab.click();
+    } else if (action === 'edit-entries') {
+      await openEntriesModal(metricId);
     }
     return;
   }
@@ -1712,5 +1762,114 @@ ui.statsSummary.addEventListener('click', (event) => {
     ui.statsChartContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 });
+
+async function openEntriesModal(metricId) {
+  const metrics = await listMetrics(true);
+  const metric = metrics.find(m => m.id === metricId);
+  if (!metric) return;
+
+  ui.entriesModalTitle.textContent = metric.name;
+  await renderEntriesTable(metricId, metric);
+  ui.entriesModal.classList.remove('hidden');
+}
+
+function closeEntriesModal() {
+  ui.entriesModal.classList.add('hidden');
+}
+
+window.handleEditEntry = async function(entryId, metricId, trElement) {
+  const entry = (await listEntries()).find(e => e.id === entryId);
+  const metrics = await listMetrics(true);
+  const metric = metrics.find(m => m.id === metricId);
+  
+  if (!entry || !metric) return;
+  
+  // Skip for strength sessions
+  if (metric.metricKind === 'strength_session') {
+    alert('Edit strength sessions via the Add form.');
+    return;
+  }
+  
+  // Replace value cell with input field
+  const valueCell = trElement.querySelector('td:nth-child(2)');
+  const originalValue = valueCell.textContent.trim();
+  
+  valueCell.innerHTML = `
+    <input type="number" value="${entry.value}" class="edit-input" 
+           data-entry-id="${entryId}" data-metric-id="${metricId}" 
+           onblur="window.saveInlineEdit(this)" onkeydown="if(event.key==='Enter') window.saveInlineEdit(this); if(event.key==='Escape') window.cancelInlineEdit(this)">
+  `;
+  
+  // Replace actions with Save/Cancel icons
+  const actionsCell = trElement.querySelector('.action-buttons');
+  actionsCell.innerHTML = `
+    <button onclick="window.saveInlineEdit(this.closest('tr').querySelector('.edit-input'))" class="action-btn save-btn" title="Save">✓</button>
+    <button onclick="window.cancelInlineEdit(this.closest('tr').querySelector('.edit-input'))" class="action-btn cancel-btn" title="Cancel">✕</button>
+  `;
+  
+  // Focus the input
+  const input = valueCell.querySelector('.edit-input');
+  if (input) input.focus();
+}
+
+window.saveInlineEdit = async function(input) {
+  const entryId = input.dataset.entryId;
+  const metricId = input.dataset.metricId;
+  const newValue = Number(input.value);
+  
+  await updateEntry(entryId, { value: newValue });
+  await renderEntriesTable(metricId); // Refresh table
+}
+
+window.cancelInlineEdit = async function(input) {
+  const tr = input.closest('tr');
+  const metricId = tr.dataset.metricId;
+  const metrics = await listMetrics(true);
+  const metric = metrics.find(m => m.id === metricId);
+  if (metric) {
+    await renderEntriesTable(metricId, metric);
+  }
+}
+
+window.handleDeleteEntry = async function(entryId, metricId, metricName) {
+  if (confirm(`Delete this entry for ${metricName}?`)) {
+    await deleteEntry(entryId);
+    const metrics = await listMetrics(true);
+    const metric = metrics.find(m => m.id === metricId);
+    if (metricId && metric) {
+      await renderEntriesTable(metricId, metric);
+    }
+  }
+}
+
+async function renderEntriesTable(metricId, metric) {
+  const entries = await listEntries();
+  const metricEntries = entries.filter(e => e.metricId === metricId);
+  metricEntries.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));
+
+  ui.entriesTableBody.innerHTML = metricEntries.map(entry => {
+    const d = new Date(entry.recordedAt);
+    const shortDate = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const shortTime = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+    let displayValue = entry.value;
+    if (metric && metric.metricKind === 'strength_session') {
+      displayValue = computeStrengthValue(entry, 'Total Volume');
+    }
+
+    return `
+      <tr data-entry-id="${entry.id}" data-metric-id="${metricId}">
+        <td title="${d.toLocaleString()}" style="white-space: nowrap;">${shortDate}<br>${shortTime}</td>
+        <td>${displayValue !== null && displayValue !== undefined ? displayValue : ''}</td>
+        <td class="action-buttons">
+          <button onclick="window.handleEditEntry('${entry.id}', '${metricId}', this.closest('tr'))" title="Edit">✏️</button>
+          <button onclick="window.handleDeleteEntry('${entry.id}', '${metricId}', '${metric?.name || ''}')" title="Delete">🗑️</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+ui.closeEntriesModal?.addEventListener('click', closeEntriesModal);
+ui.modalOverlay?.addEventListener('click', closeEntriesModal);
 
 initializeDatabase();

@@ -595,3 +595,167 @@ html[data-theme="dark"] .notes-content code {
 html[data-theme="dark"] .segmented-control {
   background: #0f172a;
 }
+
+/* Entries Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 0;
+}
+
+.modal-content {
+  position: relative;
+  background: var(--surface);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+.close-button:hover {
+  color: var(--text);
+}
+
+.modal-body {
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+#entriesTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+#entriesTable th,
+#entriesTable td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+#entriesTable th {
+  font-weight: 700;
+  background: var(--bg);
+  white-space: nowrap;
+}
+
+#entriesTable td:nth-child(1) {
+  font-size: 0.65rem;
+  white-space: nowrap;
+  width: 1%;
+}
+
+#entriesTable td:nth-child(2) {
+  width: 100%;
+}
+
+#entriesTable tr:hover {
+  background: var(--bg);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.action-buttons button {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.action-buttons button:hover {
+  background: var(--bg);
+}
+
+.action-buttons .delete-btn {
+  color: #c5221f;
+}
+
+.edit-input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.action-btn {
+  padding: 2px 6px;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  line-height: 1.1;
+}
+
+.action-btn:hover {
+  background: var(--bg);
+}
+
+.save-btn {
+  color: #10b981;
+}
+
+.cancel-btn {
+  color: #6b7280;
+}
+
+.hidden {
+  display: none !important;
+}

@@ -256,6 +256,30 @@
       </main>
     </div>
 
+    <div id="entriesModal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="entriesModalTitle">Entries</h2>
+          <button id="closeEntriesModal" class="close-button">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="entriesTableContainer" class="table-container">
+            <table id="entriesTable">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Value</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="entriesTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="./app.js"></script>
   </body>
 </html>
