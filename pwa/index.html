@@ -195,10 +195,30 @@
           <div class="panel collapsible-container">
             <details class="collapsible">
               <summary><h2>Categories</h2><span class="collapse-indicator">▶</span></summary>
-              <form id="categoryForm" class="stacked-form inline-form">
-                <input type="text" id="categoryName" placeholder="New category" required />
-                <button type="submit" class="primary">Add category</button>
+              <div class="category-actions">
+                <button id="addCategoryBtn" class="icon-button primary" title="Add category">+</button>
+                <button id="editCategoryBtn" class="icon-button secondary" title="Edit category">✏️</button>
+              </div>
+              <form id="categoryForm" class="stacked-form" style="display: none;">
+                <input type="text" id="categoryName" placeholder="Category name" required />
+                <input type="text" id="categoryDescriptionAdd" placeholder="Description (optional)" />
+                <div class="category-edit-buttons">
+                  <button type="submit" class="primary">Save</button>
+                  <button type="button" id="cancelCategory" class="secondary">Cancel</button>
+                </div>
               </form>
+              <div id="categoryEditForm" class="stacked-form" style="display: none;">
+                <input type="text" id="categorySearch" placeholder="Search category..." list="categoryDatalist" />
+                <datalist id="categoryDatalist"></datalist>
+                <div id="categoryEditFields" style="display: none; margin-top: 8px;">
+                  <input type="text" id="editCategoryName" required />
+                  <input type="text" id="editCategoryDescription" placeholder="Description (optional)" />
+                  <div class="category-edit-buttons">
+                    <button id="saveCategoryEdit" class="primary">Save</button>
+                    <button id="cancelCategoryEdit" class="secondary">Cancel</button>
+                  </div>
+                </div>
+              </div>
               <div id="categoryList" class="list"></div>
             </details>
           </div>

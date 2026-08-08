@@ -31,11 +31,24 @@ const ui = {
   metricCategory: document.querySelector('#metricCategory'),
   metricList: document.querySelector('#metricList'),
   categoryList: document.querySelector('#categoryList'),
+  categoryForm: document.querySelector('#categoryForm'),
+  categoryName: document.querySelector('#categoryName'),
+  categoryDescriptionAdd: document.querySelector('#categoryDescriptionAdd'),
+  categoryDatalist: document.querySelector('#categoryDatalist'),
+  categorySearch: document.querySelector('#categorySearch'),
+  categoryEditForm: document.querySelector('#categoryEditForm'),
+  categoryEditFields: document.querySelector('#categoryEditFields'),
+  editCategoryName: document.querySelector('#editCategoryName'),
+  editCategoryDescription: document.querySelector('#editCategoryDescription'),
+  addCategoryBtn: document.querySelector('#addCategoryBtn'),
+  editCategoryBtn: document.querySelector('#editCategoryBtn'),
+  saveCategoryEdit: document.querySelector('#saveCategoryEdit'),
+  cancelCategoryEdit: document.querySelector('#cancelCategoryEdit'),
+  cancelCategory: document.querySelector('#cancelCategory'),
   changeList: document.querySelector('#changeList'),
   statsSummary: document.querySelector('#statsSummary'),
   entryForm: document.querySelector('#entryForm'),
   changeForm: document.querySelector('#changeForm'),
-  categoryForm: document.querySelector('#categoryForm'),
   metricForm: document.querySelector('#metricForm'),
   exportButton: document.querySelector('#exportButton'),
   importButton: document.querySelector('#importButton'),
@@ -1182,6 +1195,10 @@ async function renderStats() {
 
 let settingsShowMetrics = false;
 let settingsShowCategories = false;
+let isAddingCategory = false;
+let isEditingCategory = false;
+let selectedCategoryForEdit = null;
+let categorySearchTerm = '';
 
 async function renderSettings() {
   const [categories, metrics] = await Promise.all([
@@ -1189,19 +1206,53 @@ async function renderSettings() {
     listMetrics(true),
   ]);
 
-  if (settingsShowCategories) {
-    ui.categoryList.innerHTML = categories.map((category) => `
-      <div class="item">
-        <strong>${category.name}</strong>
-        <div>
-          <button data-action="rename-category" data-id="${category.id}" class="secondary">Rename</button>
-          <button data-action="delete-category" data-id="${category.id}" class="secondary">Delete</button>
-        </div>
-      </div>
-    `).join('');
-  } else {
-    ui.categoryList.innerHTML = '<p class="muted-text" style="padding: 1rem; text-align: center; opacity: 0.6;">Select or create a category to manage.</p>';
+  // Update datalist for category search
+  ui.categoryDatalist.innerHTML = categories.map(category => 
+    `<option value="${category.name}" data-id="${category.id}"></option>`
+  ).join('');
+
+  // Reset UI states
+  ui.categoryForm.style.display = isAddingCategory ? 'grid' : 'none';
+  ui.categoryEditForm.style.display = isEditingCategory ? 'grid' : 'none';
+  ui.categoryEditFields.style.display = isEditingCategory && selectedCategoryForEdit ? 'block' : 'none';
+
+  if (isEditingCategory && selectedCategoryForEdit) {
+    const selectedCat = categories.find(c => c.id === selectedCategoryForEdit);
+    if (selectedCat) {
+      ui.editCategoryName.value = selectedCat.name || '';
+      ui.editCategoryDescription.value = selectedCat.description || '';
+    }
   }
+
+  // Only show category cards when searching (categorySearchTerm is set)
+  if (categorySearchTerm) {
+    // Filter categories based on search term
+    const filteredCategories = categories.filter(category => 
+      category.name.toLowerCase().includes(categorySearchTerm)
+    );
+
+    if (filteredCategories.length > 0) {
+      ui.categoryList.innerHTML = filteredCategories.map((category) => `
+        <div class="item">
+          <strong>${category.name}</strong>
+          ${category.description ? `<div style="opacity: 0.7;">${category.description}</div>` : ''}
+          <div>
+            <button data-action="rename-category" data-id="${category.id}" class="secondary">Rename</button>
+            <button data-action="delete-category" data-id="${category.id}" class="secondary">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      // Show message when searching but no matches found
+      ui.categoryList.innerHTML = '<p class="muted-text" style="padding: 1rem; text-align: center; opacity: 0.6;">No matching categories found</p>';
+    }
+  } else {
+    // Don't show any categories when not searching
+    ui.categoryList.innerHTML = '';
+  }
+  
+  // Always show categories if there are any
+  settingsShowCategories = categories.length > 0;
 
   if (settingsShowMetrics) {
     ui.metricList.innerHTML = metrics.map((metric) => `
@@ -1438,12 +1489,151 @@ ui.entryForm.addEventListener('submit', async (event) => {
 
 ui.categoryForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const name = document.querySelector('#categoryName').value.trim();
+  const name = ui.categoryName.value.trim();
   if (!name) return;
-  await createCategory(name);
-  settingsShowCategories = true;
+  
+  // Check for duplicate category names
+  const categories = await listCategories();
+  const duplicate = categories.some(cat => cat.name.toLowerCase() === name.toLowerCase());
+  if (duplicate) {
+    window.alert('A category with this name already exists.');
+    return;
+  }
+  
+  const description = ui.categoryDescriptionAdd.value.trim();
+  await createCategory(name, description);
+  isAddingCategory = false;
   ui.categoryForm.reset();
+  ui.categoryForm.style.display = 'none';
   incrementUnsavedCount();
+  renderAll();
+});
+
+// Add category button
+ui.addCategoryBtn.addEventListener('click', () => {
+  isAddingCategory = true;
+  isEditingCategory = false;
+  selectedCategoryForEdit = null;
+  ui.categoryName.value = '';
+  ui.categoryForm.style.display = 'grid';
+  ui.categoryEditForm.style.display = 'none';
+});
+
+// Edit category button
+ui.editCategoryBtn.addEventListener('click', () => {
+  isAddingCategory = false;
+  isEditingCategory = true;
+  selectedCategoryForEdit = null;
+  categorySearchTerm = '';
+  ui.categorySearch.value = '';
+  ui.categoryEditFields.style.display = 'none';
+  ui.categoryEditForm.style.display = 'grid';
+  ui.categoryForm.style.display = 'none';
+  renderAll(); // Reset the category list filtering
+});
+
+// Category search with autocomplete and filtering
+ui.categorySearch.addEventListener('input', async () => {
+  categorySearchTerm = ui.categorySearch.value.trim().toLowerCase();
+  
+  if (!categorySearchTerm) {
+    ui.categoryEditFields.style.display = 'none';
+    selectedCategoryForEdit = null;
+    renderAll(); // Re-render to show all categories
+    return;
+  }
+  
+  const categories = await listCategories();
+  
+  // Find the category that exactly matches the input
+  const exactMatch = categories.find(cat => 
+    cat.name.toLowerCase() === categorySearchTerm
+  );
+  
+  if (exactMatch) {
+    // Exact match - show edit fields
+    selectedCategoryForEdit = exactMatch.id;
+    ui.editCategoryName.value = exactMatch.name || '';
+    ui.editCategoryDescription.value = exactMatch.description || '';
+    ui.categoryEditFields.style.display = 'block';
+  } else {
+    // No exact match - don't show edit fields
+    ui.categoryEditFields.style.display = 'none';
+    selectedCategoryForEdit = null;
+  }
+  
+  renderAll(); // Re-render to filter categories
+});
+
+// Also handle when user selects from datalist
+ui.categorySearch.addEventListener('change', async () => {
+  categorySearchTerm = ui.categorySearch.value.trim().toLowerCase();
+  if (!categorySearchTerm) return;
+  
+  const categories = await listCategories();
+  const exactMatch = categories.find(cat => 
+    cat.name.toLowerCase() === categorySearchTerm
+  );
+  
+  if (exactMatch) {
+    selectedCategoryForEdit = exactMatch.id;
+    ui.editCategoryName.value = exactMatch.name || '';
+    ui.editCategoryDescription.value = exactMatch.description || '';
+    ui.categoryEditFields.style.display = 'block';
+  }
+  
+  renderAll(); // Re-render to filter categories
+});
+
+// Save category edit
+ui.saveCategoryEdit.addEventListener('click', async () => {
+  if (!selectedCategoryForEdit) return;
+  
+  const name = ui.editCategoryName.value.trim();
+  if (!name) return;
+  
+  // Check for duplicate category names (excluding the current category being edited)
+  const categories = await listCategories();
+  const duplicate = categories.some(cat => 
+    cat.id !== selectedCategoryForEdit && cat.name.toLowerCase() === name.toLowerCase()
+  );
+  if (duplicate) {
+    window.alert('A category with this name already exists.');
+    return;
+  }
+  
+  const updates = { name: name.toLowerCase() };
+  const description = ui.editCategoryDescription.value.trim();
+  if (description) {
+    updates.description = description;
+  }
+  
+  await updateCategory(selectedCategoryForEdit, updates);
+  isEditingCategory = false;
+  selectedCategoryForEdit = null;
+  categorySearchTerm = '';
+  ui.categorySearch.value = '';
+  ui.categoryEditForm.style.display = 'none';
+  incrementUnsavedCount();
+  renderAll();
+});
+
+// Cancel category edit
+ui.cancelCategoryEdit.addEventListener('click', () => {
+  isEditingCategory = false;
+  selectedCategoryForEdit = null;
+  categorySearchTerm = '';
+  ui.categorySearch.value = '';
+  ui.categoryEditForm.style.display = 'none';
+  ui.categoryEditFields.style.display = 'none';
+  renderAll();
+});
+
+// Cancel category add
+ui.cancelCategory.addEventListener('click', () => {
+  isAddingCategory = false;
+  ui.categoryForm.style.display = 'none';
+  ui.categoryForm.reset();
   renderAll();
 });
 

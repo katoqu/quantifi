@@ -176,12 +176,15 @@ export async function listChangeEvents() {
   return getAll(STORE_NAMES.changeEvents);
 }
 
-export async function createCategory(name) {
+export async function createCategory(name, description = null) {
   const record = {
     id: uid(),
     name: String(name || '').trim().toLowerCase(),
     createdAt: nowIso(),
   };
+  if (description) {
+    record.description = String(description).trim();
+  }
   await putRecord(STORE_NAMES.categories, record);
   return record;
 }
