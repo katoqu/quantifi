@@ -1217,6 +1217,7 @@ let isAddingMetric = false;
 let isEditingMetric = false;
 let selectedMetricForEdit = null;
 let metricSearchTerm = '';
+let currentMetricId = null;
 
 async function renderSettings() {
   const [categories, metrics] = await Promise.all([
@@ -1313,14 +1314,29 @@ ui.tabs.forEach((tab) => {
     if (tab.dataset.view === 'add') {
       await renderMetricDropdown();
       await syncAddFormMode();
+      // Restore current metric selection if available
+      if (currentMetricId) {
+        ui.metricSelect.value = currentMetricId;
+        syncAddFormMode();
+      }
     }
     // Render Stats when switching to Stats tab
     if (tab.dataset.view === 'stats') {
       await renderStats();
+      // Restore current metric selection if available
+      if (currentMetricId) {
+        ui.statsMetricSelect.value = currentMetricId;
+        activeVizSettings.metricId = currentMetricId;
+        renderStats();
+      }
     }
     // Render Home when switching to Home tab
     if (tab.dataset.view === 'home') {
       await renderHome();
+      // Store current metric selection from stats if available
+      if (ui.statsMetricSelect.value) {
+        currentMetricId = ui.statsMetricSelect.value;
+      }
     }
   });
 });
@@ -1351,7 +1367,12 @@ document.querySelectorAll('.back-button').forEach((btn) => {
 });
 
 ui.metricSelect.addEventListener('change', () => {
+  currentMetricId = ui.metricSelect.value;
   syncAddFormMode();
+});
+
+ui.statsMetricSelect.addEventListener('change', () => {
+  currentMetricId = ui.statsMetricSelect.value;
 });
 
 ui.strengthAddSetButton.addEventListener('click', () => {
@@ -1961,6 +1982,23 @@ ui.changeList.addEventListener('click', async (event) => {
   }
 });
 
+// Mutually exclusive collapse for routine items in Existing Routines
+// Handle click on summary elements to collapse others first
+ui.changeList.addEventListener('click', (event) => {
+  const summary = event.target.closest('details.routine-item summary');
+  if (summary) {
+    const details = summary.parentElement;
+    const allRoutineItems = ui.changeList.querySelectorAll('details.routine-item');
+    
+    // Close all other routine items first
+    allRoutineItems.forEach(item => {
+      if (item !== details) {
+        item.removeAttribute('open');
+      }
+    });
+  }
+});
+
 ui.changeList.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.target;
@@ -2241,6 +2279,7 @@ ui.metricGrid.addEventListener('click', async (event) => {
     const metricId = btn.dataset.id;
     if (action === 'add') {
       activeFilters.add = 'Recent';
+      currentMetricId = metricId; // Store the current metric
       await renderMetricDropdown();
       ui.metricSelect.value = metricId;
       await syncAddFormMode();
@@ -2248,6 +2287,7 @@ ui.metricGrid.addEventListener('click', async (event) => {
       if (addTab) addTab.click();
     } else if (action === 'stats') {
       activeFilters.stats = 'Recent';
+      currentMetricId = metricId; // Store the current metric
       ui.statsMetricSelect.value = metricId;
       activeVizSettings.metricId = metricId;
       const statsTab = document.querySelector('.tab[data-view="stats"]');
