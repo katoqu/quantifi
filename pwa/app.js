@@ -1,12 +1,10 @@
 import {
-  archiveMetric,
   createCategory,
   createChangeEvent,
   createEntry,
   createMetric,
   deleteCategory,
   deleteEntry,
-  deleteMetric,
   exportDataAsCsv,
   getMetricByName,
   importCsvText,
@@ -28,8 +26,25 @@ const ui = {
   views: Array.from(document.querySelectorAll('.view')),
   metricGrid: document.querySelector('#metricGrid'),
   metricSelect: document.querySelector('#metricSelect'),
+  metricName: document.querySelector('#metricName'),
   metricCategory: document.querySelector('#metricCategory'),
+  metricUnit: document.querySelector('#metricUnit'),
+  metricType: document.querySelector('#metricType'),
+  metricKind: document.querySelector('#metricKind'),
+  metricDescription: document.querySelector('#metricDescription'),
   metricList: document.querySelector('#metricList'),
+  metricDatalist: document.querySelector('#metricDatalist'),
+  metricSearch: document.querySelector('#metricSearch'),
+  metricEditForm: document.querySelector('#metricEditForm'),
+  metricEditFields: document.querySelector('#metricEditFields'),
+  editMetricName: document.querySelector('#editMetricName'),
+  editMetricDescription: document.querySelector('#editMetricDescription'),
+  addMetricBtn: document.querySelector('#addMetricBtn'),
+  editMetricBtn: document.querySelector('#editMetricBtn'),
+  saveMetricEdit: document.querySelector('#saveMetricEdit'),
+  cancelMetricEdit: document.querySelector('#cancelMetricEdit'),
+  archiveMetricEdit: document.querySelector('#archiveMetricEdit'),
+  cancelMetric: document.querySelector('#cancelMetric'),
   categoryList: document.querySelector('#categoryList'),
   categoryForm: document.querySelector('#categoryForm'),
   categoryName: document.querySelector('#categoryName'),
@@ -1193,12 +1208,15 @@ async function renderStats() {
   ui.statsSummary.innerHTML = summary.join('') || '<p>No stats match this filter.</p>';
 }
 
-let settingsShowMetrics = false;
 let settingsShowCategories = false;
 let isAddingCategory = false;
 let isEditingCategory = false;
 let selectedCategoryForEdit = null;
 let categorySearchTerm = '';
+let isAddingMetric = false;
+let isEditingMetric = false;
+let selectedMetricForEdit = null;
+let metricSearchTerm = '';
 
 async function renderSettings() {
   const [categories, metrics] = await Promise.all([
@@ -1224,8 +1242,8 @@ async function renderSettings() {
     }
   }
 
-  // Only show category cards when searching (categorySearchTerm is set)
-  if (categorySearchTerm) {
+  // Only show category cards when searching (categorySearchTerm is set) but not when editing a specific category
+  if (categorySearchTerm && !selectedCategoryForEdit) {
     // Filter categories based on search term
     const filteredCategories = categories.filter(category => 
       category.name.toLowerCase().includes(categorySearchTerm)
@@ -1247,27 +1265,35 @@ async function renderSettings() {
       ui.categoryList.innerHTML = '<p class="muted-text" style="padding: 1rem; text-align: center; opacity: 0.6;">No matching categories found</p>';
     }
   } else {
-    // Don't show any categories when not searching
+    // Don't show any categories when not searching or when editing a specific category
     ui.categoryList.innerHTML = '';
   }
   
   // Always show categories if there are any
   settingsShowCategories = categories.length > 0;
 
-  if (settingsShowMetrics) {
-    ui.metricList.innerHTML = metrics.map((metric) => `
-      <div class="item">
-        <strong>${metric.name}</strong>
-        <div>${metric.unitName || 'unit'} · ${metric.metricKind || metric.unitType || 'metric'}</div>
-        <div>
-          <button data-action="rename-metric" data-id="${metric.id}" class="secondary">Rename</button>
-          <button data-action="archive-metric" data-id="${metric.id}" class="secondary">Archive</button>
-          <button data-action="delete-metric" data-id="${metric.id}" class="secondary">Delete</button>
-        </div>
-      </div>`).join('');
-  } else {
-    ui.metricList.innerHTML = '<p class="muted-text" style="padding: 1rem; text-align: center; opacity: 0.6;">Select or create a metric to manage.</p>';
+  // Update datalist for metric search
+  ui.metricDatalist.innerHTML = metrics.map(metric => 
+    `<option value="${metric.name}" data-id="${metric.id}"></option>`
+  ).join('');
+
+  // Reset UI states for metrics
+  ui.metricForm.style.display = isAddingMetric ? 'grid' : 'none';
+  ui.metricEditForm.style.display = isEditingMetric ? 'grid' : 'none';
+  ui.metricEditFields.style.display = isEditingMetric && selectedMetricForEdit ? 'block' : 'none';
+
+  if (isEditingMetric && selectedMetricForEdit) {
+    const selectedMetric = metrics.find(m => m.id === selectedMetricForEdit);
+    if (selectedMetric) {
+      ui.editMetricName.value = selectedMetric.name || '';
+      ui.editMetricDescription.value = selectedMetric.description || '';
+      // Set archive button text based on current state
+      ui.archiveMetricEdit.textContent = selectedMetric.isArchived ? 'Unarchive' : 'Archive';
+    }
   }
+
+  // Don't show metric cards when searching - only show edit fields when there's an exact match
+  ui.metricList.innerHTML = '';
   
   ui.metricCategory.innerHTML = categories.map((category) => `<option value="${category.id}">${category.name}</option>`).join('');
 }
@@ -1505,6 +1531,10 @@ ui.categoryForm.addEventListener('submit', async (event) => {
   isAddingCategory = false;
   ui.categoryForm.reset();
   ui.categoryForm.style.display = 'none';
+  
+  // Clear active button states
+  ui.addCategoryBtn.classList.remove('active');
+  
   incrementUnsavedCount();
   renderAll();
 });
@@ -1514,9 +1544,14 @@ ui.addCategoryBtn.addEventListener('click', () => {
   isAddingCategory = true;
   isEditingCategory = false;
   selectedCategoryForEdit = null;
+  categorySearchTerm = '';
   ui.categoryName.value = '';
   ui.categoryForm.style.display = 'grid';
   ui.categoryEditForm.style.display = 'none';
+  
+  // Update active button states
+  ui.addCategoryBtn.classList.add('active');
+  ui.editCategoryBtn.classList.remove('active');
 });
 
 // Edit category button
@@ -1530,6 +1565,10 @@ ui.editCategoryBtn.addEventListener('click', () => {
   ui.categoryEditForm.style.display = 'grid';
   ui.categoryForm.style.display = 'none';
   renderAll(); // Reset the category list filtering
+  
+  // Update active button states
+  ui.addCategoryBtn.classList.remove('active');
+  ui.editCategoryBtn.classList.add('active');
 });
 
 // Category search with autocomplete and filtering
@@ -1614,6 +1653,11 @@ ui.saveCategoryEdit.addEventListener('click', async () => {
   categorySearchTerm = '';
   ui.categorySearch.value = '';
   ui.categoryEditForm.style.display = 'none';
+  
+  // Clear active button states
+  ui.addCategoryBtn.classList.remove('active');
+  ui.editCategoryBtn.classList.remove('active');
+  
   incrementUnsavedCount();
   renderAll();
 });
@@ -1626,6 +1670,11 @@ ui.cancelCategoryEdit.addEventListener('click', () => {
   ui.categorySearch.value = '';
   ui.categoryEditForm.style.display = 'none';
   ui.categoryEditFields.style.display = 'none';
+  
+  // Clear active button states
+  ui.addCategoryBtn.classList.remove('active');
+  ui.editCategoryBtn.classList.remove('active');
+  
   renderAll();
 });
 
@@ -1634,23 +1683,219 @@ ui.cancelCategory.addEventListener('click', () => {
   isAddingCategory = false;
   ui.categoryForm.style.display = 'none';
   ui.categoryForm.reset();
+  
+  // Clear active button states
+  ui.addCategoryBtn.classList.remove('active');
+  ui.editCategoryBtn.classList.remove('active');
+  
+  renderAll();
+});
+
+// Add metric button
+ui.addMetricBtn.addEventListener('click', () => {
+  isAddingMetric = true;
+  isEditingMetric = false;
+  selectedMetricForEdit = null;
+  metricSearchTerm = '';
+  ui.metricName.value = '';
+  ui.metricUnit.value = '';
+  ui.metricDescription.value = '';
+  ui.metricForm.style.display = 'grid';
+  ui.metricEditForm.style.display = 'none';
+  
+  // Update active button states
+  ui.addMetricBtn.classList.add('active');
+  ui.editMetricBtn.classList.remove('active');
+});
+
+// Edit metric button
+ui.editMetricBtn.addEventListener('click', () => {
+  isAddingMetric = false;
+  isEditingMetric = true;
+  selectedMetricForEdit = null;
+  metricSearchTerm = '';
+  ui.metricSearch.value = '';
+  ui.metricEditFields.style.display = 'none';
+  ui.metricEditForm.style.display = 'grid';
+  ui.metricForm.style.display = 'none';
+  renderAll(); // Reset the metric list filtering
+  
+  // Update active button states
+  ui.addMetricBtn.classList.remove('active');
+  ui.editMetricBtn.classList.add('active');
+});
+
+// Metric search with autocomplete
+ui.metricSearch.addEventListener('input', async () => {
+  metricSearchTerm = ui.metricSearch.value.trim().toLowerCase();
+  
+  if (!metricSearchTerm) {
+    ui.metricEditFields.style.display = 'none';
+    selectedMetricForEdit = null;
+    renderAll(); // Re-render to show all metrics
+    return;
+  }
+  
+  const metrics = await listMetrics(true);
+  
+  // Find the metric that exactly matches the input
+  const exactMatch = metrics.find(metric => 
+    metric.name.toLowerCase() === metricSearchTerm
+  );
+  
+  if (exactMatch) {
+    // Exact match - show edit fields
+    selectedMetricForEdit = exactMatch.id;
+    ui.editMetricName.value = exactMatch.name || '';
+    ui.editMetricDescription.value = exactMatch.description || '';
+    ui.metricEditFields.style.display = 'block';
+  } else {
+    // No exact match - don't show edit fields
+    ui.metricEditFields.style.display = 'none';
+    selectedMetricForEdit = null;
+  }
+  
+  renderAll(); // Re-render to filter metrics
+});
+
+// Also handle when user selects from datalist
+ui.metricSearch.addEventListener('change', async () => {
+  metricSearchTerm = ui.metricSearch.value.trim().toLowerCase();
+  if (!metricSearchTerm) return;
+  
+  const metrics = await listMetrics(true);
+  const exactMatch = metrics.find(metric => 
+    metric.name.toLowerCase() === metricSearchTerm
+  );
+  
+  if (exactMatch) {
+    selectedMetricForEdit = exactMatch.id;
+    ui.editMetricName.value = exactMatch.name || '';
+    ui.editMetricDescription.value = exactMatch.description || '';
+    ui.metricEditFields.style.display = 'block';
+  }
+  
+  renderAll(); // Re-render to filter metrics
+});
+
+// Save metric edit
+ui.saveMetricEdit.addEventListener('click', async () => {
+  if (!selectedMetricForEdit) return;
+  
+  const name = ui.editMetricName.value.trim();
+  if (!name) return;
+  
+  // Check for duplicate metric names (excluding the current metric being edited)
+  const metrics = await listMetrics(true);
+  const duplicate = metrics.some(metric => 
+    metric.id !== selectedMetricForEdit && metric.name.toLowerCase() === name.toLowerCase()
+  );
+  if (duplicate) {
+    window.alert('A metric with this name already exists.');
+    return;
+  }
+  
+  const updates = { name: name.toLowerCase() };
+  const description = ui.editMetricDescription.value.trim();
+  if (description) {
+    updates.description = description;
+  }
+  
+  await updateMetric(selectedMetricForEdit, updates);
+  isEditingMetric = false;
+  selectedMetricForEdit = null;
+  metricSearchTerm = '';
+  ui.metricSearch.value = '';
+  ui.metricEditForm.style.display = 'none';
+  
+  // Clear active button states
+  ui.addMetricBtn.classList.remove('active');
+  ui.editMetricBtn.classList.remove('active');
+  
+  incrementUnsavedCount();
+  renderAll();
+});
+
+// Cancel metric edit
+ui.cancelMetricEdit.addEventListener('click', () => {
+  isEditingMetric = false;
+  selectedMetricForEdit = null;
+  metricSearchTerm = '';
+  ui.metricSearch.value = '';
+  ui.metricEditForm.style.display = 'none';
+  ui.metricEditFields.style.display = 'none';
+  
+  // Clear active button states
+  ui.addMetricBtn.classList.remove('active');
+  ui.editMetricBtn.classList.remove('active');
+  
+  renderAll();
+});
+
+// Archive metric from edit view
+ui.archiveMetricEdit.addEventListener('click', async () => {
+  if (!selectedMetricForEdit) return;
+  
+  const metrics = await listMetrics(true);
+  const metric = metrics.find(m => m.id === selectedMetricForEdit);
+  if (!metric) return;
+  
+  // Toggle archive state
+  const newArchiveState = !metric.isArchived;
+  await updateMetric(selectedMetricForEdit, { isArchived: newArchiveState });
+  
+  // Update the button text based on new state
+  ui.archiveMetricEdit.textContent = newArchiveState ? 'Unarchive' : 'Archive';
+  
+  incrementUnsavedCount();
+  renderAll();
+});
+
+// Cancel metric add
+ui.cancelMetric.addEventListener('click', () => {
+  isAddingMetric = false;
+  ui.metricForm.style.display = 'none';
+  ui.metricForm.reset();
+  
+  // Clear active button states
+  ui.addMetricBtn.classList.remove('active');
+  ui.editMetricBtn.classList.remove('active');
+  
   renderAll();
 });
 
 ui.metricForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const categoryId = ui.metricCategory.value;
+  const name = ui.metricName.value.trim();
+  if (!name) return;
+  
+  // Check for duplicate metric names
+  const metrics = await listMetrics(true);
+  const duplicate = metrics.some(metric => metric.name.toLowerCase() === name.toLowerCase());
+  if (duplicate) {
+    window.alert('A metric with this name already exists.');
+    return;
+  }
+  
+  const description = ui.metricDescription.value.trim();
   await createMetric({
-    name: document.querySelector('#metricName').value.trim(),
+    name: name,
+    description: description || null,
     categoryId,
-    unitName: document.querySelector('#metricUnit').value.trim() || null,
-    unitType: document.querySelector('#metricType').value,
-    metricKind: document.querySelector('#metricKind').value,
+    unitName: ui.metricUnit.value.trim() || null,
+    unitType: ui.metricType.value,
+    metricKind: ui.metricKind.value,
     higherIsBetter: true,
     isArchived: false,
   });
-  settingsShowMetrics = true;
+  isAddingMetric = false;
   ui.metricForm.reset();
+  ui.metricForm.style.display = 'none';
+  
+  // Clear active button states
+  ui.addMetricBtn.classList.remove('active');
+  
   incrementUnsavedCount();
   renderAll();
 });
@@ -1791,14 +2036,63 @@ ui.metricList.addEventListener('click', async (event) => {
     renderAll();
   }
   if (actionButton.dataset.action === 'archive-metric') {
-    await archiveMetric(metricId);
+    await updateMetric(metricId, { isArchived: true });
+    metricSearchTerm = ''; // Reset search to show updated list
     renderAll();
   }
-  if (actionButton.dataset.action === 'delete-metric') {
-    if (window.confirm('Are you sure you want to delete this metric?')) {
-      await deleteMetric(metricId);
+  if (actionButton.dataset.action === 'unarchive-metric') {
+    await updateMetric(metricId, { isArchived: false });
+    metricSearchTerm = ''; // Reset search to show updated list
+    renderAll();
+  }
+});
+
+// Reset states when collapsing sections
+function setupCollapsibleReset(detailsElement, resetFunction) {
+  if (detailsElement) {
+    detailsElement.addEventListener('toggle', function() {
+      if (!this.open) {
+        resetFunction();
+      }
+    });
+  }
+}
+
+// For categories section - find the details element that contains categoryList
+const allDetails = document.querySelectorAll('details');
+allDetails.forEach(details => {
+  if (details.querySelector('#categoryList')) {
+    setupCollapsibleReset(details, () => {
+      isAddingCategory = false;
+      isEditingCategory = false;
+      selectedCategoryForEdit = null;
+      categorySearchTerm = '';
+      ui.categoryName.value = '';
+      ui.categorySearch.value = '';
+      ui.categoryForm.style.display = 'none';
+      ui.categoryEditForm.style.display = 'none';
+      ui.categoryEditFields.style.display = 'none';
+      ui.addCategoryBtn.classList.remove('active');
+      ui.editCategoryBtn.classList.remove('active');
       renderAll();
-    }
+    });
+  }
+  
+  if (details.querySelector('#metricList')) {
+    setupCollapsibleReset(details, () => {
+      isAddingMetric = false;
+      isEditingMetric = false;
+      selectedMetricForEdit = null;
+      metricSearchTerm = '';
+      ui.metricName.value = '';
+      ui.metricSearch.value = '';
+      ui.metricForm.style.display = 'none';
+      ui.metricEditForm.style.display = 'none';
+      ui.metricEditFields.style.display = 'none';
+      ui.addMetricBtn.classList.remove('active');
+      ui.editMetricBtn.classList.remove('active');
+      renderAll();
+    });
   }
 });
 
@@ -1960,7 +2254,6 @@ ui.metricGrid.addEventListener('click', async (event) => {
       if (statsTab) statsTab.click();
       renderStats();
     } else if (action === 'settings') {
-      settingsShowMetrics = true;
       const settingsTab = document.querySelector('.tab[data-view="settings"]');
       if (settingsTab) settingsTab.click();
     } else if (action === 'edit-entries') {

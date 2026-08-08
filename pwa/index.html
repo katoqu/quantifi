@@ -226,10 +226,18 @@
           <div class="panel collapsible-container">
             <details class="collapsible">
               <summary><h2>Metrics</h2><span class="collapse-indicator">▶</span></summary>
-              <form id="metricForm" class="stacked-form">
+              <div class="metric-actions">
+                <button id="addMetricBtn" class="icon-button primary" title="Add metric">+</button>
+                <button id="editMetricBtn" class="icon-button secondary" title="Edit metric">✏️</button>
+              </div>
+              <form id="metricForm" class="stacked-form" style="display: none;">
                 <label>
                   Name
                   <input type="text" id="metricName" required />
+                </label>
+                <label>
+                  Description (optional)
+                  <input type="text" id="metricDescription" />
                 </label>
                 <label>
                   Category
@@ -256,8 +264,24 @@
                     <option value="strength_session">strength_session</option>
                   </select>
                 </label>
-                <button type="submit" class="primary">Add metric</button>
+                <div class="metric-add-buttons">
+                  <button type="submit" class="primary">Save</button>
+                  <button type="button" id="cancelMetric" class="secondary">Cancel</button>
+                </div>
               </form>
+              <div id="metricEditForm" class="stacked-form" style="display: none;">
+                <input type="text" id="metricSearch" placeholder="Search metric..." list="metricDatalist" />
+                <datalist id="metricDatalist"></datalist>
+                <div id="metricEditFields" style="display: none; margin-top: 8px;">
+                  <input type="text" id="editMetricName" required />
+                  <input type="text" id="editMetricDescription" placeholder="Description (optional)" />
+                  <div class="metric-edit-buttons">
+                    <button id="saveMetricEdit" class="primary">Save</button>
+                    <button id="cancelMetricEdit" class="secondary">Cancel</button>
+                    <button id="archiveMetricEdit" class="secondary">Archive</button>
+                  </div>
+                </div>
+              </div>
               <div id="metricList" class="list"></div>
             </details>
           </div>

@@ -770,7 +770,8 @@ html[data-theme="dark"] .segmented-control {
   display: none !important;
 }
 
-.category-actions {
+.category-actions,
+.metric-actions {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
@@ -799,7 +800,13 @@ html[data-theme="dark"] .segmented-control {
   border-color: #eef2ff;
 }
 
-.category-edit-buttons {
+.icon-button.active {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+}
+
+.category-edit-buttons,
+.metric-edit-buttons,
+.metric-add-buttons {
   display: flex;
   gap: 8px;
   margin-top: 8px;
