@@ -1696,7 +1696,34 @@ ui.categorySearch.addEventListener('input', async () => {
   categorySearchTerm = ui.categorySearch.value.trim().toLowerCase();
   selectedCategoryForEdit = null;
   await updateDeleteCategoryButtonState();
+
+  if (categorySearchTerm) {
+    const categories = await listCategories();
+    const exactMatch = categories.find(cat => cat.name.toLowerCase() === categorySearchTerm);
+    if (exactMatch) {
+      isAddingCategory = false;
+      isEditingCategory = true;
+      selectedCategoryForEdit = exactMatch.id;
+      ui.categoryEditForm.style.display = 'grid';
+      ui.categoryEditFields.style.display = 'block';
+      ui.addCategoryBtn.classList.remove('active');
+      ui.editCategoryBtn.classList.add('active');
+      ui.editCategoryName.value = exactMatch.name || '';
+      ui.editCategoryDescription.value = exactMatch.description || '';
+      await updateDeleteCategoryButtonState(categories);
+      renderSettings();
+      return;
+    }
+  }
+
   renderSettings();
+});
+
+ui.categorySearch.addEventListener('focus', async () => {
+  const categories = await listCategories();
+  renderCategorySearchDatalist(categories);
+  ui.categorySearch.value = ui.categorySearch.value + ' ';
+  ui.categorySearch.value = ui.categorySearch.value.trim();
 });
 
 ui.categorySearch.addEventListener('change', async () => {
@@ -1829,7 +1856,33 @@ ui.editMetricBtn.addEventListener('click', () => {
 ui.metricSearch.addEventListener('input', async () => {
   metricSearchTerm = ui.metricSearch.value.trim().toLowerCase();
   selectedMetricForEdit = null;
+
+  if (metricSearchTerm) {
+    const metrics = await listMetrics(true);
+    const exactMatch = metrics.find(metric => metric.name.toLowerCase() === metricSearchTerm);
+    if (exactMatch) {
+      isAddingMetric = false;
+      isEditingMetric = true;
+      selectedMetricForEdit = exactMatch.id;
+      ui.metricEditForm.style.display = 'grid';
+      ui.metricEditFields.style.display = 'block';
+      ui.addMetricBtn.classList.remove('active');
+      ui.editMetricBtn.classList.add('active');
+      ui.editMetricName.value = exactMatch.name || '';
+      ui.editMetricDescription.value = exactMatch.description || '';
+      renderSettings();
+      return;
+    }
+  }
+
   renderSettings();
+});
+
+ui.metricSearch.addEventListener('focus', async () => {
+  const metrics = await listMetrics(true);
+  renderMetricSearchDatalist(metrics);
+  ui.metricSearch.value = ui.metricSearch.value + ' ';
+  ui.metricSearch.value = ui.metricSearch.value.trim();
 });
 
 ui.metricSearch.addEventListener('change', async () => {
@@ -2491,6 +2544,8 @@ ui.metricGrid.addEventListener('click', async (event) => {
         settingsView.classList.add('active');
 
         activateSettingsMode('metrics');
+        const metricsList = await listMetrics(true);
+        renderMetricSearchDatalist(metricsList);
         await renderSettings();
       }
     } else if (action === 'last-session') {

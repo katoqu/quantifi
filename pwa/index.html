@@ -216,10 +216,16 @@
               </div>
             </form>
             <div id="categoryEditForm" class="stacked-form" style="display: none;">
-              <input type="search" id="categorySearch" list="categorySearchDatalist" class="search-field" placeholder="Search categories..." autocomplete="off" />
+              <label class="search-label">
+                <span>Search category to edit</span>
+                <input type="search" id="categorySearch" list="categorySearchDatalist" class="search-field" placeholder="Search categories..." autocomplete="off" />
+              </label>
               <datalist id="categorySearchDatalist"></datalist>
               <div id="categoryEditFields" style="display: none; margin-top: 8px;">
-                <input type="text" id="editCategoryName" required />
+                <label class="search-label">
+                  <span>Edit category name</span>
+                  <input type="text" id="editCategoryName" required />
+                </label>
                 <input type="text" id="editCategoryDescription" placeholder="Description (optional)" />
                 <div class="category-edit-buttons">
                   <button id="saveCategoryEdit" class="primary">Save</button>
@@ -276,10 +282,16 @@
               </div>
             </form>
             <div id="metricEditForm" class="stacked-form" style="display: none;">
-              <input type="search" id="metricSearch" list="metricSearchDatalist" class="search-field" placeholder="Search metrics..." autocomplete="off" />
+              <label class="search-label">
+                <span>Search metric to edit</span>
+                <input type="search" id="metricSearch" list="metricSearchDatalist" class="search-field" placeholder="Search metrics..." autocomplete="off" />
+              </label>
               <datalist id="metricSearchDatalist"></datalist>
               <div id="metricEditFields" style="display: none; margin-top: 8px;">
-                <input type="text" id="editMetricName" required />
+                <label class="search-label">
+                  <span>Edit metric name</span>
+                  <input type="text" id="editMetricName" required />
+                </label>
                 <input type="text" id="editMetricDescription" placeholder="Description (optional)" />
                 <div class="metric-edit-buttons">
                   <button id="saveMetricEdit" class="primary">Save</button>
