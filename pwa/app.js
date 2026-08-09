@@ -33,8 +33,8 @@ const ui = {
   metricKind: document.querySelector('#metricKind'),
   metricDescription: document.querySelector('#metricDescription'),
   metricList: document.querySelector('#metricList'),
-  metricDatalist: document.querySelector('#metricDatalist'),
   metricSearch: document.querySelector('#metricSearch'),
+  metricSearchDatalist: document.querySelector('#metricSearchDatalist'),
   metricEditForm: document.querySelector('#metricEditForm'),
   metricEditFields: document.querySelector('#metricEditFields'),
   editMetricName: document.querySelector('#editMetricName'),
@@ -49,14 +49,15 @@ const ui = {
   categoryForm: document.querySelector('#categoryForm'),
   categoryName: document.querySelector('#categoryName'),
   categoryDescriptionAdd: document.querySelector('#categoryDescriptionAdd'),
-  categoryDatalist: document.querySelector('#categoryDatalist'),
   categorySearch: document.querySelector('#categorySearch'),
+  categorySearchDatalist: document.querySelector('#categorySearchDatalist'),
   categoryEditForm: document.querySelector('#categoryEditForm'),
   categoryEditFields: document.querySelector('#categoryEditFields'),
   editCategoryName: document.querySelector('#editCategoryName'),
   editCategoryDescription: document.querySelector('#editCategoryDescription'),
   addCategoryBtn: document.querySelector('#addCategoryBtn'),
   editCategoryBtn: document.querySelector('#editCategoryBtn'),
+  deleteCategoryBtn: document.querySelector('#deleteCategoryBtn'),
   saveCategoryEdit: document.querySelector('#saveCategoryEdit'),
   cancelCategoryEdit: document.querySelector('#cancelCategoryEdit'),
   cancelCategory: document.querySelector('#cancelCategory'),
@@ -1225,11 +1226,6 @@ async function renderSettings() {
     listMetrics(true),
   ]);
 
-  // Update datalist for category search
-  ui.categoryDatalist.innerHTML = categories.map(category => 
-    `<option value="${category.name}" data-id="${category.id}"></option>`
-  ).join('');
-
   // Reset UI states
   ui.categoryForm.style.display = isAddingCategory ? 'grid' : 'none';
   ui.categoryEditForm.style.display = isEditingCategory ? 'grid' : 'none';
@@ -1242,6 +1238,9 @@ async function renderSettings() {
       ui.editCategoryDescription.value = selectedCat.description || '';
     }
   }
+
+  await updateDeleteCategoryButtonState(categories);
+  renderCategorySearchDatalist(categories);
 
   // Only show category cards when searching (categorySearchTerm is set) but not when editing a specific category
   if (categorySearchTerm && !selectedCategoryForEdit) {
@@ -1273,11 +1272,6 @@ async function renderSettings() {
   // Always show categories if there are any
   settingsShowCategories = categories.length > 0;
 
-  // Update datalist for metric search
-  ui.metricDatalist.innerHTML = metrics.map(metric => 
-    `<option value="${metric.name}" data-id="${metric.id}"></option>`
-  ).join('');
-
   // Reset UI states for metrics
   ui.metricForm.style.display = isAddingMetric ? 'grid' : 'none';
   ui.metricEditForm.style.display = isEditingMetric ? 'grid' : 'none';
@@ -1292,6 +1286,8 @@ async function renderSettings() {
       ui.archiveMetricEdit.textContent = selectedMetric.isArchived ? 'Unarchive' : 'Archive';
     }
   }
+
+  renderMetricSearchDatalist(metrics);
 
   // Don't show metric cards when searching - only show edit fields when there's an exact match
   ui.metricList.innerHTML = '';
@@ -1595,21 +1591,21 @@ ui.editCategoryBtn.addEventListener('click', () => {
 // Category search with autocomplete and filtering
 ui.categorySearch.addEventListener('input', async () => {
   categorySearchTerm = ui.categorySearch.value.trim().toLowerCase();
-  
+  const categories = await listCategories();
+
   if (!categorySearchTerm) {
     ui.categoryEditFields.style.display = 'none';
     selectedCategoryForEdit = null;
-    renderAll(); // Re-render to show all categories
+    await updateDeleteCategoryButtonState(categories);
+    renderCategorySearchDatalist(categories);
     return;
   }
-  
-  const categories = await listCategories();
-  
+
   // Find the category that exactly matches the input
   const exactMatch = categories.find(cat => 
     cat.name.toLowerCase() === categorySearchTerm
   );
-  
+
   if (exactMatch) {
     // Exact match - show edit fields
     selectedCategoryForEdit = exactMatch.id;
@@ -1621,28 +1617,53 @@ ui.categorySearch.addEventListener('input', async () => {
     ui.categoryEditFields.style.display = 'none';
     selectedCategoryForEdit = null;
   }
-  
-  renderAll(); // Re-render to filter categories
+
+  await updateDeleteCategoryButtonState(categories);
+  renderCategorySearchDatalist(categories);
 });
 
 // Also handle when user selects from datalist
 ui.categorySearch.addEventListener('change', async () => {
   categorySearchTerm = ui.categorySearch.value.trim().toLowerCase();
-  if (!categorySearchTerm) return;
-  
   const categories = await listCategories();
+
+  if (!categorySearchTerm) {
+    await updateDeleteCategoryButtonState(categories);
+    renderCategorySearchDatalist(categories);
+    return;
+  }
+
   const exactMatch = categories.find(cat => 
     cat.name.toLowerCase() === categorySearchTerm
   );
-  
+
   if (exactMatch) {
     selectedCategoryForEdit = exactMatch.id;
     ui.editCategoryName.value = exactMatch.name || '';
     ui.editCategoryDescription.value = exactMatch.description || '';
     ui.categoryEditFields.style.display = 'block';
   }
-  
-  renderAll(); // Re-render to filter categories
+
+  await updateDeleteCategoryButtonState(categories);
+  renderCategorySearchDatalist(categories);
+});
+
+// Help show all options on focus: typing a single space opens datalist in many browsers,
+// so insert a space on focus if the field is empty, and remove it on blur if untouched.
+ui.categorySearch.addEventListener('focus', () => {
+  try {
+    if (!ui.categorySearch.value.trim()) {
+      ui.categorySearch.value = ' ';
+      // place caret after the space so typing replaces it
+      ui.categorySearch.setSelectionRange(1, 1);
+      ui.categorySearch.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } catch (e) {
+    // ignore selection errors on some browsers
+  }
+});
+ui.categorySearch.addEventListener('blur', () => {
+  if (!ui.categorySearch.value.trim()) ui.categorySearch.value = '';
 });
 
 // Save category edit
@@ -1746,57 +1767,69 @@ ui.editMetricBtn.addEventListener('click', () => {
   ui.editMetricBtn.classList.add('active');
 });
 
-// Metric search with autocomplete
+// Metric search (native datalist)
 ui.metricSearch.addEventListener('input', async () => {
   metricSearchTerm = ui.metricSearch.value.trim().toLowerCase();
-  
+  const metrics = await listMetrics(true);
+
   if (!metricSearchTerm) {
     ui.metricEditFields.style.display = 'none';
     selectedMetricForEdit = null;
-    renderAll(); // Re-render to show all metrics
+    renderMetricSearchDatalist(metrics);
     return;
   }
-  
-  const metrics = await listMetrics(true);
-  
-  // Find the metric that exactly matches the input
+
   const exactMatch = metrics.find(metric => 
     metric.name.toLowerCase() === metricSearchTerm
   );
-  
+
   if (exactMatch) {
-    // Exact match - show edit fields
     selectedMetricForEdit = exactMatch.id;
     ui.editMetricName.value = exactMatch.name || '';
     ui.editMetricDescription.value = exactMatch.description || '';
     ui.metricEditFields.style.display = 'block';
   } else {
-    // No exact match - don't show edit fields
     ui.metricEditFields.style.display = 'none';
     selectedMetricForEdit = null;
   }
-  
-  renderAll(); // Re-render to filter metrics
+
+  renderMetricSearchDatalist(metrics);
 });
 
-// Also handle when user selects from datalist
 ui.metricSearch.addEventListener('change', async () => {
   metricSearchTerm = ui.metricSearch.value.trim().toLowerCase();
-  if (!metricSearchTerm) return;
-  
   const metrics = await listMetrics(true);
+
+  if (!metricSearchTerm) {
+    renderMetricSearchDatalist(metrics);
+    return;
+  }
+
   const exactMatch = metrics.find(metric => 
     metric.name.toLowerCase() === metricSearchTerm
   );
-  
+
   if (exactMatch) {
     selectedMetricForEdit = exactMatch.id;
     ui.editMetricName.value = exactMatch.name || '';
     ui.editMetricDescription.value = exactMatch.description || '';
     ui.metricEditFields.style.display = 'block';
   }
-  
-  renderAll(); // Re-render to filter metrics
+
+  renderMetricSearchDatalist(metrics);
+});
+
+ui.metricSearch.addEventListener('focus', () => {
+  try {
+    if (!ui.metricSearch.value.trim()) {
+      ui.metricSearch.value = ' ';
+      ui.metricSearch.setSelectionRange(1, 1);
+      ui.metricSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } catch (e) {}
+});
+ui.metricSearch.addEventListener('blur', () => {
+  if (!ui.metricSearch.value.trim()) ui.metricSearch.value = '';
 });
 
 // Save metric edit
@@ -2145,12 +2178,84 @@ ui.categoryList.addEventListener('click', async (event) => {
     renderAll();
   }
   if (actionButton.dataset.action === 'delete-category') {
-    if (window.confirm('Are you sure you want to delete this category? All its metrics will become uncategorized.')) {
-      await deleteCategory(categoryId);
-      renderAll();
-    }
+    await confirmAndDeleteCategory(categoryId);
   }
 });
+
+ui.deleteCategoryBtn.addEventListener('click', async () => {
+  const categoryName = ui.categoryName.value.trim() || ui.categorySearch.value.trim();
+  const categories = await listCategories();
+  const exactMatch = categories.find((c) => c.name.toLowerCase() === categoryName.toLowerCase());
+  if (exactMatch) {
+    await confirmAndDeleteCategory(exactMatch.id);
+  } else {
+    window.alert('Type the exact category name to delete it.');
+  }
+});
+
+async function updateDeleteCategoryButtonState(categories = null) {
+  if (!ui.deleteCategoryBtn) return;
+  const exactMatch = await findExactCategoryMatch(categories);
+  ui.deleteCategoryBtn.disabled = !exactMatch;
+}
+
+async function findExactCategoryMatch(categories = null) {
+  const allCategories = categories || await listCategories();
+  const typedName = ui.categorySearch.value.trim();
+  if (!typedName) return null;
+  return allCategories.find((c) => c.name.toLowerCase() === typedName.toLowerCase()) || null;
+}
+
+function renderCategorySearchDatalist(categories) {
+  if (!ui.categorySearchDatalist) return;
+  ui.categorySearchDatalist.innerHTML = categories
+    .map((category) => `<option value="${category.name}"></option>`) 
+    .join('');
+}
+
+function renderMetricSearchDatalist(metrics) {
+  if (!ui.metricSearchDatalist) return;
+  ui.metricSearchDatalist.innerHTML = metrics
+    .map((metric) => `<option value="${metric.name}"></option>`) 
+    .join('');
+}
+
+
+async function confirmAndDeleteCategory(categoryId) {
+  const categories = await listCategories();
+  const category = categories.find((c) => c.id === categoryId);
+  if (!category) {
+    window.alert('Category not found.');
+    return;
+  }
+
+  const metrics = await listMetrics(true);
+  const impactedMetrics = metrics.filter((metric) => metric.categoryId === categoryId);
+  const impactedNames = impactedMetrics.map((metric) => metric.name).join(', ');
+  const metricMessage = impactedMetrics.length
+    ? `This will remove the category from ${impactedMetrics.length} metric(s): ${impactedNames}.`
+    : 'No metrics currently use this category.';
+
+  const confirmed = window.confirm(
+    `Delete category "${category.name}"? ${metricMessage}\n\nThis action will remove the category from affected metrics.`
+  );
+  if (!confirmed) return;
+
+  for (const metric of impactedMetrics) {
+    await updateMetric(metric.id, { categoryId: null });
+  }
+  await deleteCategory(categoryId);
+  ui.categoryName.value = '';
+  ui.categorySearch.value = '';
+  ui.categoryForm.style.display = 'none';
+  ui.categoryEditForm.style.display = 'none';
+  ui.categoryEditFields.style.display = 'none';
+  isAddingCategory = false;
+  isEditingCategory = false;
+  selectedCategoryForEdit = null;
+  categorySearchTerm = '';
+  renderAll();
+}
 
 async function triggerCsvExport() {
   const csv = await exportDataAsCsv();
@@ -2295,7 +2400,28 @@ ui.metricGrid.addEventListener('click', async (event) => {
       renderStats();
     } else if (action === 'settings') {
       const settingsTab = document.querySelector('.tab[data-view="settings"]');
-      if (settingsTab) settingsTab.click();
+      if (settingsTab) {
+        settingsTab.click();
+
+        isAddingMetric = false;
+        isEditingMetric = true;
+        selectedMetricForEdit = metricId;
+        metricSearchTerm = '';
+
+        const metrics = await listMetrics(true);
+        const metric = metrics.find((m) => m.id === metricId);
+        ui.metricSearch.value = metric?.name || '';
+        ui.metricForm.style.display = 'none';
+        ui.metricEditForm.style.display = 'grid';
+        ui.metricEditFields.style.display = 'block';
+        ui.addMetricBtn.classList.remove('active');
+        ui.editMetricBtn.classList.add('active');
+
+        const metricDetails = document.querySelector('#metricSettingsDetails');
+        if (metricDetails) {
+          metricDetails.open = true;
+        }
+      }
     } else if (action === 'edit-entries') {
       await openEntriesModal(metricId);
     }
@@ -2398,6 +2524,12 @@ window.saveInlineEdit = async function(input) {
   const metricId = input.dataset.metricId;
   const newValue = Number(input.value);
   
+  if (!Number.isFinite(newValue)) {
+    window.alert('Please enter a valid numeric value.');
+    input.focus();
+    return;
+  }
+
   await updateEntry(entryId, { value: newValue });
   editingEntryId = null;
   await renderEntriesTable(metricId); // Refresh table
@@ -2410,6 +2542,8 @@ window.saveInlineEdit = async function(input) {
   if (homeView && homeView.classList.contains('active')) {
     await renderHome();
   }
+
+  window.alert('Entry updated!');
 }
 
 window.cancelInlineEdit = async function(input) {

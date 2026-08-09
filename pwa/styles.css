@@ -246,7 +246,7 @@ textarea {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
   background: white;
   min-height: 44px;
 }
@@ -402,6 +402,9 @@ input[type="checkbox"] {
   gap: 8px;
   margin-top: 12px;
 }
+
+/* Native datalist is used for search suggestions; custom suggestion
+   panel styles were removed during cleanup. */
 
 .item {
   border: 1px solid var(--border);

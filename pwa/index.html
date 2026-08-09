@@ -208,14 +208,15 @@
                 </div>
               </form>
               <div id="categoryEditForm" class="stacked-form" style="display: none;">
-                <input type="text" id="categorySearch" placeholder="Search category..." list="categoryDatalist" />
-                <datalist id="categoryDatalist"></datalist>
+                <input type="text" id="categorySearch" placeholder="Search category..." list="categorySearchDatalist" />
+                <datalist id="categorySearchDatalist"></datalist>
                 <div id="categoryEditFields" style="display: none; margin-top: 8px;">
                   <input type="text" id="editCategoryName" required />
                   <input type="text" id="editCategoryDescription" placeholder="Description (optional)" />
                   <div class="category-edit-buttons">
                     <button id="saveCategoryEdit" class="primary">Save</button>
                     <button id="cancelCategoryEdit" class="secondary">Cancel</button>
+                    <button id="deleteCategoryBtn" type="button" class="secondary" disabled>Delete</button>
                   </div>
                 </div>
               </div>
@@ -224,7 +225,7 @@
           </div>
 
           <div class="panel collapsible-container">
-            <details class="collapsible">
+            <details id="metricSettingsDetails" class="collapsible">
               <summary><h2>Metrics</h2><span class="collapse-indicator">▶</span></summary>
               <div class="metric-actions">
                 <button id="addMetricBtn" class="icon-button primary" title="Add metric">+</button>
@@ -270,8 +271,8 @@
                 </div>
               </form>
               <div id="metricEditForm" class="stacked-form" style="display: none;">
-                <input type="text" id="metricSearch" placeholder="Search metric..." list="metricDatalist" />
-                <datalist id="metricDatalist"></datalist>
+                <input type="text" id="metricSearch" placeholder="Search metric..." list="metricSearchDatalist" />
+                <datalist id="metricSearchDatalist"></datalist>
                 <div id="metricEditFields" style="display: none; margin-top: 8px;">
                   <input type="text" id="editMetricName" required />
                   <input type="text" id="editMetricDescription" placeholder="Description (optional)" />
