@@ -673,6 +673,27 @@ html[data-theme="dark"] .segmented-control {
   padding: 16px 20px;
 }
 
+.session-detail {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.session-detail p {
+  margin: 0;
+}
+
+.session-sets {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.recommendation {
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  border-radius: 12px;
+}
+
 .table-container {
   overflow-x: auto;
 }

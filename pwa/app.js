@@ -640,6 +640,7 @@ async function renderHome() {
         </div>
         <div class="card-pills">
           <button class="card-pill" data-action="add" data-id="${metric.id}" title="Add Entry">➕</button>
+          ${metric.metricKind === 'strength_session' ? `<button class="card-pill" data-action="last-session" data-id="${metric.id}" title="Last session">💡</button>` : ''}
           <button class="card-pill" data-action="stats" data-id="${metric.id}" title="View Stats">📊</button>
           <button class="card-pill" data-action="settings" data-id="${metric.id}" title="Edit Metric">⚙️</button>
           <button class="card-pill" data-action="edit-entries" data-id="${metric.id}" title="Edit Entries">📋</button>
@@ -905,74 +906,117 @@ function computeStrengthValue(entry, aggType) {
   return setData.reduce((sum, s) => sum + s.loadKg, 0);
 }
 
-function resampleAndProcessData(entries, metric, period, zeros, strengthAgg) {
-  const metricEntries = entries.filter((e) => e.metricId === metric.id);
-  if (metricEntries.length === 0) return [];
-
-  const parsed = metricEntries.map((e) => {
-    let val = Number(e.value);
-    if (metric.metricKind === 'strength_session') {
-      val = computeStrengthValue(e, strengthAgg);
-    }
+function getLastStrengthSet(entry) {
+  const sets = Array.isArray(entry.sets) ? entry.sets : [];
+  if (sets.length > 0) {
+    const lastSet = sets[sets.length - 1];
     return {
-      date: new Date(e.recordedAt),
-      value: val,
+      loadKg: Number(lastSet.loadKg ?? lastSet.load_kg ?? 0),
+      reps: Number(lastSet.reps ?? 0),
     };
-  }).sort((a, b) => a.date - b.date);
+  }
+  return {
+    loadKg: Number(entry.loadKg ?? entry.value ?? 0),
+    reps: Number(entry.reps ?? 0),
+  };
+}
 
-  const maxDate = parsed[parsed.length - 1].date;
-  const startDate = getStartDateForPeriod(period, maxDate);
+function roundIncrementToWeightStep(increment) {
+  const steps = [0.5, 1, 1.25, 2.5, 5];
+  return steps.reduce((best, step) => {
+    return Math.abs(step - increment) < Math.abs(best - increment) ? step : best;
+  }, steps[0]);
+}
 
-  let filtered = parsed.filter((e) => e.date >= startDate);
-  if (filtered.length === 0) return [];
+function buildStrengthProgressRecommendation(entries) {
+  if (!entries || entries.length === 0) return null;
+  const latest = entries[0];
+  const latestSet = getLastStrengthSet(latest);
 
-  const dailyMap = new Map();
-  filtered.forEach((e) => {
-    const key = e.date.toISOString().split('T')[0];
-    if (!dailyMap.has(key)) {
-      dailyMap.set(key, []);
-    }
-    dailyMap.get(key).push(e.value);
-  });
-
-  const dailyEntries = [];
-  dailyMap.forEach((vals, key) => {
-    let collapsedVal = 0;
-    if (metric.metricKind === 'count') {
-      collapsedVal = vals.reduce((s, v) => s + v, 0);
-    } else if (metric.metricKind === 'score' || metric.unitType === 'integer_range') {
-      const sorted = [...vals].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      collapsedVal = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-    } else {
-      collapsedVal = vals.reduce((s, v) => s + v, 0) / vals.length;
-    }
-    dailyEntries.push({ dateStr: key, date: new Date(key), value: collapsedVal });
-  });
-
-  dailyEntries.sort((a, b) => a.date - b.date);
-
-  if (!zeros) {
-    return dailyEntries;
+  if (latestSet.reps === 12) {
+    const desiredIncrease = latestSet.loadKg * 0.05;
+    const increment = roundIncrementToWeightStep(desiredIncrease);
+    return `Try increasing your last set by +${increment.toFixed(2).replace(/\.00$/, '')} kg (about 5%).`;
   }
 
-  const firstDate = dailyEntries[0].date;
-  const lastDate = dailyEntries[dailyEntries.length - 1].date;
-  const filled = [];
-  const dailyLookup = new Map(dailyEntries.map((e) => [e.dateStr, e.value]));
+  const lastFour = entries.slice(0, 4);
+  const unchangedCount = lastFour.filter((entry) => {
+    const set = getLastStrengthSet(entry);
+    return set.loadKg === latestSet.loadKg && set.reps === latestSet.reps;
+  }).length;
 
-  const current = new Date(firstDate);
-  while (current <= lastDate) {
-    const key = current.toISOString().split('T')[0];
-    const val = dailyLookup.has(key) ? dailyLookup.get(key) : 0;
-    filled.push({
-      dateStr: key,
-      date: new Date(current),
-      value: val,
-    });
-    current.setDate(current.getDate() + 1);
+  if (unchangedCount === 4) {
+    return 'Your last set load and reps have been the same for 4 sessions. Try adding 2 more reps to the last set.';
   }
-  return filled;
+
+  return null;
+}
+
+function ensureEntriesTableMarkup() {
+  const body = ui.entriesModal.querySelector('.modal-body');
+  if (!body) return;
+  if (!body.querySelector('#entriesTableContainer')) {
+    body.innerHTML = `
+      <div id="entriesTableContainer" class="table-container">
+        <table id="entriesTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Value</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="entriesTableBody"></tbody>
+        </table>
+      </div>
+    `;
+  }
+}
+
+async function openStrengthSessionDetails(metricId) {
+  const metrics = await listMetrics(true);
+  const metric = metrics.find((m) => m.id === metricId);
+  if (!metric) return;
+
+  const entries = await listEntries();
+  const metricEntries = entries
+    .filter((entry) => entry.metricId === metricId)
+    .sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));
+
+  const body = ui.entriesModal.querySelector('.modal-body');
+  if (!body) return;
+
+  if (metricEntries.length === 0) {
+    body.innerHTML = '<p>No strength sessions recorded yet for this metric.</p>';
+  } else {
+    const latest = metricEntries[0];
+    const recommendation = buildStrengthProgressRecommendation(metricEntries);
+    const sets = Array.isArray(latest.sets) ? latest.sets : [];
+    const setLines = sets.length
+      ? sets.map((set, index) => {
+          const load = Number(set.loadKg ?? set.load_kg ?? 0).toFixed(1);
+          const reps = Number(set.reps ?? 0);
+          return `<li>Set ${index + 1}: ${load} kg × ${reps} reps</li>`;
+        }).join('')
+      : `<li>${Number(latest.loadKg ?? latest.value ?? 0).toFixed(1)} kg × ${Number(latest.reps ?? 0)} reps</li>`;
+    const totalVolume = computeStrengthValue(latest, 'Total Volume');
+    const maxLoad = computeStrengthValue(latest, 'Max Load');
+
+    body.innerHTML = `
+      <div class="session-detail">
+        <p><strong>Last session:</strong> ${new Date(latest.recordedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+        <ul class="session-sets">${setLines}</ul>
+        <p><strong>Total volume:</strong> ${Number(totalVolume).toFixed(1)} kg</p>
+        <p><strong>Max load:</strong> ${Number(maxLoad).toFixed(1)} kg</p>
+        <div class="recommendation">
+          <strong>Recommendation</strong>
+          <p>${recommendation ?? 'No progression recommendation for this session.'}</p>
+        </div>
+      </div>`;
+  }
+
+  ui.entriesModalTitle.textContent = `${metric.name} — Last session`;
+  ui.entriesModal.classList.remove('hidden');
 }
 
 function generateSvgChart(data, metric) {
@@ -2422,6 +2466,8 @@ ui.metricGrid.addEventListener('click', async (event) => {
           metricDetails.open = true;
         }
       }
+    } else if (action === 'last-session') {
+      await openStrengthSessionDetails(metricId);
     } else if (action === 'edit-entries') {
       await openEntriesModal(metricId);
     }
