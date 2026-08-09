@@ -2468,9 +2468,9 @@ ui.metricGrid.addEventListener('click', async (event) => {
       renderStats();
     } else if (action === 'settings') {
       const settingsTab = document.querySelector('.tab[data-view="settings"]');
-      if (settingsTab) {
-        settingsTab.click();
-
+      const settingsView = document.querySelector('#view-settings');
+      if (settingsTab && settingsView) {
+        settingsMode = 'metrics';
         isAddingMetric = false;
         isEditingMetric = true;
         selectedMetricForEdit = metricId;
@@ -2484,12 +2484,14 @@ ui.metricGrid.addEventListener('click', async (event) => {
         ui.metricEditFields.style.display = 'block';
         ui.addMetricBtn.classList.remove('active');
         ui.editMetricBtn.classList.add('active');
-        await renderSettings();
 
-        const metricDetails = document.querySelector('#metricSettingsDetails');
-        if (metricDetails) {
-          metricDetails.open = true;
-        }
+        ui.tabs.forEach((item) => item.classList.remove('active'));
+        ui.views.forEach((view) => view.classList.remove('active'));
+        settingsTab.classList.add('active');
+        settingsView.classList.add('active');
+
+        activateSettingsMode('metrics');
+        await renderSettings();
       }
     } else if (action === 'last-session') {
       await openStrengthSessionDetails(metricId);
