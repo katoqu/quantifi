@@ -87,6 +87,10 @@ const ui = {
   targetActionPills: document.querySelector('#targetActionPills'),
   homeSearch: document.querySelector('#homeSearch'),
   homeSearchDatalist: document.querySelector('#homeSearchDatalist'),
+  showCategoriesBtn: document.querySelector('#showCategoriesBtn'),
+  showMetricsBtn: document.querySelector('#showMetricsBtn'),
+  settingsCategoriesPanel: document.querySelector('#settingsCategoriesPanel'),
+  settingsMetricsPanel: document.querySelector('#settingsMetricsPanel'),
   backupReminderBanner: document.querySelector('#backupReminderBanner'),
   unsavedCount: document.querySelector('#unsavedCount'),
   logShowArchived: document.querySelector('#logShowArchived'),
@@ -1276,8 +1280,39 @@ let isEditingMetric = false;
 let selectedMetricForEdit = null;
 let metricSearchTerm = '';
 let currentMetricId = null;
+let suppressDetailsReset = false;
+let settingsMode = 'categories';
+
+function activateSettingsMode(mode) {
+  settingsMode = mode;
+  if (ui.settingsCategoriesPanel) {
+    ui.settingsCategoriesPanel.classList.toggle('hidden', mode !== 'categories');
+  }
+  if (ui.settingsMetricsPanel) {
+    ui.settingsMetricsPanel.classList.toggle('hidden', mode !== 'metrics');
+  }
+  if (ui.showCategoriesBtn && ui.showMetricsBtn) {
+    ui.showCategoriesBtn.classList.toggle('active', mode === 'categories');
+    ui.showMetricsBtn.classList.toggle('active', mode === 'metrics');
+  }
+}
+
+if (ui.showCategoriesBtn) {
+  ui.showCategoriesBtn.addEventListener('click', async () => {
+    activateSettingsMode('categories');
+    renderSettings();
+  });
+}
+
+if (ui.showMetricsBtn) {
+  ui.showMetricsBtn.addEventListener('click', async () => {
+    activateSettingsMode('metrics');
+    renderSettings();
+  });
+}
 
 async function renderSettings() {
+  activateSettingsMode(settingsMode);
   const [categories, metrics] = await Promise.all([
     listCategories(),
     listMetrics(true),
@@ -1358,9 +1393,11 @@ ui.tabs.forEach((tab) => {
     const newActiveView = document.querySelector(`#view-${tab.dataset.view}`);
     newActiveView.classList.add('active');
     // Reset all collapsible panels in the new view
+    suppressDetailsReset = true;
     newActiveView.querySelectorAll('details').forEach((d) => {
       d.removeAttribute('open');
     });
+    suppressDetailsReset = false;
     // Initialize Add form if switching to Add tab
     if (tab.dataset.view === 'add') {
       await renderMetricDropdown();
@@ -1380,6 +1417,10 @@ ui.tabs.forEach((tab) => {
         activeVizSettings.metricId = currentMetricId;
         renderStats();
       }
+    }
+    if (tab.dataset.view === 'settings') {
+      activateSettingsMode(settingsMode);
+      await renderSettings();
     }
     // Render Home when switching to Home tab
     if (tab.dataset.view === 'home') {
@@ -2125,9 +2166,9 @@ ui.metricList.addEventListener('click', async (event) => {
 // Reset states when collapsing sections
 function setupCollapsibleReset(detailsElement, resetFunction) {
   if (detailsElement) {
-    detailsElement.addEventListener('toggle', function() {
-      if (!this.open) {
-        resetFunction();
+    detailsElement.addEventListener('toggle', async function() {
+      if (!this.open && !suppressDetailsReset) {
+        await resetFunction();
       }
     });
   }
@@ -2443,6 +2484,7 @@ ui.metricGrid.addEventListener('click', async (event) => {
         ui.metricEditFields.style.display = 'block';
         ui.addMetricBtn.classList.remove('active');
         ui.editMetricBtn.classList.add('active');
+        await renderSettings();
 
         const metricDetails = document.querySelector('#metricSettingsDetails');
         if (metricDetails) {

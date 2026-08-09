@@ -193,103 +193,108 @@
 
         <section id="view-settings" class="view">
           <button class="back-button secondary">← Back</button>
+
           <div class="panel collapsible-container">
-            <details class="collapsible">
-              <summary><h2>Categories</h2><span class="collapse-indicator">▶</span></summary>
-              <div class="category-actions">
-                <button id="addCategoryBtn" class="icon-button primary" title="Add category">+</button>
-                <button id="editCategoryBtn" class="icon-button secondary" title="Edit category">✏️</button>
+            <details class="collapsible" open>
+              <summary><h2>Manage attributes</h2><span class="collapse-indicator">▶</span></summary>
+              <div class="settings-mode-switch">
+                <button id="showCategoriesBtn" class="settings-tab active">Category</button>
+                <button id="showMetricsBtn" class="settings-tab">Metric</button>
               </div>
-              <form id="categoryForm" class="stacked-form" style="display: none;">
-                <input type="text" id="categoryName" placeholder="Category name" required />
-                <input type="text" id="categoryDescriptionAdd" placeholder="Description (optional)" />
+
+              <div id="settingsCategoriesPanel" class="panel settings-panel">
+                <div class="category-actions">
+                  <button id="addCategoryBtn" class="icon-button primary" title="Add new category">Add new</button>
+                  <button id="editCategoryBtn" class="icon-button secondary" title="Edit or delete category">Edit / Delete</button>
+                </div>
+            <form id="categoryForm" class="stacked-form" style="display: none;">
+              <input type="text" id="categoryName" placeholder="Category name" required />
+              <input type="text" id="categoryDescriptionAdd" placeholder="Description (optional)" />
+              <div class="category-edit-buttons">
+                <button type="submit" class="primary">Save</button>
+                <button type="button" id="cancelCategory" class="secondary">Cancel</button>
+              </div>
+            </form>
+            <div id="categoryEditForm" class="stacked-form" style="display: none;">
+              <input type="search" id="categorySearch" list="categorySearchDatalist" class="search-field" placeholder="Search categories..." autocomplete="off" />
+              <datalist id="categorySearchDatalist"></datalist>
+              <div id="categoryEditFields" style="display: none; margin-top: 8px;">
+                <input type="text" id="editCategoryName" required />
+                <input type="text" id="editCategoryDescription" placeholder="Description (optional)" />
                 <div class="category-edit-buttons">
-                  <button type="submit" class="primary">Save</button>
-                  <button type="button" id="cancelCategory" class="secondary">Cancel</button>
-                </div>
-              </form>
-              <div id="categoryEditForm" class="stacked-form" style="display: none;">
-                <input type="search" id="categorySearch" list="categorySearchDatalist" class="search-field" placeholder="Search categories..." autocomplete="off" />
-                <datalist id="categorySearchDatalist"></datalist>
-                <div id="categoryEditFields" style="display: none; margin-top: 8px;">
-                  <input type="text" id="editCategoryName" required />
-                  <input type="text" id="editCategoryDescription" placeholder="Description (optional)" />
-                  <div class="category-edit-buttons">
-                    <button id="saveCategoryEdit" class="primary">Save</button>
-                    <button id="cancelCategoryEdit" class="secondary">Cancel</button>
-                    <button id="deleteCategoryBtn" type="button" class="secondary" disabled>Delete</button>
-                  </div>
+                  <button id="saveCategoryEdit" class="primary">Save</button>
+                  <button id="cancelCategoryEdit" class="secondary">Cancel</button>
+                  <button id="deleteCategoryBtn" type="button" class="secondary" disabled>Delete</button>
                 </div>
               </div>
-              <div id="categoryList" class="list"></div>
-            </details>
+            </div>
+            <div id="categoryList" class="list"></div>
           </div>
 
-          <div class="panel collapsible-container">
-            <details id="metricSettingsDetails" class="collapsible">
-              <summary><h2>Metrics</h2><span class="collapse-indicator">▶</span></summary>
-              <div class="metric-actions">
-                <button id="addMetricBtn" class="icon-button primary" title="Add metric">+</button>
-                <button id="editMetricBtn" class="icon-button secondary" title="Edit metric">✏️</button>
+          <div id="settingsMetricsPanel" class="panel settings-panel hidden">
+            <div class="metric-actions">
+              <button id="addMetricBtn" class="icon-button primary" title="Add new metric">Add new</button>
+              <button id="editMetricBtn" class="icon-button secondary" title="Edit or archive metric">Edit / Archive</button>
+            </div>
+            <form id="metricForm" class="stacked-form" style="display: none;">
+              <label>
+                Name
+                <input type="text" id="metricName" required />
+              </label>
+              <label>
+                Description (optional)
+                <input type="text" id="metricDescription" />
+              </label>
+              <label>
+                Category
+                <select id="metricCategory"></select>
+              </label>
+              <label>
+                Unit
+                <input type="text" id="metricUnit" placeholder="kg, steps, score" />
+              </label>
+              <label>
+                Type
+                <select id="metricType">
+                  <option value="float">float</option>
+                  <option value="integer">integer</option>
+                  <option value="integer_range">integer_range</option>
+                </select>
+              </label>
+              <label>
+                Kind
+                <select id="metricKind">
+                  <option value="quantitative">quantitative</option>
+                  <option value="count">count</option>
+                  <option value="score">score</option>
+                  <option value="strength_session">strength_session</option>
+                </select>
+              </label>
+              <div class="metric-add-buttons">
+                <button type="submit" class="primary">Save</button>
+                <button type="button" id="cancelMetric" class="secondary">Cancel</button>
               </div>
-              <form id="metricForm" class="stacked-form" style="display: none;">
-                <label>
-                  Name
-                  <input type="text" id="metricName" required />
-                </label>
-                <label>
-                  Description (optional)
-                  <input type="text" id="metricDescription" />
-                </label>
-                <label>
-                  Category
-                  <select id="metricCategory"></select>
-                </label>
-                <label>
-                  Unit
-                  <input type="text" id="metricUnit" placeholder="kg, steps, score" />
-                </label>
-                <label>
-                  Type
-                  <select id="metricType">
-                    <option value="float">float</option>
-                    <option value="integer">integer</option>
-                    <option value="integer_range">integer_range</option>
-                  </select>
-                </label>
-                <label>
-                  Kind
-                  <select id="metricKind">
-                    <option value="quantitative">quantitative</option>
-                    <option value="count">count</option>
-                    <option value="score">score</option>
-                    <option value="strength_session">strength_session</option>
-                  </select>
-                </label>
-                <div class="metric-add-buttons">
-                  <button type="submit" class="primary">Save</button>
-                  <button type="button" id="cancelMetric" class="secondary">Cancel</button>
-                </div>
-              </form>
-              <div id="metricEditForm" class="stacked-form" style="display: none;">
-                <input type="search" id="metricSearch" list="metricSearchDatalist" class="search-field" placeholder="Search metrics..." autocomplete="off" />
-                <datalist id="metricSearchDatalist"></datalist>
-                <div id="metricEditFields" style="display: none; margin-top: 8px;">
-                  <input type="text" id="editMetricName" required />
-                  <input type="text" id="editMetricDescription" placeholder="Description (optional)" />
-                  <div class="metric-edit-buttons">
-                    <button id="saveMetricEdit" class="primary">Save</button>
-                    <button id="cancelMetricEdit" class="secondary">Cancel</button>
-                    <button id="archiveMetricEdit" class="secondary">Archive</button>
-                  </div>
+            </form>
+            <div id="metricEditForm" class="stacked-form" style="display: none;">
+              <input type="search" id="metricSearch" list="metricSearchDatalist" class="search-field" placeholder="Search metrics..." autocomplete="off" />
+              <datalist id="metricSearchDatalist"></datalist>
+              <div id="metricEditFields" style="display: none; margin-top: 8px;">
+                <input type="text" id="editMetricName" required />
+                <input type="text" id="editMetricDescription" placeholder="Description (optional)" />
+                <div class="metric-edit-buttons">
+                  <button id="saveMetricEdit" class="primary">Save</button>
+                  <button id="cancelMetricEdit" class="secondary">Cancel</button>
+                  <button id="archiveMetricEdit" class="secondary">Archive</button>
                 </div>
               </div>
-              <div id="metricList" class="list"></div>
-            </details>
+            </div>
+            <div id="metricList" class="list"></div>
           </div>
+        </details>
+      </div>
 
           <div class="panel collapsible-container">
-            <details class="collapsible">
+            <details class="collapsible" open>
               <summary><h2>Backup</h2><span class="collapse-indicator">▶</span></summary>
               <div class="backup-actions">
                 <button id="exportButton" class="secondary" type="button">Export CSV</button>
