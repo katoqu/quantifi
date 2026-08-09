@@ -85,12 +85,10 @@ const ui = {
   entryTime: document.querySelector('#entryTime'),
   dateTimeFields: document.querySelector('#dateTimeFields'),
   targetActionPills: document.querySelector('#targetActionPills'),
-  homeCategoryPills: document.querySelector('#homeCategoryPills'),
-  addCategoryPills: document.querySelector('#addCategoryPills'),
-  statsCategoryPills: document.querySelector('#statsCategoryPills'),
+  homeSearch: document.querySelector('#homeSearch'),
+  homeSearchDatalist: document.querySelector('#homeSearchDatalist'),
   backupReminderBanner: document.querySelector('#backupReminderBanner'),
   unsavedCount: document.querySelector('#unsavedCount'),
-  logCategoryPills: document.querySelector('#logCategoryPills'),
   logShowArchived: document.querySelector('#logShowArchived'),
   changeCategory: document.querySelector('#changeCategory'),
   changeDate: document.querySelector('#changeDate'),
@@ -120,6 +118,7 @@ let revivingEventId = null;
 let editingEntryId = null;
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
+let homeSearchTerm = '';
 
 let activeVizSettings = {
   metricId: null,
@@ -223,16 +222,16 @@ async function filterMetricsForView(viewName, metrics, entries, categories) {
   return metrics.filter((m) => m.categoryId === cat.id);
 }
 
-function renderCategoryPills(viewName, categories, container) {
-  if (!container) return;
-  const options = ['Recent', ...categories.map((c) => c.name.charAt(0).toUpperCase() + c.name.slice(1))];
-  const currentFilter = activeFilters[viewName];
-  container.innerHTML = options
-    .map((opt) => {
-      const isActive = opt.toLowerCase() === currentFilter.toLowerCase();
-      return `<button class="pill ${isActive ? 'active' : ''}" data-filter="${opt}">${opt}</button>`;
-    })
-    .join('');
+function filterMetricsBySearch(metrics, categories, searchTerm) {
+  if (!searchTerm) return metrics;
+  const term = searchTerm.trim().toLowerCase();
+  const categoryMap = new Map(categories.map((c) => [c.id, c.name.toLowerCase()]));
+  return metrics.filter((metric) => {
+    const nameMatch = metric.name.toLowerCase().includes(term);
+    const categoryName = categoryMap.get(metric.categoryId) || '';
+    const catMatch = categoryName.includes(term);
+    return nameMatch || catMatch;
+  });
 }
 
 function updateBackupBanner() {
@@ -382,8 +381,6 @@ async function renderMetricDropdown() {
     listCategories(),
   ]);
 
-  renderCategoryPills('add', categories, ui.addCategoryPills);
-
   // Render date pills
   if (ui.entryDatePills) {
     ui.entryDatePills.innerHTML = ['Now', 'Yesterday', 'Custom']
@@ -404,7 +401,6 @@ async function renderMetricDropdown() {
   }
 
   const filteredMetrics = await filterMetricsForView('add', metrics, entries, categories);
-
   const previousValue = ui.metricSelect.value;
 
   ui.metricSelect.innerHTML = filteredMetrics
@@ -566,10 +562,11 @@ async function renderHome() {
   console.log('Metrics:', metrics.length, 'Active:', metrics.filter(m => !m.isArchived).length);
 
   const activeMetrics = metrics.filter((m) => !m.isArchived);
-
-  renderCategoryPills('home', categories, ui.homeCategoryPills);
-
-  const filteredMetrics = await filterMetricsForView('home', activeMetrics, entries, categories);
+  renderHomeSearchDatalist(categories, activeMetrics);
+  let filteredMetrics = await filterMetricsForView('home', activeMetrics, entries, categories);
+  const currentSearchTerm = ui.homeSearch ? ui.homeSearch.value.trim().toLowerCase() : homeSearchTerm;
+  homeSearchTerm = currentSearchTerm;
+  filteredMetrics = filterMetricsBySearch(filteredMetrics, categories, currentSearchTerm);
 
   const categoryMap = Object.fromEntries(categories.map((category) => [category.id, category.name]));
 
@@ -650,29 +647,6 @@ async function renderHome() {
   }).join('') || '<p>No metrics match this filter.</p>';
 }
 
-function renderLogCategoryPills(categories, events, catMap) {
-  if (!ui.logCategoryPills) return;
-  const showArchived = ui.logShowArchived?.checked || false;
-  const visibleEvents = showArchived
-    ? events
-    : events.filter(e => !e.isArchived);
-  
-  const presentCatIds = new Set(visibleEvents.map(e => e.categoryId).filter(Boolean));
-  const presentCategories = categories
-    .filter(c => presentCatIds.has(c.id))
-    .map(c => c.name.charAt(0).toUpperCase() + c.name.slice(1))
-    .sort((a, b) => a.localeCompare(b));
-
-  const options = ['Recent', ...presentCategories];
-  const currentFilter = activeFilters.log || 'Recent';
-  ui.logCategoryPills.innerHTML = options
-    .map((opt) => {
-      const isActive = opt.toLowerCase() === currentFilter.toLowerCase();
-      return `<button class="pill ${isActive ? 'active' : ''}" data-filter="${opt}">${opt}</button>`;
-    })
-    .join('');
-}
-
 async function renderLogs() {
   const [events, categories] = await Promise.all([
     listChangeEvents(),
@@ -687,8 +661,6 @@ async function renderLogs() {
   }
 
   const showArchived = ui.logShowArchived?.checked || false;
-  renderLogCategoryPills(categories, events, catMap);
-
   const sortedEvents = [...events].sort((a, b) => {
     const aTime = showArchived
       ? new Date(a.endAt || a.recordedAt).getTime()
@@ -874,6 +846,49 @@ function getStartDateForPeriod(period, maxDate) {
     return new Date(0);
   }
   return start;
+}
+
+function resampleAndProcessData(entries, metric, period, zeros, strengthAgg) {
+  const startDate = getStartDateForPeriod(period, new Date());
+  const endDate = new Date();
+  endDate.setHours(0, 0, 0, 0);
+  const rows = entries
+    .filter((entry) => entry.metricId === metric.id)
+    .map((entry) => ({
+      date: new Date(entry.recordedAt),
+      entry,
+    }))
+    .filter((row) => !Number.isNaN(row.date.getTime()));
+
+  const bucketMap = new Map();
+  for (const { date, entry } of rows) {
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+    const key = day.toISOString();
+    const value = metric.metricKind === 'strength_session'
+      ? computeStrengthValue(entry, strengthAgg)
+      : Number(entry.value);
+    if (Number.isNaN(value)) continue;
+    const existing = bucketMap.get(key);
+    if (!existing || date > existing.date) {
+      bucketMap.set(key, { date: new Date(day), value });
+    }
+  }
+
+  const result = [];
+  const cursor = new Date(startDate);
+  cursor.setHours(0, 0, 0, 0);
+  while (cursor <= endDate) {
+    const key = cursor.toISOString();
+    const bucket = bucketMap.get(key);
+    if (bucket) {
+      result.push({ date: bucket.date, value: bucket.value, dateStr: bucket.date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) });
+    } else if (zeros) {
+      result.push({ date: new Date(cursor), value: 0, dateStr: cursor.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) });
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
 }
 
 function computeStrengthValue(entry, aggType) {
@@ -1160,8 +1175,6 @@ async function renderStats() {
 
   const activeMetrics = metrics.filter((m) => !m.isArchived);
 
-  renderCategoryPills('stats', categories, ui.statsCategoryPills);
-
   const filteredMetrics = await filterMetricsForView('stats', activeMetrics, entries, categories);
 
   const prevSelectedValue = ui.statsMetricSelect.value;
@@ -1305,11 +1318,9 @@ async function renderSettings() {
         </div>
       `).join('');
     } else {
-      // Show message when searching but no matches found
       ui.categoryList.innerHTML = '<p class="muted-text" style="padding: 1rem; text-align: center; opacity: 0.6;">No matching categories found</p>';
     }
   } else {
-    // Don't show any categories when not searching or when editing a specific category
     ui.categoryList.innerHTML = '';
   }
   
@@ -1410,6 +1421,13 @@ ui.metricSelect.addEventListener('change', () => {
   currentMetricId = ui.metricSelect.value;
   syncAddFormMode();
 });
+
+if (ui.homeSearch) {
+  ui.homeSearch.addEventListener('input', () => {
+    homeSearchTerm = ui.homeSearch.value.trim().toLowerCase();
+    renderHome();
+  });
+}
 
 ui.statsMetricSelect.addEventListener('change', () => {
   currentMetricId = ui.statsMetricSelect.value;
@@ -1635,79 +1653,34 @@ ui.editCategoryBtn.addEventListener('click', () => {
 // Category search with autocomplete and filtering
 ui.categorySearch.addEventListener('input', async () => {
   categorySearchTerm = ui.categorySearch.value.trim().toLowerCase();
-  const categories = await listCategories();
-
-  if (!categorySearchTerm) {
-    ui.categoryEditFields.style.display = 'none';
-    selectedCategoryForEdit = null;
-    await updateDeleteCategoryButtonState(categories);
-    renderCategorySearchDatalist(categories);
-    return;
-  }
-
-  // Find the category that exactly matches the input
-  const exactMatch = categories.find(cat => 
-    cat.name.toLowerCase() === categorySearchTerm
-  );
-
-  if (exactMatch) {
-    // Exact match - show edit fields
-    selectedCategoryForEdit = exactMatch.id;
-    ui.editCategoryName.value = exactMatch.name || '';
-    ui.editCategoryDescription.value = exactMatch.description || '';
-    ui.categoryEditFields.style.display = 'block';
-  } else {
-    // No exact match - don't show edit fields
-    ui.categoryEditFields.style.display = 'none';
-    selectedCategoryForEdit = null;
-  }
-
-  await updateDeleteCategoryButtonState(categories);
-  renderCategorySearchDatalist(categories);
+  selectedCategoryForEdit = null;
+  await updateDeleteCategoryButtonState();
+  renderSettings();
 });
 
-// Also handle when user selects from datalist
 ui.categorySearch.addEventListener('change', async () => {
   categorySearchTerm = ui.categorySearch.value.trim().toLowerCase();
   const categories = await listCategories();
-
-  if (!categorySearchTerm) {
-    await updateDeleteCategoryButtonState(categories);
-    renderCategorySearchDatalist(categories);
-    return;
-  }
-
-  const exactMatch = categories.find(cat => 
-    cat.name.toLowerCase() === categorySearchTerm
-  );
-
+  const exactMatch = categories.find(cat => cat.name.toLowerCase() === categorySearchTerm);
   if (exactMatch) {
+    isAddingCategory = false;
+    isEditingCategory = true;
     selectedCategoryForEdit = exactMatch.id;
+    ui.categoryEditForm.style.display = 'grid';
+    ui.categoryEditFields.style.display = 'block';
+    ui.addCategoryBtn.classList.remove('active');
+    ui.editCategoryBtn.classList.add('active');
     ui.editCategoryName.value = exactMatch.name || '';
     ui.editCategoryDescription.value = exactMatch.description || '';
-    ui.categoryEditFields.style.display = 'block';
+    await updateDeleteCategoryButtonState(categories);
+    renderSettings();
+    return;
   }
-
+  isAddingCategory = false;
+  isEditingCategory = false;
+  selectedCategoryForEdit = null;
   await updateDeleteCategoryButtonState(categories);
-  renderCategorySearchDatalist(categories);
-});
-
-// Help show all options on focus: typing a single space opens datalist in many browsers,
-// so insert a space on focus if the field is empty, and remove it on blur if untouched.
-ui.categorySearch.addEventListener('focus', () => {
-  try {
-    if (!ui.categorySearch.value.trim()) {
-      ui.categorySearch.value = ' ';
-      // place caret after the space so typing replaces it
-      ui.categorySearch.setSelectionRange(1, 1);
-      ui.categorySearch.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-  } catch (e) {
-    // ignore selection errors on some browsers
-  }
-});
-ui.categorySearch.addEventListener('blur', () => {
-  if (!ui.categorySearch.value.trim()) ui.categorySearch.value = '';
+  renderSettings();
 });
 
 // Save category edit
@@ -1814,67 +1787,33 @@ ui.editMetricBtn.addEventListener('click', () => {
 // Metric search (native datalist)
 ui.metricSearch.addEventListener('input', async () => {
   metricSearchTerm = ui.metricSearch.value.trim().toLowerCase();
-  const metrics = await listMetrics(true);
-
-  if (!metricSearchTerm) {
-    ui.metricEditFields.style.display = 'none';
-    selectedMetricForEdit = null;
-    renderMetricSearchDatalist(metrics);
-    return;
-  }
-
-  const exactMatch = metrics.find(metric => 
-    metric.name.toLowerCase() === metricSearchTerm
-  );
-
-  if (exactMatch) {
-    selectedMetricForEdit = exactMatch.id;
-    ui.editMetricName.value = exactMatch.name || '';
-    ui.editMetricDescription.value = exactMatch.description || '';
-    ui.metricEditFields.style.display = 'block';
-  } else {
-    ui.metricEditFields.style.display = 'none';
-    selectedMetricForEdit = null;
-  }
-
-  renderMetricSearchDatalist(metrics);
+  selectedMetricForEdit = null;
+  renderSettings();
 });
 
 ui.metricSearch.addEventListener('change', async () => {
   metricSearchTerm = ui.metricSearch.value.trim().toLowerCase();
   const metrics = await listMetrics(true);
-
-  if (!metricSearchTerm) {
-    renderMetricSearchDatalist(metrics);
-    return;
-  }
-
-  const exactMatch = metrics.find(metric => 
-    metric.name.toLowerCase() === metricSearchTerm
-  );
-
+  const exactMatch = metrics.find(metric => metric.name.toLowerCase() === metricSearchTerm);
   if (exactMatch) {
+    isAddingMetric = false;
+    isEditingMetric = true;
     selectedMetricForEdit = exactMatch.id;
+    ui.metricEditForm.style.display = 'grid';
+    ui.metricEditFields.style.display = 'block';
+    ui.addMetricBtn.classList.remove('active');
+    ui.editMetricBtn.classList.add('active');
     ui.editMetricName.value = exactMatch.name || '';
     ui.editMetricDescription.value = exactMatch.description || '';
-    ui.metricEditFields.style.display = 'block';
+    renderSettings();
+    return;
   }
-
-  renderMetricSearchDatalist(metrics);
+  isAddingMetric = false;
+  isEditingMetric = false;
+  selectedMetricForEdit = null;
+  renderSettings();
 });
 
-ui.metricSearch.addEventListener('focus', () => {
-  try {
-    if (!ui.metricSearch.value.trim()) {
-      ui.metricSearch.value = ' ';
-      ui.metricSearch.setSelectionRange(1, 1);
-      ui.metricSearch.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-  } catch (e) {}
-});
-ui.metricSearch.addEventListener('blur', () => {
-  if (!ui.metricSearch.value.trim()) ui.metricSearch.value = '';
-});
 
 // Save metric edit
 ui.saveMetricEdit.addEventListener('click', async () => {
@@ -2134,31 +2073,52 @@ if (ui.logShowArchived) {
   });
 }
 
-if (ui.logCategoryPills) {
-  ui.logCategoryPills.addEventListener('click', (event) => {
-    handlePillClick('log', event, renderLogs);
-  });
-}
 
 ui.metricList.addEventListener('click', async (event) => {
   const actionButton = event.target.closest('[data-action]');
-  if (!actionButton) return;
-  const metricId = actionButton.dataset.id;
-  if (actionButton.dataset.action === 'rename-metric') {
-    const nextName = window.prompt('Rename metric', '');
-    if (!nextName) return;
-    await updateMetric(metricId, { name: nextName.trim().toLowerCase() });
-    renderAll();
+  if (actionButton) {
+    const metricId = actionButton.dataset.id;
+    if (actionButton.dataset.action === 'rename-metric') {
+      isEditingMetric = true;
+      selectedMetricForEdit = metricId;
+      ui.metricEditForm.style.display = 'grid';
+      ui.metricEditFields.style.display = 'block';
+      ui.addMetricBtn.classList.remove('active');
+      ui.editMetricBtn.classList.add('active');
+      const metrics = await listMetrics(true);
+      const selectedMetric = metrics.find((m) => m.id === metricId);
+      if (selectedMetric) {
+        ui.editMetricName.value = selectedMetric.name || '';
+        ui.editMetricDescription.value = selectedMetric.description || '';
+      }
+      return;
+    }
+    if (actionButton.dataset.action === 'archive-metric') {
+      const metrics = await listMetrics(true);
+      const metric = metrics.find((m) => m.id === metricId);
+      if (metric) {
+        await updateMetric(metricId, { isArchived: !metric.isArchived });
+      }
+      metricSearchTerm = '';
+      renderAll();
+      return;
+    }
   }
-  if (actionButton.dataset.action === 'archive-metric') {
-    await updateMetric(metricId, { isArchived: true });
-    metricSearchTerm = ''; // Reset search to show updated list
-    renderAll();
-  }
-  if (actionButton.dataset.action === 'unarchive-metric') {
-    await updateMetric(metricId, { isArchived: false });
-    metricSearchTerm = ''; // Reset search to show updated list
-    renderAll();
+
+  const item = event.target.closest('.item[data-metric-id]');
+  if (item) {
+    isEditingMetric = true;
+    selectedMetricForEdit = item.dataset.metricId;
+    ui.metricEditForm.style.display = 'grid';
+    ui.metricEditFields.style.display = 'block';
+    ui.addMetricBtn.classList.remove('active');
+    ui.editMetricBtn.classList.add('active');
+    const metrics = await listMetrics(true);
+    const selectedMetric = metrics.find((m) => m.id === selectedMetricForEdit);
+    if (selectedMetric) {
+      ui.editMetricName.value = selectedMetric.name || '';
+      ui.editMetricDescription.value = selectedMetric.description || '';
+    }
   }
 });
 
@@ -2213,16 +2173,43 @@ allDetails.forEach(details => {
 
 ui.categoryList.addEventListener('click', async (event) => {
   const actionButton = event.target.closest('[data-action]');
-  if (!actionButton) return;
-  const categoryId = actionButton.dataset.id;
-  if (actionButton.dataset.action === 'rename-category') {
-    const nextName = window.prompt('Rename category', '');
-    if (!nextName) return;
-    await updateCategory(categoryId, { name: nextName.trim().toLowerCase() });
-    renderAll();
+  if (actionButton) {
+    const categoryId = actionButton.dataset.id;
+    if (actionButton.dataset.action === 'rename-category') {
+      isEditingCategory = true;
+      selectedCategoryForEdit = categoryId;
+      ui.categoryEditForm.style.display = 'grid';
+      ui.categoryEditFields.style.display = 'block';
+      const categories = await listCategories();
+      const selectedCat = categories.find((c) => c.id === categoryId);
+      if (selectedCat) {
+        ui.editCategoryName.value = selectedCat.name || '';
+        ui.editCategoryDescription.value = selectedCat.description || '';
+      }
+      ui.addCategoryBtn.classList.remove('active');
+      ui.editCategoryBtn.classList.add('active');
+      return;
+    }
+    if (actionButton.dataset.action === 'delete-category') {
+      await confirmAndDeleteCategory(categoryId);
+      return;
+    }
   }
-  if (actionButton.dataset.action === 'delete-category') {
-    await confirmAndDeleteCategory(categoryId);
+
+  const item = event.target.closest('.item[data-category-id]');
+  if (item) {
+    isEditingCategory = true;
+    selectedCategoryForEdit = item.dataset.categoryId;
+    ui.categoryEditForm.style.display = 'grid';
+    ui.categoryEditFields.style.display = 'block';
+    ui.addCategoryBtn.classList.remove('active');
+    ui.editCategoryBtn.classList.add('active');
+    const categories = await listCategories();
+    const selectedCat = categories.find((c) => c.id === selectedCategoryForEdit);
+    if (selectedCat) {
+      ui.editCategoryName.value = selectedCat.name || '';
+      ui.editCategoryDescription.value = selectedCat.description || '';
+    }
   }
 });
 
@@ -2264,10 +2251,23 @@ function renderMetricSearchDatalist(metrics) {
     .join('');
 }
 
+function renderHomeSearchDatalist(categories, metrics) {
+  if (!ui.homeSearchDatalist) return;
+  const options = [
+    ...new Set([
+      ...categories.map((category) => category.name),
+      ...metrics.map((metric) => metric.name),
+    ]),
+  ].sort((a, b) => a.localeCompare(b));
+
+  ui.homeSearchDatalist.innerHTML = options
+    .map((value) => `<option value="${value}"></option>`)
+    .join('');
+}
 
 async function confirmAndDeleteCategory(categoryId) {
   const categories = await listCategories();
-  const category = categories.find((c) => c.id === categoryId);
+  const category = categories.find((cat) => cat.id === categoryId);
   if (!category) {
     window.alert('Category not found.');
     return;
@@ -2356,20 +2356,6 @@ ui.installButton.addEventListener('click', async () => {
   ui.installButton.classList.add('hidden');
 });
 
-function handlePillClick(viewName, event, reRenderFunc) {
-  const pill = event.target.closest('.pill');
-  if (!pill) return;
-  activeFilters[viewName] = pill.dataset.filter;
-  reRenderFunc();
-}
-
-ui.homeCategoryPills.addEventListener('click', (event) => {
-  handlePillClick('home', event, renderHome);
-});
-
-ui.addCategoryPills.addEventListener('click', (event) => {
-  handlePillClick('add', event, renderMetricDropdown);
-});
 
 // Date pills handler
 if (ui.entryDatePills) {
@@ -2416,9 +2402,6 @@ if (ui.targetActionPills) {
   });
 }
 
-ui.statsCategoryPills.addEventListener('click', (event) => {
-  handlePillClick('stats', event, renderStats);
-});
 
 ui.metricGrid.addEventListener('click', async (event) => {
   const btn = event.target.closest('.card-pill');

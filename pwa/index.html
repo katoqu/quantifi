@@ -35,15 +35,18 @@
 
       <main>
         <section id="view-home" class="view active">
-          <div id="homeCategoryPills" class="pills-container"></div>
           <div class="panel">
+            <label class="search-label">
+              Search
+              <input type="search" id="homeSearch" list="homeSearchDatalist" class="search-field" placeholder="Search metrics or categories..." autocomplete="off" />
+              <datalist id="homeSearchDatalist"></datalist>
+            </label>
             <div id="metricGrid" class="metric-grid"></div>
           </div>
         </section>
 
         <section id="view-add" class="view">
           <button class="back-button secondary">← Back</button>
-          <div id="addCategoryPills" class="pills-container"></div>
           <div class="panel">
             <form id="entryForm" class="stacked-form" novalidate>
               <label>
@@ -100,7 +103,6 @@
 
         <section id="view-stats" class="view">
           <button class="back-button secondary">← Back</button>
-          <div id="statsCategoryPills" class="pills-container"></div>
           <div class="panel">
             <div class="stacked-form" style="margin-bottom: 15px;">
               <label>
@@ -143,9 +145,8 @@
 
         <section id="view-log" class="view">
           <button class="back-button secondary">← Back</button>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <div id="logCategoryPills" class="pills-container" style="margin: 0; flex: 1;"></div>
-            <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; margin-left: 10px;">
+          <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 6px;">
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap;">
               <input type="checkbox" id="logShowArchived" /> Archived
             </label>
           </div>
@@ -208,7 +209,7 @@
                 </div>
               </form>
               <div id="categoryEditForm" class="stacked-form" style="display: none;">
-                <input type="text" id="categorySearch" placeholder="Search category..." list="categorySearchDatalist" />
+                <input type="search" id="categorySearch" list="categorySearchDatalist" class="search-field" placeholder="Search categories..." autocomplete="off" />
                 <datalist id="categorySearchDatalist"></datalist>
                 <div id="categoryEditFields" style="display: none; margin-top: 8px;">
                   <input type="text" id="editCategoryName" required />
@@ -271,7 +272,7 @@
                 </div>
               </form>
               <div id="metricEditForm" class="stacked-form" style="display: none;">
-                <input type="text" id="metricSearch" placeholder="Search metric..." list="metricSearchDatalist" />
+                <input type="search" id="metricSearch" list="metricSearchDatalist" class="search-field" placeholder="Search metrics..." autocomplete="off" />
                 <datalist id="metricSearchDatalist"></datalist>
                 <div id="metricEditFields" style="display: none; margin-top: 8px;">
                   <input type="text" id="editMetricName" required />
