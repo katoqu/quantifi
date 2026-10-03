@@ -199,6 +199,19 @@
           <button class="back-button secondary">← Back</button>
 
           <div class="panel collapsible-container">
+            <details id="defaultBehaviourDetails" class="collapsible">
+              <summary><h2>Default behaviour</h2><span class="collapse-indicator">▶</span></summary>
+              <div class="settings-panel">
+                <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; font-weight: 600;">
+                  <input type="checkbox" id="showArchivedMetricsToggle" />
+                  Show archived metrics in search and Stats
+                </label>
+                <p class="muted-text">Archived metrics are marked and cannot be selected for new entries.</p>
+              </div>
+            </details>
+          </div>
+
+          <div class="panel collapsible-container">
             <details id="manageAttributesDetails" class="collapsible" open>
               <summary><h2>Manage attributes</h2><span class="collapse-indicator">▶</span></summary>
               <div class="settings-mode-switch">

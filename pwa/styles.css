@@ -399,6 +399,16 @@ input[type="checkbox"] {
   text-overflow: ellipsis;
 }
 
+.archived-metric-badge {
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .overview-spark-wrap {
   display: flex;
   align-items: center;

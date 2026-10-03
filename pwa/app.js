@@ -91,6 +91,7 @@ const ui = {
   showMetricsBtn: document.querySelector('#showMetricsBtn'),
   settingsCategoriesPanel: document.querySelector('#settingsCategoriesPanel'),
   settingsMetricsPanel: document.querySelector('#settingsMetricsPanel'),
+  showArchivedMetricsToggle: document.querySelector('#showArchivedMetricsToggle'),
   backupReminderBanner: document.querySelector('#backupReminderBanner'),
   unsavedCount: document.querySelector('#unsavedCount'),
   backupExportButton: document.querySelector('#backupExportButton'),
@@ -125,6 +126,8 @@ let editingEntryId = null;
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
 let homeSearchTerm = '';
+const SHOW_ARCHIVED_METRICS_KEY = 'quantifi-show-archived-metrics';
+let showArchivedMetrics = localStorage.getItem(SHOW_ARCHIVED_METRICS_KEY) === 'true';
 const BACKUP_CHANGE_THRESHOLD = 10;
 const BACKUP_REMINDER_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PWA_BACKUP_CHANGE_THRESHOLD = 25;
@@ -237,11 +240,15 @@ async function filterMetricsForView(viewName, metrics, entries, categories) {
 function filterMetricsBySearch(metrics, categories, searchTerm) {
   if (!searchTerm) return metrics;
   const term = searchTerm.trim().toLowerCase();
+  const archivedOnly = term.startsWith('#');
+  const query = archivedOnly ? term.slice(1).trim() : term;
   const categoryMap = new Map(categories.map((c) => [c.id, c.name.toLowerCase()]));
   return metrics.filter((metric) => {
-    const nameMatch = metric.name.toLowerCase().includes(term);
+    if (archivedOnly && !metric.isArchived) return false;
+    if (!query) return true;
+    const nameMatch = metric.name.toLowerCase().includes(query);
     const categoryName = categoryMap.get(metric.categoryId) || '';
-    const catMatch = categoryName.includes(term);
+    const catMatch = categoryName.includes(query);
     return nameMatch || catMatch;
   });
 }
@@ -251,11 +258,12 @@ async function getHomeSearchMetric() {
   if (!searchTerm) return null;
 
   const [metrics, categories] = await Promise.all([
-    listMetrics(false),
+    listMetrics(showArchivedMetrics),
     listCategories(),
   ]);
   const matches = filterMetricsBySearch(metrics, categories, searchTerm);
-  const exactMatch = matches.find((metric) => metric.name.trim().toLowerCase() === searchTerm.toLowerCase());
+  const normalizedSearchTerm = searchTerm.replace(/^#\s*/, '').trim().toLowerCase();
+  const exactMatch = matches.find((metric) => metric.name.trim().toLowerCase() === normalizedSearchTerm);
   return exactMatch || (matches.length === 1 ? matches[0] : null);
 }
 
@@ -416,7 +424,7 @@ function renderStrengthSetList() {
 
 async function syncAddFormMode() {
   const metrics = await listMetrics(false);
-  const metric = metrics.find((item) => item.id === ui.metricSelect.value) || metrics[0] || null;
+  const metric = metrics.find((item) => item.id === ui.metricSelect.value) || null;
 
   const isStrength = metric?.metricKind === 'strength_session';
   ui.numericValueField.classList.toggle('hidden', isStrength);
@@ -486,11 +494,16 @@ async function renderMetricDropdown() {
 
   if (filteredMetrics.some((m) => m.id === previousValue)) {
     ui.metricSelect.value = previousValue;
+  } else if (currentMetricId) {
+    ui.metricSelect.value = '';
   } else {
     ui.metricSelect.value = filteredMetrics[0]?.id ?? '';
   }
 
-  if (ui.metricSelect.value && !metrics.some((metric) => metric.id === currentMetricId)) {
+  if (!ui.metricSelect.value && currentMetricId) {
+    ui.metricSelect.insertAdjacentHTML('afterbegin', '<option value="">Select an active metric to add an entry</option>');
+  }
+  if (ui.metricSelect.value && !currentMetricId) {
     selectMetric(ui.metricSelect.value);
   }
   await syncAddFormMode();
@@ -641,9 +654,9 @@ async function renderHome() {
   ]);
   console.log('Metrics:', metrics.length, 'Active:', metrics.filter(m => !m.isArchived).length);
 
-  const activeMetrics = metrics.filter((m) => !m.isArchived);
-  renderHomeSearchDatalist(categories, activeMetrics);
-  let filteredMetrics = await filterMetricsForView('home', activeMetrics, entries, categories);
+  const visibleMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
+  renderHomeSearchDatalist(categories, visibleMetrics);
+  let filteredMetrics = await filterMetricsForView('home', visibleMetrics, entries, categories);
   const currentSearchTerm = ui.homeSearch ? ui.homeSearch.value.trim().toLowerCase() : homeSearchTerm;
   homeSearchTerm = currentSearchTerm;
   filteredMetrics = filterMetricsBySearch(filteredMetrics, categories, currentSearchTerm);
@@ -704,7 +717,8 @@ async function renderHome() {
         <div class="overview-title-row">
           <div class="title-left">
             <span class="overview-cat">${safeCatName}</span>
-            <span class="overview-name" title="${safeMName}">${safeMName}</span>
+            <span class="overview-name" title="${safeMName}">${metric.isArchived ? '# ' : ''}${safeMName}</span>
+            ${metric.isArchived ? '<span class="archived-metric-badge">Archived</span>' : ''}
           </div>
           <div class="title-right">
             ${latestValueStr ? `<span class="metric-value">${latestValueStr}</span>` : ''}
@@ -716,7 +730,7 @@ async function renderHome() {
           ${sparkSvg}
         </div>
         <div class="card-pills">
-          <button class="card-pill" data-action="add" data-id="${metric.id}" title="Add Entry">➕</button>
+          ${metric.isArchived ? '' : `<button class="card-pill" data-action="add" data-id="${metric.id}" title="Add Entry">➕</button>`}
           ${metric.metricKind === 'strength_session' ? `<button class="card-pill" data-action="last-session" data-id="${metric.id}" title="Last session">💡</button>` : ''}
           <button class="card-pill" data-action="stats" data-id="${metric.id}" title="View Stats">📊</button>
           <button class="card-pill" data-action="settings" data-id="${metric.id}" title="Edit Metric">⚙️</button>
@@ -724,7 +738,9 @@ async function renderHome() {
         </div>
       </div>
     `;
-  }).join('') || '<p>No metrics match this filter.</p>';
+  }).join('') || (currentSearchTerm.startsWith('#') && !showArchivedMetrics
+    ? '<p>No archived metrics shown. Enable “Show archived metrics in search and Stats” in Settings → Default behaviour.</p>'
+    : '<p>No metrics match this filter.</p>');
 }
 
 async function renderLogs() {
@@ -1253,17 +1269,17 @@ async function renderStats() {
     listCategories(),
   ]);
 
-  const activeMetrics = metrics.filter((m) => !m.isArchived);
+  const availableMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
 
-  let filteredMetrics = await filterMetricsForView('stats', activeMetrics, entries, categories);
-  const currentMetric = activeMetrics.find((metric) => metric.id === currentMetricId);
+  let filteredMetrics = await filterMetricsForView('stats', availableMetrics, entries, categories);
+  const currentMetric = availableMetrics.find((metric) => metric.id === currentMetricId);
   if (currentMetric && !filteredMetrics.some((metric) => metric.id === currentMetric.id)) {
     filteredMetrics = [...filteredMetrics, currentMetric];
   }
 
   const prevSelectedValue = currentMetricId || ui.statsMetricSelect.value;
   ui.statsMetricSelect.innerHTML = filteredMetrics
-    .map((m) => `<option value="${m.id}">${m.name}</option>`)
+    .map((m) => `<option value="${m.id}">${m.isArchived ? '# ' : ''}${m.name}${m.isArchived ? ' (Archived)' : ''}</option>`)
     .join('');
 
   if (filteredMetrics.some((m) => m.id === prevSelectedValue)) {
@@ -1273,7 +1289,7 @@ async function renderStats() {
   }
 
   const selectedMetricId = ui.statsMetricSelect.value;
-  if (selectedMetricId && !activeMetrics.some((metric) => metric.id === currentMetricId)) {
+  if (selectedMetricId && !availableMetrics.some((metric) => metric.id === currentMetricId)) {
     selectMetric(selectedMetricId);
   }
   const selectedMetric = filteredMetrics.find((m) => m.id === selectedMetricId);
@@ -1405,8 +1421,15 @@ if (ui.showMetricsBtn) {
   });
 }
 
+ui.showArchivedMetricsToggle.addEventListener('change', async () => {
+  showArchivedMetrics = ui.showArchivedMetricsToggle.checked;
+  localStorage.setItem(SHOW_ARCHIVED_METRICS_KEY, String(showArchivedMetrics));
+  await Promise.all([renderHome(), renderStats()]);
+});
+
 async function renderSettings() {
   activateSettingsMode(settingsMode);
+  ui.showArchivedMetricsToggle.checked = showArchivedMetrics;
   const [categories, metrics] = await Promise.all([
     listCategories(),
     listMetrics(true),
@@ -1487,7 +1510,7 @@ ui.tabs.forEach((tab) => {
       if (searchedMetric) selectMetric(searchedMetric.id);
     }
     if (tab.dataset.view === 'home' && currentMetricId) {
-      const metrics = await listMetrics(false);
+      const metrics = await listMetrics(showArchivedMetrics);
       const selectedMetric = metrics.find((metric) => metric.id === currentMetricId);
       if (selectedMetric && ui.homeSearch) {
         ui.homeSearch.value = selectedMetric.name;
@@ -1958,7 +1981,8 @@ ui.metricSearch.addEventListener('input', async () => {
 
   if (metricSearchTerm) {
     const metrics = await listMetrics(true);
-    const exactMatch = metrics.find(metric => metric.name.toLowerCase() === metricSearchTerm);
+    const searchName = metricSearchTerm.replace(/^#\s*/, '');
+    const exactMatch = metrics.find(metric => metric.name.toLowerCase() === searchName);
     if (exactMatch) {
       isAddingMetric = false;
       isEditingMetric = true;
@@ -1987,7 +2011,8 @@ ui.metricSearch.addEventListener('focus', async () => {
 ui.metricSearch.addEventListener('change', async () => {
   metricSearchTerm = ui.metricSearch.value.trim().toLowerCase();
   const metrics = await listMetrics(true);
-  const exactMatch = metrics.find(metric => metric.name.toLowerCase() === metricSearchTerm);
+  const searchName = metricSearchTerm.replace(/^#\s*/, '');
+  const exactMatch = metrics.find(metric => metric.name.toLowerCase() === searchName);
   if (exactMatch) {
     isAddingMetric = false;
     isEditingMetric = true;
@@ -2441,7 +2466,7 @@ function renderCategorySearchDatalist(categories) {
 function renderMetricSearchDatalist(metrics) {
   if (!ui.metricSearchDatalist) return;
   ui.metricSearchDatalist.innerHTML = metrics
-    .map((metric) => `<option value="${metric.name}"></option>`) 
+    .map((metric) => `<option value="${metric.isArchived ? '# ' : ''}${metric.name}"></option>`)
     .join('');
 }
 
@@ -2450,7 +2475,7 @@ function renderHomeSearchDatalist(categories, metrics) {
   const options = [
     ...new Set([
       ...categories.map((category) => category.name),
-      ...metrics.map((metric) => metric.name),
+      ...metrics.map((metric) => `${metric.isArchived ? '# ' : ''}${metric.name}`),
     ]),
   ].sort((a, b) => a.localeCompare(b));
 
