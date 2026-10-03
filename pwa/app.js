@@ -238,6 +238,25 @@ function filterMetricsBySearch(metrics, categories, searchTerm) {
   });
 }
 
+async function getHomeSearchMetric() {
+  const searchTerm = ui.homeSearch?.value.trim() || homeSearchTerm;
+  if (!searchTerm) return null;
+
+  const [metrics, categories] = await Promise.all([
+    listMetrics(false),
+    listCategories(),
+  ]);
+  const matches = filterMetricsBySearch(metrics, categories, searchTerm);
+  const exactMatch = matches.find((metric) => metric.name.trim().toLowerCase() === searchTerm.toLowerCase());
+  return exactMatch || (matches.length === 1 ? matches[0] : null);
+}
+
+function selectMetric(metricId) {
+  if (!metricId) return;
+  currentMetricId = metricId;
+  activeVizSettings.metricId = metricId;
+}
+
 function updateBackupBanner() {
   const count = Number(localStorage.getItem('quantifi-unsaved-count') || 0);
   ui.unsavedCount.textContent = count;
@@ -388,7 +407,7 @@ async function renderMetricDropdown() {
   // Render date pills
   if (ui.entryDatePills) {
     ui.entryDatePills.innerHTML = ['Now', 'Yesterday', 'Custom']
-      .map((opt) => `<button class="pill ${opt === 'Now' ? 'active' : ''}" data-date="${opt}">${opt}</button>`)
+      .map((opt) => `<button type="button" class="pill ${opt === 'Now' ? 'active' : ''}" data-date="${opt}">${opt}</button>`)
       .join('');
     
     // Set default date/time for Now
@@ -400,11 +419,15 @@ async function renderMetricDropdown() {
   // Render target action pills
   if (ui.targetActionPills) {
     ui.targetActionPills.innerHTML = ['None', 'Reduce', 'Stay', 'Increase', 'Pause']
-      .map((opt) => `<button class="pill ${opt === 'None' ? 'active' : ''}" data-target="${opt}">${opt}</button>`)
+      .map((opt) => `<button type="button" class="pill ${opt === 'None' ? 'active' : ''}" data-target="${opt}">${opt}</button>`)
       .join('');
   }
 
-  const filteredMetrics = await filterMetricsForView('add', metrics, entries, categories);
+  let filteredMetrics = await filterMetricsForView('add', metrics, entries, categories);
+  const currentMetric = metrics.find((metric) => metric.id === currentMetricId);
+  if (currentMetric && !filteredMetrics.some((metric) => metric.id === currentMetric.id)) {
+    filteredMetrics = [...filteredMetrics, currentMetric];
+  }
   const previousValue = currentMetricId || ui.metricSelect.value;
 
   ui.metricSelect.innerHTML = filteredMetrics
@@ -417,7 +440,9 @@ async function renderMetricDropdown() {
     ui.metricSelect.value = filteredMetrics[0]?.id ?? '';
   }
 
-  if (ui.metricSelect.value) currentMetricId = ui.metricSelect.value;
+  if (ui.metricSelect.value && !metrics.some((metric) => metric.id === currentMetricId)) {
+    selectMetric(ui.metricSelect.value);
+  }
   await syncAddFormMode();
 }
 
@@ -1180,7 +1205,11 @@ async function renderStats() {
 
   const activeMetrics = metrics.filter((m) => !m.isArchived);
 
-  const filteredMetrics = await filterMetricsForView('stats', activeMetrics, entries, categories);
+  let filteredMetrics = await filterMetricsForView('stats', activeMetrics, entries, categories);
+  const currentMetric = activeMetrics.find((metric) => metric.id === currentMetricId);
+  if (currentMetric && !filteredMetrics.some((metric) => metric.id === currentMetric.id)) {
+    filteredMetrics = [...filteredMetrics, currentMetric];
+  }
 
   const prevSelectedValue = currentMetricId || ui.statsMetricSelect.value;
   ui.statsMetricSelect.innerHTML = filteredMetrics
@@ -1194,6 +1223,9 @@ async function renderStats() {
   }
 
   const selectedMetricId = ui.statsMetricSelect.value;
+  if (selectedMetricId && !activeMetrics.some((metric) => metric.id === currentMetricId)) {
+    selectMetric(selectedMetricId);
+  }
   const selectedMetric = filteredMetrics.find((m) => m.id === selectedMetricId);
 
   if (selectedMetric) {
@@ -1388,6 +1420,20 @@ async function renderSettings() {
 
 ui.tabs.forEach((tab) => {
   tab.addEventListener('click', async () => {
+    const activeTab = ui.tabs.find((item) => item.classList.contains('active'));
+    if (activeTab?.dataset.view === 'home' && ['add', 'stats'].includes(tab.dataset.view)) {
+      const searchedMetric = await getHomeSearchMetric();
+      if (searchedMetric) selectMetric(searchedMetric.id);
+    }
+    if (tab.dataset.view === 'home' && currentMetricId) {
+      const metrics = await listMetrics(false);
+      const selectedMetric = metrics.find((metric) => metric.id === currentMetricId);
+      if (selectedMetric && ui.homeSearch) {
+        ui.homeSearch.value = selectedMetric.name;
+        homeSearchTerm = selectedMetric.name.toLowerCase();
+      }
+    }
+
     ui.tabs.forEach((item) => item.classList.remove('active'));
     ui.views.forEach((view) => view.classList.remove('active'));
     tab.classList.add('active');
@@ -1402,22 +1448,10 @@ ui.tabs.forEach((tab) => {
     // Initialize Add form if switching to Add tab
     if (tab.dataset.view === 'add') {
       await renderMetricDropdown();
-      await syncAddFormMode();
-      // Restore current metric selection if available
-      if (currentMetricId) {
-        ui.metricSelect.value = currentMetricId;
-        syncAddFormMode();
-      }
     }
     // Render Stats when switching to Stats tab
     if (tab.dataset.view === 'stats') {
       await renderStats();
-      // Restore current metric selection if available
-      if (currentMetricId) {
-        ui.statsMetricSelect.value = currentMetricId;
-        activeVizSettings.metricId = currentMetricId;
-        renderStats();
-      }
     }
     if (tab.dataset.view === 'settings') {
       activateSettingsMode(settingsMode);
@@ -1456,7 +1490,7 @@ document.querySelectorAll('.back-button').forEach((btn) => {
 });
 
 ui.metricSelect.addEventListener('change', () => {
-  currentMetricId = ui.metricSelect.value;
+  selectMetric(ui.metricSelect.value);
   syncAddFormMode();
 });
 
@@ -1466,10 +1500,6 @@ if (ui.homeSearch) {
     renderHome();
   });
 }
-
-ui.statsMetricSelect.addEventListener('change', () => {
-  currentMetricId = ui.statsMetricSelect.value;
-});
 
 ui.strengthAddSetButton.addEventListener('click', () => {
   const loadKg = Number(ui.strengthLoadInput.value);
@@ -2508,7 +2538,13 @@ ui.metricGrid.addEventListener('click', async (event) => {
     const metricId = btn.dataset.id;
     if (action === 'add') {
       activeFilters.add = 'Recent';
-      currentMetricId = metricId; // Store the current metric
+      selectMetric(metricId);
+      const metrics = await listMetrics(false);
+      const metric = metrics.find((item) => item.id === metricId);
+      if (metric && ui.homeSearch) {
+        ui.homeSearch.value = metric.name;
+        homeSearchTerm = metric.name.toLowerCase();
+      }
       await renderMetricDropdown();
       ui.metricSelect.value = metricId;
       await syncAddFormMode();
@@ -2516,12 +2552,15 @@ ui.metricGrid.addEventListener('click', async (event) => {
       if (addTab) addTab.click();
     } else if (action === 'stats') {
       activeFilters.stats = 'Recent';
-      currentMetricId = metricId; // Store the current metric
-      ui.statsMetricSelect.value = metricId;
-      activeVizSettings.metricId = metricId;
+      selectMetric(metricId);
+      const metrics = await listMetrics(false);
+      const metric = metrics.find((item) => item.id === metricId);
+      if (metric && ui.homeSearch) {
+        ui.homeSearch.value = metric.name;
+        homeSearchTerm = metric.name.toLowerCase();
+      }
       const statsTab = document.querySelector('.tab[data-view="stats"]');
       if (statsTab) statsTab.click();
-      renderStats();
     } else if (action === 'settings') {
       const settingsTab = document.querySelector('.tab[data-view="settings"]');
       const settingsView = document.querySelector('#view-settings');
@@ -2565,7 +2604,7 @@ ui.backupReminderBanner.addEventListener('click', async () => {
 });
 
 ui.statsMetricSelect.addEventListener('change', () => {
-  activeVizSettings.metricId = ui.statsMetricSelect.value;
+  selectMetric(ui.statsMetricSelect.value);
   renderStats();
 });
 
@@ -2591,8 +2630,8 @@ ui.statsSummary.addEventListener('click', (event) => {
   const row = event.target.closest('[data-stats-metric-id]');
   if (row) {
     const metricId = row.dataset.statsMetricId;
+    selectMetric(metricId);
     ui.statsMetricSelect.value = metricId;
-    activeVizSettings.metricId = metricId;
     renderStats();
     ui.statsChartContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
