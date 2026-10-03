@@ -405,7 +405,7 @@ async function renderMetricDropdown() {
   }
 
   const filteredMetrics = await filterMetricsForView('add', metrics, entries, categories);
-  const previousValue = ui.metricSelect.value;
+  const previousValue = currentMetricId || ui.metricSelect.value;
 
   ui.metricSelect.innerHTML = filteredMetrics
     .map((metric) => `<option value="${metric.id}">${metric.name}</option>`)
@@ -417,6 +417,7 @@ async function renderMetricDropdown() {
     ui.metricSelect.value = filteredMetrics[0]?.id ?? '';
   }
 
+  if (ui.metricSelect.value) currentMetricId = ui.metricSelect.value;
   await syncAddFormMode();
 }
 
@@ -1181,7 +1182,7 @@ async function renderStats() {
 
   const filteredMetrics = await filterMetricsForView('stats', activeMetrics, entries, categories);
 
-  const prevSelectedValue = ui.statsMetricSelect.value;
+  const prevSelectedValue = currentMetricId || ui.statsMetricSelect.value;
   ui.statsMetricSelect.innerHTML = filteredMetrics
     .map((m) => `<option value="${m.id}">${m.name}</option>`)
     .join('');
@@ -1425,10 +1426,6 @@ ui.tabs.forEach((tab) => {
     // Render Home when switching to Home tab
     if (tab.dataset.view === 'home') {
       await renderHome();
-      // Store current metric selection from stats if available
-      if (ui.statsMetricSelect.value) {
-        currentMetricId = ui.statsMetricSelect.value;
-      }
     }
   });
 });
@@ -2400,8 +2397,14 @@ async function triggerCsvExport() {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
+  const date = new Date();
+  const datePrefix = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
   link.href = url;
-  link.download = 'quantifi-pwa-export.csv';
+  link.download = `${datePrefix}-quantifi-pwa-export.csv`;
   link.click();
   URL.revokeObjectURL(url);
   resetUnsavedCount();
