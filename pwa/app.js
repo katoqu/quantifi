@@ -2619,9 +2619,25 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
   
   if (!entry || !metric) return;
   
-  // Skip for strength sessions
   if (metric.metricKind === 'strength_session') {
-    alert('Edit strength sessions via the Add form.');
+    const valueCell = trElement.querySelector('td:nth-child(2)');
+    const sets = Array.isArray(entry.sets) ? entry.sets : [];
+    const editor = document.createElement('div');
+    editor.className = 'strength-edit-sets';
+    sets.forEach((set) => addStrengthSetEditorRow(editor, set.loadKg, set.reps));
+
+    const addButton = document.createElement('button');
+    addButton.type = 'button';
+    addButton.className = 'secondary';
+    addButton.dataset.addStrengthSet = '';
+    addButton.textContent = 'Add set';
+    editor.append(addButton);
+    valueCell.replaceChildren(editor);
+
+    trElement.querySelector('.action-buttons').innerHTML = `
+      <button type="button" data-save-strength-session title="Save">✓</button>
+      <button type="button" data-cancel-strength-session title="Cancel">✕</button>
+    `;
     return;
   }
   
@@ -2649,6 +2665,79 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
   // Reset global edit state
   editingEntryId = null;
 }
+
+function addStrengthSetEditorRow(container, loadKg = '', reps = '') {
+  const row = document.createElement('div');
+  row.className = 'strength-edit-set';
+  row.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px;';
+
+  const loadInput = document.createElement('input');
+  loadInput.type = 'number';
+  loadInput.step = '0.5';
+  loadInput.min = '0';
+  loadInput.required = true;
+  loadInput.placeholder = 'Load (kg)';
+  loadInput.dataset.strengthLoad = '';
+  loadInput.value = loadKg;
+
+  const repsInput = document.createElement('input');
+  repsInput.type = 'number';
+  repsInput.step = '1';
+  repsInput.min = '1';
+  repsInput.required = true;
+  repsInput.placeholder = 'Reps';
+  repsInput.dataset.strengthReps = '';
+  repsInput.value = reps;
+
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'secondary';
+  removeButton.dataset.removeStrengthSet = '';
+  removeButton.textContent = '×';
+  removeButton.title = 'Remove set';
+
+  row.append(loadInput, repsInput, removeButton);
+  container.insertBefore(row, container.querySelector('[data-add-strength-set]'));
+}
+
+window.saveStrengthSessionEdit = async function(trElement) {
+  const rows = Array.from(trElement.querySelectorAll('.strength-edit-set'));
+  if (!rows.length) {
+    window.alert('A strength session must contain at least one set.');
+    return;
+  }
+
+  const sets = [];
+  for (const row of rows) {
+    const loadInput = row.querySelector('[data-strength-load]');
+    const repsInput = row.querySelector('[data-strength-reps]');
+    const loadKg = Number(loadInput.value);
+    const reps = Number(repsInput.value);
+    if (!loadInput.value.trim() || !Number.isFinite(loadKg) || loadKg < 0
+      || !repsInput.value.trim() || !Number.isInteger(reps) || reps < 1) {
+      window.alert('Enter a valid load and a whole-number rep count for every set.');
+      (loadInput.value.trim() ? repsInput : loadInput).focus();
+      return;
+    }
+    sets.push({ loadKg, reps });
+  }
+
+  await updateEntry(trElement.dataset.entryId, {
+    sets,
+    value: sets[0].loadKg,
+    loadKg: sets[0].loadKg,
+  });
+  const metricId = trElement.dataset.metricId;
+  const metrics = await listMetrics(true);
+  const metric = metrics.find((item) => item.id === metricId);
+  if (metric) await renderEntriesTable(metricId, metric);
+
+  const statsView = document.querySelector('#view-stats');
+  const homeView = document.querySelector('#view-home');
+  if (statsView?.classList.contains('active')) await renderStats();
+  if (homeView?.classList.contains('active')) await renderHome();
+  window.alert('Entry updated!');
+};
 
 window.saveInlineEdit = async function(input) {
   const entryId = input.dataset.entryId;
@@ -2718,14 +2807,24 @@ async function renderEntriesTable(metricId, metric) {
     const shortDate = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     const shortTime = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
     let displayValue = entry.value;
+    let displayContent;
     if (metric && metric.metricKind === 'strength_session') {
       displayValue = computeStrengthValue(entry, 'Total Volume');
+      const sets = Array.isArray(entry.sets) ? entry.sets : [];
+      if (sets.length) {
+        const setRows = sets.map((set, index) => {
+          const loadKg = Number(set.loadKg ?? set.load_kg ?? 0);
+          const reps = Number(set.reps ?? 0);
+          return `<li>Set ${index + 1}: ${loadKg.toFixed(1)} kg × ${reps} reps</li>`;
+        }).join('');
+        displayContent = `<strong>Total volume: ${displayValue}</strong><ul class="entry-strength-sets">${setRows}</ul>`;
+      }
     }
 
     return `
       <tr data-entry-id="${entry.id}" data-metric-id="${metricId}">
         <td title="${d.toLocaleString()}" style="white-space: nowrap;">${shortDate}<br>${shortTime}</td>
-        <td>${displayValue !== null && displayValue !== undefined ? displayValue : ''}</td>
+        <td>${displayContent ?? (displayValue !== null && displayValue !== undefined ? displayValue : '')}</td>
         <td class="action-buttons">
           <button onclick="window.handleEditEntry('${entry.id}', '${metricId}', this.closest('tr'))" title="Edit">✏️</button>
           <button onclick="window.handleDeleteEntry('${entry.id}', '${metricId}', '${metric?.name || ''}')" title="Delete">🗑️</button>
@@ -2737,5 +2836,28 @@ async function renderEntriesTable(metricId, metric) {
 
 ui.closeEntriesModal?.addEventListener('click', closeEntriesModal);
 ui.modalOverlay?.addEventListener('click', closeEntriesModal);
+
+ui.entriesTableBody.addEventListener('click', async (event) => {
+  const addButton = event.target.closest('[data-add-strength-set]');
+  if (addButton) {
+    const editor = addButton.closest('.strength-edit-sets');
+    addStrengthSetEditorRow(editor);
+    editor.querySelector('.strength-edit-set:last-of-type [data-strength-load]').focus();
+    return;
+  }
+
+  const removeButton = event.target.closest('[data-remove-strength-set]');
+  if (removeButton) {
+    removeButton.closest('.strength-edit-set').remove();
+    return;
+  }
+
+  const row = event.target.closest('tr');
+  if (event.target.closest('[data-save-strength-session]')) {
+    await window.saveStrengthSessionEdit(row);
+  } else if (event.target.closest('[data-cancel-strength-session]')) {
+    await window.cancelInlineEdit(row);
+  }
+});
 
 initializeDatabase();

@@ -786,6 +786,11 @@ html[data-theme="dark"] .segmented-control {
   width: 100%;
 }
 
+#entriesTable .entry-strength-sets {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
 #entriesTable tr:hover {
   background: var(--bg);
 }
@@ -924,5 +929,4 @@ button.primary:hover,
   width: 100%;
   margin-bottom: 8px;
 }
-
 
