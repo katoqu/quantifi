@@ -1366,6 +1366,17 @@ let currentMetricId = null;
 let suppressDetailsReset = false;
 let settingsMode = 'categories';
 
+function updateBackupSectionAvailability() {
+  const manageAttributes = document.querySelector('#manageAttributesDetails');
+  const backupDetails = document.querySelector('#backupDetails');
+  if (!manageAttributes || !backupDetails) return;
+
+  const isManagingAttributes = manageAttributes.open;
+  backupDetails.classList.toggle('section-disabled', isManagingAttributes);
+  backupDetails.querySelector('summary')?.setAttribute('aria-disabled', String(isManagingAttributes));
+  if (isManagingAttributes) backupDetails.open = false;
+}
+
 function activateSettingsMode(mode) {
   settingsMode = mode;
   if (ui.settingsCategoriesPanel) {
@@ -1495,6 +1506,7 @@ ui.tabs.forEach((tab) => {
       d.removeAttribute('open');
     });
     suppressDetailsReset = false;
+    if (tab.dataset.view === 'settings') updateBackupSectionAvailability();
     // Initialize Add form if switching to Add tab
     if (tab.dataset.view === 'add') {
       await renderMetricDropdown();
@@ -1528,7 +1540,16 @@ document.querySelectorAll('details').forEach((detail) => {
         });
       }
     }
+    if (detail.id === 'manageAttributesDetails' || detail.id === 'backupDetails') {
+      updateBackupSectionAvailability();
+    }
   });
+});
+
+document.querySelector('#backupDetails > summary')?.addEventListener('click', (event) => {
+  if (document.querySelector('#manageAttributesDetails')?.open) {
+    event.preventDefault();
+  }
 });
 
 // Back button handler
