@@ -1,4 +1,4 @@
-const CACHE_NAME = 'quantifi-pwa-v11';
+const CACHE_NAME = 'quantifi-pwa-v14';
 const APP_SHELL = ['./', './index.html', './styles.css', './app.js', './db.js', './manifest.webmanifest', './sw.js'];
 
 self.addEventListener('install', (event) => {

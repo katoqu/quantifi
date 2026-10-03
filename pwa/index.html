@@ -29,8 +29,12 @@
         <button class="tab" data-view="settings">Settings</button>
       </nav>
 
-      <div id="backupReminderBanner" class="info-banner warning hidden" style="margin: 0 0 10px 0; cursor: pointer; text-align: center;">
-        ⚠️ You have added <strong id="unsavedCount">0</strong> new entries since your last backup.<br><strong>Tap here to download a quick CSV backup</strong> to secure your data.
+      <div id="backupReminderBanner" class="info-banner warning hidden" style="margin: 0 0 10px 0; text-align: center;">
+        ⚠️ You have made <strong id="unsavedCount">0</strong> changes since your last CSV export. Download a copy somewhere safe; the app cannot confirm where the file is saved.
+        <div style="display: flex; justify-content: center; gap: 8px; margin-top: 8px;">
+          <button id="backupExportButton" type="button" class="primary">Download CSV</button>
+          <button id="backupSnoozeButton" type="button" class="secondary">Remind me in 3 days</button>
+        </div>
       </div>
 
       <main>

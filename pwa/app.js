@@ -93,6 +93,8 @@ const ui = {
   settingsMetricsPanel: document.querySelector('#settingsMetricsPanel'),
   backupReminderBanner: document.querySelector('#backupReminderBanner'),
   unsavedCount: document.querySelector('#unsavedCount'),
+  backupExportButton: document.querySelector('#backupExportButton'),
+  backupSnoozeButton: document.querySelector('#backupSnoozeButton'),
   logShowArchived: document.querySelector('#logShowArchived'),
   changeCategory: document.querySelector('#changeCategory'),
   changeDate: document.querySelector('#changeDate'),
@@ -123,6 +125,12 @@ let editingEntryId = null;
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
 let homeSearchTerm = '';
+const BACKUP_CHANGE_THRESHOLD = 10;
+const BACKUP_REMINDER_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const PWA_BACKUP_CHANGE_THRESHOLD = 25;
+const PWA_BACKUP_REMINDER_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const BACKUP_SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
+let backupReminderTimer = null;
 
 let activeVizSettings = {
   metricId: null,
@@ -257,24 +265,66 @@ function selectMetric(metricId) {
   activeVizSettings.metricId = metricId;
 }
 
+function isStandalonePwa() {
+  return window.matchMedia?.('(display-mode: standalone)').matches === true
+    || navigator.standalone === true;
+}
+
 function updateBackupBanner() {
-  const count = Number(localStorage.getItem('quantifi-unsaved-count') || 0);
-  ui.unsavedCount.textContent = count;
-  if (count >= 5) {
-    ui.backupReminderBanner.classList.remove('hidden');
-  } else {
-    ui.backupReminderBanner.classList.add('hidden');
+  const storedCount = Number(localStorage.getItem('quantifi-unsaved-count') || 0);
+  const count = Number.isFinite(storedCount) ? Math.max(0, storedCount) : 0;
+  const now = Date.now();
+  let unsavedSince = Number(localStorage.getItem('quantifi-unsaved-since') || 0);
+  if (count > 0 && !unsavedSince) {
+    unsavedSince = now;
+    localStorage.setItem('quantifi-unsaved-since', String(unsavedSince));
   }
+  ui.unsavedCount.textContent = count;
+  const lastExportAt = Number(localStorage.getItem('quantifi-last-export-at') || 0);
+  const reminderAgeStart = lastExportAt || unsavedSince;
+  const standalonePwa = isStandalonePwa();
+  const changeThreshold = standalonePwa ? PWA_BACKUP_CHANGE_THRESHOLD : BACKUP_CHANGE_THRESHOLD;
+  const reminderAge = standalonePwa ? PWA_BACKUP_REMINDER_AGE_MS : BACKUP_REMINDER_AGE_MS;
+  const shouldRemind = count >= changeThreshold
+    || (count > 0 && now - reminderAgeStart >= reminderAge);
+  const snoozedUntil = Number(localStorage.getItem('quantifi-backup-snoozed-until') || 0);
+
+  if (backupReminderTimer) {
+    clearTimeout(backupReminderTimer);
+    backupReminderTimer = null;
+  }
+  if (!shouldRemind) {
+    ui.backupReminderBanner.classList.add('hidden');
+    return;
+  }
+  if (now < snoozedUntil) {
+    ui.backupReminderBanner.classList.add('hidden');
+    backupReminderTimer = setTimeout(updateBackupBanner, snoozedUntil - now);
+    return;
+  }
+
+  ui.backupReminderBanner.classList.remove('hidden');
 }
 
 function incrementUnsavedCount() {
-  const count = Number(localStorage.getItem('quantifi-unsaved-count') || 0) + 1;
-  localStorage.setItem('quantifi-unsaved-count', count);
+  const storedCount = Number(localStorage.getItem('quantifi-unsaved-count') || 0);
+  const previousCount = Number.isFinite(storedCount) ? Math.max(0, storedCount) : 0;
+  const count = previousCount + 1;
+  if (previousCount <= 0) localStorage.setItem('quantifi-unsaved-since', String(Date.now()));
+  localStorage.setItem('quantifi-unsaved-count', String(count));
   updateBackupBanner();
 }
 
-function resetUnsavedCount() {
-  localStorage.setItem('quantifi-unsaved-count', 0);
+function resetUnsavedCount({ exported = false } = {}) {
+  localStorage.setItem('quantifi-unsaved-count', '0');
+  localStorage.removeItem('quantifi-unsaved-since');
+  localStorage.removeItem('quantifi-backup-snoozed-until');
+  if (exported) localStorage.setItem('quantifi-last-export-at', String(Date.now()));
+  updateBackupBanner();
+}
+
+function snoozeBackupReminder() {
+  localStorage.setItem('quantifi-backup-snoozed-until', String(Date.now() + BACKUP_SNOOZE_MS));
   updateBackupBanner();
 }
 
@@ -1649,6 +1699,7 @@ ui.entryForm.addEventListener('submit', async (event) => {
   } catch (e) {
     console.error('Form submission error:', e);
     window.alert('Error: ' + e.message);
+    return;
   }
 
   window.alert('Entry saved!');
@@ -2219,6 +2270,7 @@ ui.metricList.addEventListener('click', async (event) => {
       const metric = metrics.find((m) => m.id === metricId);
       if (metric) {
         await updateMetric(metricId, { isArchived: !metric.isArchived });
+        incrementUnsavedCount();
       }
       metricSearchTerm = '';
       renderAll();
@@ -2410,6 +2462,7 @@ async function confirmAndDeleteCategory(categoryId) {
     await updateMetric(metric.id, { categoryId: null });
   }
   await deleteCategory(categoryId);
+  incrementUnsavedCount();
   ui.categoryName.value = '';
   ui.categorySearch.value = '';
   ui.categoryForm.style.display = 'none';
@@ -2437,7 +2490,7 @@ async function triggerCsvExport() {
   link.download = `${datePrefix}-quantifi-pwa-export.csv`;
   link.click();
   URL.revokeObjectURL(url);
-  resetUnsavedCount();
+  resetUnsavedCount({ exported: true });
 }
 
 ui.exportButton.addEventListener('click', async () => {
@@ -2599,8 +2652,14 @@ ui.metricGrid.addEventListener('click', async (event) => {
   }
 });
 
-ui.backupReminderBanner.addEventListener('click', async () => {
+ui.backupExportButton.addEventListener('click', async () => {
   await triggerCsvExport();
+});
+
+ui.backupSnoozeButton.addEventListener('click', snoozeBackupReminder);
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) updateBackupBanner();
 });
 
 ui.statsMetricSelect.addEventListener('change', () => {
@@ -2766,6 +2825,7 @@ window.saveStrengthSessionEdit = async function(trElement) {
     value: sets[0].loadKg,
     loadKg: sets[0].loadKg,
   });
+  incrementUnsavedCount();
   const metricId = trElement.dataset.metricId;
   const metrics = await listMetrics(true);
   const metric = metrics.find((item) => item.id === metricId);
@@ -2790,6 +2850,7 @@ window.saveInlineEdit = async function(input) {
   }
 
   await updateEntry(entryId, { value: newValue });
+  incrementUnsavedCount();
   editingEntryId = null;
   await renderEntriesTable(metricId); // Refresh table
   // Refresh active views
@@ -2819,6 +2880,7 @@ window.cancelInlineEdit = async function(input) {
 window.handleDeleteEntry = async function(entryId, metricId, metricName) {
   if (confirm(`Delete this entry for ${metricName}?`)) {
     await deleteEntry(entryId);
+    incrementUnsavedCount();
     const metrics = await listMetrics(true);
     const metric = metrics.find(m => m.id === metricId);
     if (metricId && metric) {
