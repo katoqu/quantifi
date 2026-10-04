@@ -145,6 +145,7 @@ const BACKUP_REMINDER_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PWA_BACKUP_CHANGE_THRESHOLD = 25;
 const PWA_BACKUP_REMINDER_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const BACKUP_SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
+const BACKUP_BUTTON_PRESSED_AT_KEY = 'quantifi-backup-button-pressed-at';
 let backupReminderTimer = null;
 
 let activeVizSettings = {
@@ -250,7 +251,8 @@ function updateBackupBanner() {
   }
   ui.unsavedCount.textContent = count;
   const lastExportAt = Number(localStorage.getItem('quantifi-last-export-at') || 0);
-  const reminderAgeStart = lastExportAt || unsavedSince;
+  const backupButtonPressedAt = Number(localStorage.getItem(BACKUP_BUTTON_PRESSED_AT_KEY) || 0);
+  const reminderAgeStart = Math.max(lastExportAt, backupButtonPressedAt) || unsavedSince;
   const standalonePwa = isStandalonePwa();
   const changeThreshold = standalonePwa ? PWA_BACKUP_CHANGE_THRESHOLD : BACKUP_CHANGE_THRESHOLD;
   const reminderAge = standalonePwa ? PWA_BACKUP_REMINDER_AGE_MS : BACKUP_REMINDER_AGE_MS;
@@ -928,15 +930,23 @@ let currentMetricId = null;
 let suppressDetailsReset = false;
 let settingsMode = 'categories';
 
-function updateBackupSectionAvailability() {
+function updateSettingsSectionAvailability() {
   const manageAttributes = document.querySelector('#manageAttributesDetails');
-  const backupDetails = document.querySelector('#backupDetails');
-  if (!manageAttributes || !backupDetails) return;
+  const exclusiveSections = [
+    document.querySelector('#backupDetails'),
+    document.querySelector('#defaultBehaviourDetails'),
+  ];
+  if (!manageAttributes) return;
 
   const isManagingAttributes = manageAttributes.open;
-  backupDetails.classList.toggle('section-disabled', isManagingAttributes);
-  backupDetails.querySelector('summary')?.setAttribute('aria-disabled', String(isManagingAttributes));
-  if (isManagingAttributes) backupDetails.open = false;
+  const manageAttributesHint = document.querySelector('#manageAttributesHint');
+  manageAttributesHint?.classList.toggle('hidden', !isManagingAttributes);
+  exclusiveSections.forEach((section) => {
+    if (!section) return;
+    section.classList.toggle('section-disabled', isManagingAttributes);
+    section.querySelector('summary')?.setAttribute('aria-disabled', String(isManagingAttributes));
+    if (isManagingAttributes) section.open = false;
+  });
 }
 
 function activateSettingsMode(mode) {
@@ -1075,7 +1085,7 @@ ui.tabs.forEach((tab) => {
       d.removeAttribute('open');
     });
     suppressDetailsReset = false;
-    if (tab.dataset.view === 'settings') updateBackupSectionAvailability();
+    if (tab.dataset.view === 'settings') updateSettingsSectionAvailability();
     // Initialize Add form if switching to Add tab
     if (tab.dataset.view === 'add') {
       await renderMetricDropdown();
@@ -1109,16 +1119,18 @@ document.querySelectorAll('details').forEach((detail) => {
         });
       }
     }
-    if (detail.id === 'manageAttributesDetails' || detail.id === 'backupDetails') {
-      updateBackupSectionAvailability();
+    if (['manageAttributesDetails', 'backupDetails', 'defaultBehaviourDetails'].includes(detail.id)) {
+      updateSettingsSectionAvailability();
     }
   });
 });
 
-document.querySelector('#backupDetails > summary')?.addEventListener('click', (event) => {
-  if (document.querySelector('#manageAttributesDetails')?.open) {
-    event.preventDefault();
-  }
+document.querySelectorAll('#backupDetails > summary, #defaultBehaviourDetails > summary').forEach((summary) => {
+  summary.addEventListener('click', (event) => {
+    if (document.querySelector('#manageAttributesDetails')?.open) {
+      event.preventDefault();
+    }
+  });
 });
 
 // Back button handler
@@ -2067,7 +2079,7 @@ async function confirmAndDeleteCategory(categoryId) {
   renderAll();
 }
 
-async function triggerCsvExport() {
+async function triggerCsvExport({ fromBackupReminder = false } = {}) {
   const csv = await exportDataAsCsv();
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -2082,6 +2094,9 @@ async function triggerCsvExport() {
   link.download = `${datePrefix}-quantifi-pwa-export.csv`;
   link.click();
   URL.revokeObjectURL(url);
+  if (fromBackupReminder) {
+    localStorage.setItem(BACKUP_BUTTON_PRESSED_AT_KEY, String(Date.now()));
+  }
   resetUnsavedCount({ exported: true });
 }
 
@@ -2245,7 +2260,7 @@ ui.metricGrid.addEventListener('click', async (event) => {
 });
 
 ui.backupExportButton.addEventListener('click', async () => {
-  await triggerCsvExport();
+  await triggerCsvExport({ fromBackupReminder: true });
 });
 
 ui.backupSnoozeButton.addEventListener('click', snoozeBackupReminder);
@@ -2298,8 +2313,9 @@ async function openEntriesModal(metricId) {
   ui.entriesModal.classList.remove('hidden');
 }
 
-function closeEntriesModal() {
+async function closeEntriesModal() {
   ui.entriesModal.classList.add('hidden');
+  await renderHome();
 }
 
 window.handleEditEntry = async function(entryId, metricId, trElement) {
@@ -2314,6 +2330,10 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
     const sets = Array.isArray(entry.sets) ? entry.sets : [];
     const editor = document.createElement('div');
     editor.className = 'strength-edit-sets';
+    const setHeader = document.createElement('div');
+    setHeader.className = 'strength-edit-set-header';
+    setHeader.innerHTML = '<span>Load (kg)</span><span>Reps</span><span aria-hidden="true"></span>';
+    editor.append(setHeader);
     sets.forEach((set) => addStrengthSetEditorRow(editor, set.loadKg, set.reps));
 
     const addButton = document.createElement('button');
@@ -2338,7 +2358,7 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
   valueCell.innerHTML = `
     <input type="number" value="${entry.value}" class="edit-input" 
            data-entry-id="${entryId}" data-metric-id="${metricId}" 
-           onblur="window.saveInlineEdit(this)" onkeydown="if(event.key==='Enter') window.saveInlineEdit(this); if(event.key==='Escape') window.cancelInlineEdit(this)">
+           onkeydown="if(event.key==='Enter') window.saveInlineEdit(this); if(event.key==='Escape') window.cancelInlineEdit(this)">
   `;
   
   // Replace actions with Save/Cancel icons
@@ -2417,6 +2437,9 @@ window.saveStrengthSessionEdit = async function(trElement) {
     value: sets[0].loadKg,
     loadKg: sets[0].loadKg,
   });
+  const closeModal = window.confirm(
+    'Entry updated. Close the edit window? Choose Cancel to edit another entry.'
+  );
   incrementUnsavedCount();
   const metricId = trElement.dataset.metricId;
   const metrics = await listMetrics(true);
@@ -2426,8 +2449,11 @@ window.saveStrengthSessionEdit = async function(trElement) {
   const statsView = document.querySelector('#view-stats');
   const homeView = document.querySelector('#view-home');
   if (statsView?.classList.contains('active')) await renderStats();
-  if (homeView?.classList.contains('active')) await renderHome();
-  window.alert('Entry updated!');
+  if (closeModal) {
+    await closeEntriesModal();
+  } else if (homeView?.classList.contains('active')) {
+    await renderHome();
+  }
 };
 
 window.saveInlineEdit = async function(input) {
@@ -2442,20 +2468,25 @@ window.saveInlineEdit = async function(input) {
   }
 
   await updateEntry(entryId, { value: newValue });
+  const closeModal = window.confirm(
+    'Entry updated. Close the edit window? Choose Cancel to edit another entry.'
+  );
   incrementUnsavedCount();
   editingEntryId = null;
-  await renderEntriesTable(metricId); // Refresh table
+  const metrics = await listMetrics(true);
+  const metric = metrics.find((item) => item.id === metricId);
+  if (metric) await renderEntriesTable(metricId, metric);
   // Refresh active views
   const statsView = document.querySelector('#view-stats');
   const homeView = document.querySelector('#view-home');
   if (statsView && statsView.classList.contains('active')) {
     await renderStats();
   }
-  if (homeView && homeView.classList.contains('active')) {
+  if (closeModal) {
+    await closeEntriesModal();
+  } else if (homeView && homeView.classList.contains('active')) {
     await renderHome();
   }
-
-  window.alert('Entry updated!');
 }
 
 window.cancelInlineEdit = async function(input) {
@@ -2491,6 +2522,11 @@ window.handleDeleteEntry = async function(entryId, metricId, metricName) {
 }
 
 async function renderEntriesTable(metricId, metric) {
+  const valueHeader = ui.entriesModal.querySelector('#entriesTable thead th:nth-child(2)');
+  if (valueHeader) {
+    valueHeader.textContent = metric.metricKind === 'strength_session' ? 'Entry' : 'Value';
+  }
+
   const entries = await listEntries();
   const metricEntries = entries.filter(e => e.metricId === metricId);
   metricEntries.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));

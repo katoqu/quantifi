@@ -182,10 +182,14 @@ button:hover { filter: brightness(0.98); }
   padding: 0;
 }
 
-#backupDetails.section-disabled > summary {
+.section-disabled > summary {
   cursor: not-allowed;
   opacity: 0.45;
   pointer-events: none;
+}
+
+.settings-section-hint {
+  margin: 0 0 12px;
 }
 
 .collapsible-container summary::-webkit-details-marker {
@@ -805,6 +809,15 @@ html[data-theme="dark"] .segmented-control {
 #entriesTable .entry-strength-sets {
   margin: 4px 0 0;
   padding-left: 18px;
+}
+
+.strength-edit-set-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 #entriesTable tr:hover {
