@@ -26,6 +26,10 @@ import {
   getLastStrengthSet,
 } from './strength.js';
 import { resampleAndProcessData } from './stats.js';
+import {
+  filterMetricsBySearch,
+  filterMetricsByView,
+} from './metric-filters.js';
 
 const ui = {
   tabs: Array.from(document.querySelectorAll('.tab')),
@@ -206,57 +210,6 @@ function resetChangeFormDateTime() {
   const timeStr = now.toTimeString().slice(0, 5);
   if (ui.changeDate) ui.changeDate.value = dateStr;
   if (ui.changeTime) ui.changeTime.value = timeStr;
-}
-
-async function getRecentMetricIds(entries, limit = 5) {
-  if (!entries || entries.length === 0) return [];
-  const sorted = [...entries].sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));
-  const seen = new Set();
-  const recentIds = [];
-  for (const entry of sorted) {
-    if (!seen.has(entry.metricId)) {
-      seen.add(entry.metricId);
-      recentIds.push(entry.metricId);
-      if (recentIds.length >= limit) break;
-    }
-  }
-  return recentIds;
-}
-
-async function filterMetricsForView(viewName, metrics, entries, categories) {
-  const filter = activeFilters[viewName];
-  if (!filter || filter === 'Recent') {
-    const recentIds = await getRecentMetricIds(entries, 5);
-    if (recentIds.length > 0) {
-      const recentMap = new Map(recentIds.map((id, index) => [id, index]));
-      return [...metrics].sort((a, b) => {
-        const aIndex = recentMap.has(a.id) ? recentMap.get(a.id) : Infinity;
-        const bIndex = recentMap.has(b.id) ? recentMap.get(b.id) : Infinity;
-        if (aIndex !== bIndex) return aIndex - bIndex;
-        return a.name.localeCompare(b.name);
-      });
-    }
-    return [...metrics].sort((a, b) => a.name.localeCompare(b.name));
-  }
-  const cat = categories.find((c) => c.name.toLowerCase() === filter.toLowerCase());
-  if (!cat) return [];
-  return metrics.filter((m) => m.categoryId === cat.id);
-}
-
-function filterMetricsBySearch(metrics, categories, searchTerm) {
-  if (!searchTerm) return metrics;
-  const term = searchTerm.trim().toLowerCase();
-  const archivedOnly = term.startsWith('#');
-  const query = archivedOnly ? term.slice(1).trim() : term;
-  const categoryMap = new Map(categories.map((c) => [c.id, c.name.toLowerCase()]));
-  return metrics.filter((metric) => {
-    if (archivedOnly && !metric.isArchived) return false;
-    if (!query) return true;
-    const nameMatch = metric.name.toLowerCase().includes(query);
-    const categoryName = categoryMap.get(metric.categoryId) || '';
-    const catMatch = categoryName.includes(query);
-    return nameMatch || catMatch;
-  });
 }
 
 async function getHomeSearchMetric() {
@@ -487,7 +440,7 @@ async function renderMetricDropdown() {
       .join('');
   }
 
-  let filteredMetrics = await filterMetricsForView('add', metrics, entries, categories);
+  let filteredMetrics = filterMetricsByView(activeFilters.add, metrics, entries, categories);
   const currentMetric = metrics.find((metric) => metric.id === currentMetricId);
   if (currentMetric && !filteredMetrics.some((metric) => metric.id === currentMetric.id)) {
     filteredMetrics = [...filteredMetrics, currentMetric];
@@ -662,7 +615,7 @@ async function renderHome() {
 
   const visibleMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
   renderHomeSearchDatalist(categories, visibleMetrics);
-  let filteredMetrics = await filterMetricsForView('home', visibleMetrics, entries, categories);
+  let filteredMetrics = filterMetricsByView(activeFilters.home, visibleMetrics, entries, categories);
   const currentSearchTerm = ui.homeSearch ? ui.homeSearch.value.trim().toLowerCase() : homeSearchTerm;
   homeSearchTerm = currentSearchTerm;
   filteredMetrics = filterMetricsBySearch(filteredMetrics, categories, currentSearchTerm);
@@ -1141,7 +1094,7 @@ async function renderStats() {
 
   const availableMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
 
-  let filteredMetrics = await filterMetricsForView('stats', availableMetrics, entries, categories);
+  let filteredMetrics = filterMetricsByView(activeFilters.stats, availableMetrics, entries, categories);
   const currentMetric = availableMetrics.find((metric) => metric.id === currentMetricId);
   if (currentMetric && !filteredMetrics.some((metric) => metric.id === currentMetric.id)) {
     filteredMetrics = [...filteredMetrics, currentMetric];
