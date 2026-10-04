@@ -62,6 +62,7 @@ export function generateSvgChart(data, metric) {
     `;
   }
 
+
   const xTicksIndices = [0, Math.floor(data.length / 2), data.length - 1].filter((val, idx, self) => self.indexOf(val) === idx);
   let xGridHtml = '';
   xTicksIndices.forEach((idx) => {
@@ -133,6 +134,130 @@ export function generateSvgChart(data, metric) {
       <line x1="${xMin}" y1="${yBaseline}" x2="${xMax}" y2="${yBaseline}" stroke="var(--muted, #64748b)" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.6" />
       <text x="${xMax}" y="${yBaseline - 6}" font-size="9" fill="var(--muted, #64748b)" text-anchor="end" font-weight="600">Baseline (Avg): ${avgVal.toFixed(1)}</text>
       ${chartElements}
+    </svg>
+  `;
+}
+
+
+export function renderSparkline(values, color, { kind = 'quantitative', higherIsBetter = true, rangeStart = null, rangeEnd = null } = {}) {
+  const clean = (values || []).map(Number).filter(v => !Number.isNaN(v));
+  if (clean.length === 0) {
+    return '<span style="font-size: 0.85rem; opacity: 0.6; padding: 4px 0; display: inline-block;">—</span>';
+  }
+
+  const width = 192;
+  const height = 28;
+  const pad = 4;
+  const vmin = Math.min(...clean);
+  const vmax = Math.max(...clean);
+
+  const toY = (value) => {
+    if (clean.length === 1 || vmax === vmin) return height / 2;
+    return height - pad - ((value - vmin) / (vmax - vmin)) * (height - pad * 2);
+  };
+
+  let lastX = 0;
+  let lastY = height / 2;
+
+  if (kind === 'count') {
+    const n = clean.length;
+    const barGap = 1;
+    const available = width - pad * 2;
+    const barW = Math.max(2, (available - barGap * (n - 1)) / Math.max(1, n));
+    const vmaxLocal = Math.max(1, vmax);
+    const rects = [];
+    let lastCx = null;
+    let lastCy = null;
+
+    for (let i = 0; i < n; i++) {
+      const x = pad + i * (barW + barGap);
+      const h = (clean[i] / vmaxLocal) * (height - pad * 2);
+      const y = height - pad - h;
+      if (i === n - 1) {
+        lastCx = x + barW / 2;
+        lastCy = y;
+      }
+      rects.push(
+        `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barW.toFixed(2)}" height="${h.toFixed(2)}" rx="1.2" ry="1.2" fill="${color}" opacity="0.85" stroke="rgba(0,0,0,0.22)" stroke-width="${i === n - 1 ? 1 : 0}"/>`
+      );
+    }
+
+    const lollipop = lastCx !== null && lastCy !== null
+      ? `
+        <line x1="${lastCx.toFixed(2)}" x2="${lastCx.toFixed(2)}" y1="${lastCy.toFixed(2)}" y2="${pad.toFixed(2)}" stroke="rgba(0,0,0,0.16)" stroke-width="1"/>
+        <circle cx="${lastCx.toFixed(2)}" cy="${lastCy.toFixed(2)}" r="2.6" fill="${color}" stroke="white" stroke-width="1.2"/>
+      `
+      : '';
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none" aria-hidden="true">${rects.join('')}${lollipop}</svg>`;
+  }
+
+  if (kind === 'score') {
+    let rs = rangeStart !== null && rangeStart !== undefined ? Number(rangeStart) : Math.round(vmin);
+    let re = rangeEnd !== null && rangeEnd !== undefined ? Number(rangeEnd) : Math.round(vmax);
+    if (Number.isNaN(rs)) rs = Math.round(vmin);
+    if (Number.isNaN(re)) re = Math.round(vmax);
+    const span = Math.max(1, re - rs);
+    const n = clean.length;
+    const gap = 1;
+    const available = width - pad * 2;
+    const blockW = Math.max(2, (available - gap * (n - 1)) / Math.max(1, n));
+    const rects = [];
+    let lastCx = null;
+    let lastCy = null;
+    let lastFill = null;
+
+    for (let i = 0; i < n; i++) {
+      const x = pad + i * (blockW + gap);
+      const tHeight = Math.min(1, Math.max(0, (clean[i] - rs) / span));
+      const tColor = higherIsBetter ? tHeight : 1 - tHeight;
+      const r = Math.round(220 * (1 - tColor) + 40 * tColor);
+      const g = Math.round(60 * (1 - tColor) + 180 * tColor);
+      const b = Math.round(70 * (1 - tColor) + 80 * tColor);
+      const fill = `rgb(${r},${g},${b})`;
+      const h = Math.max(2, tHeight * (height - pad * 2));
+      const y = height - pad - h;
+      if (i === n - 1) {
+        lastCx = x + blockW / 2;
+        lastCy = y;
+        lastFill = fill;
+      }
+      rects.push(
+        `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${blockW.toFixed(2)}" height="${h.toFixed(2)}" rx="2" ry="2" fill="${fill}" opacity="0.95" stroke="rgba(0,0,0,0.22)" stroke-width="${i === n - 1 ? 1 : 0}"/>`
+      );
+    }
+
+    const lollipop = lastCx !== null && lastCy !== null
+      ? `
+        <line x1="${lastCx.toFixed(2)}" x2="${lastCx.toFixed(2)}" y1="${lastCy.toFixed(2)}" y2="${pad.toFixed(2)}" stroke="rgba(0,0,0,0.16)" stroke-width="1"/>
+        <circle cx="${lastCx.toFixed(2)}" cy="${lastCy.toFixed(2)}" r="2.6" fill="${lastFill || color}" stroke="white" stroke-width="1.2"/>
+      `
+      : '';
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none" aria-hidden="true">${rects.join('')}${lollipop}</svg>`;
+  }
+
+  let points = '';
+  if (clean.length === 1 || vmax === vmin) {
+    points = `${pad},${height / 2} ${width - pad},${height / 2}`;
+    lastX = width - pad;
+    lastY = height / 2;
+  } else {
+    const step = (width - pad * 2) / (clean.length - 1);
+    points = clean.map((value, index) => {
+      const x = pad + index * step;
+      const y = toY(value);
+      lastX = x;
+      lastY = y;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ');
+  }
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="${lastX.toFixed(2)}" x2="${lastX.toFixed(2)}" y1="${lastY.toFixed(2)}" y2="${pad.toFixed(2)}" stroke="rgba(0,0,0,0.16)" stroke-width="1"/>
+      <polyline fill="none" stroke="${color}" stroke-width="2" points="${points}" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="2.6" fill="${color}" stroke="white" stroke-width="1.2"/>
     </svg>
   `;
 }

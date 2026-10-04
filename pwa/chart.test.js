@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { generateSvgChart } from './chart.js';
+import { generateSvgChart, renderSparkline } from './chart.js';
 
 const sampleData = [
   { date: new Date(2026, 0, 1), dateStr: 'Jan 1', value: 2 },
@@ -57,4 +57,42 @@ test('renders score metrics as bars and respects the score range', () => {
   assert.equal((chart.match(/<rect /g) || []).length, 2);
   assert.match(chart, /<text[^>]*>1<\/text>/);
   assert.match(chart, /<text[^>]*>5<\/text>/);
+});
+
+test('renders a placeholder for empty sparkline data', () => {
+  assert.match(renderSparkline([], 'red'), /<span[^>]*>—<\/span>/);
+  assert.match(renderSparkline([undefined, 'invalid'], 'red'), /<span[^>]*>—<\/span>/);
+});
+
+test('renders quantitative sparklines and keeps a single value centered', () => {
+  const sparkline = renderSparkline([1, 3, 2], 'purple');
+  assert.match(sparkline, /<polyline[^>]*stroke="purple"/);
+  assert.match(sparkline, /points="4\.00,[\d.]+ 96\.00,[\d.]+ 188\.00,[\d.]+"/);
+
+  const singleValue = renderSparkline([5], 'purple');
+  assert.match(singleValue, /points="4,14 188,14"/);
+});
+
+test('renders count sparklines as bars with a marker for the latest value', () => {
+  const sparkline = renderSparkline([2, 4, 3], 'orange', { kind: 'count' });
+  assert.equal((sparkline.match(/<rect /g) || []).length, 3);
+  assert.match(sparkline, /fill="orange"/);
+  assert.equal((sparkline.match(/<circle /g) || []).length, 1);
+});
+
+test('colors score sparklines according to range and direction', () => {
+  const higherIsBetter = renderSparkline([1, 5], 'blue', {
+    kind: 'score',
+    rangeStart: 1,
+    rangeEnd: 5,
+  });
+  const lowerIsBetter = renderSparkline([1, 5], 'blue', {
+    kind: 'score',
+    rangeStart: 1,
+    rangeEnd: 5,
+    higherIsBetter: false,
+  });
+
+  assert.match(higherIsBetter, /fill="rgb\(40,180,80\)"/);
+  assert.match(lowerIsBetter, /fill="rgb\(220,60,70\)"/);
 });
