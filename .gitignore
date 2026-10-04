@@ -1,6 +1,0 @@
-.venv
-venv/
-.env
-.streamlit
-__pycache__/
-test_venv/
