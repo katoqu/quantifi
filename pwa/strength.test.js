@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildStrengthProgressRecommendation,
   computeStrengthValue,
+  formatStrengthSession,
   getLastStrengthSet,
 } from './strength.js';
 
@@ -26,6 +27,22 @@ test('accepts legacy set load field and defaults missing repetitions', () => {
     computeStrengthValue({ sets: [{ load_kg: '50' }] }, 'Total Volume'),
     500
   );
+});
+
+test('formats strength sessions with sets', () => {
+  assert.equal(
+    formatStrengthSession({
+      loadKg: 70,
+      sets: [{ loadKg: 60, reps: 8 }, { loadKg: 70, reps: 5 }],
+    }),
+    '70.0 kg × 8/5 reps × 2 sets'
+  );
+});
+
+test('formats legacy strength entries and missing entries', () => {
+  assert.equal(formatStrengthSession({ value: 42 }), '42.0 kg');
+  assert.equal(formatStrengthSession({ value: null }), '—');
+  assert.equal(formatStrengthSession(null), '—');
 });
 
 test('uses the legacy entry value when an entry has no sets', () => {

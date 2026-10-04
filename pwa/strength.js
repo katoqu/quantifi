@@ -28,6 +28,17 @@ export function computeStrengthValue(entry, aggType) {
   return setData.reduce((sum, s) => sum + s.loadKg, 0);
 }
 
+export function formatStrengthSession(entry) {
+  if (!entry) return '—';
+  const sets = entry.sets || [];
+  if (!Array.isArray(sets) || sets.length === 0) {
+    return entry.value !== null && entry.value !== undefined ? `${Number(entry.value).toFixed(1)} kg` : '—';
+  }
+  const summaryLoad = Number(entry.loadKg ?? entry.value ?? 0).toFixed(1);
+  const repsSeries = sets.map((s) => s.reps).join('/');
+  return `${summaryLoad} kg × ${repsSeries} reps × ${sets.length} sets`;
+}
+
 export function getLastStrengthSet(entry) {
   const sets = Array.isArray(entry.sets) ? entry.sets : [];
   if (sets.length > 0) {

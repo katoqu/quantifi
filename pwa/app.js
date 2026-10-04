@@ -23,6 +23,7 @@ import {
 import {
   buildStrengthProgressRecommendation,
   computeStrengthValue,
+  formatStrengthSession,
   getLastStrengthSet,
 } from './strength.js';
 import { resampleAndProcessData } from './stats.js';
@@ -293,17 +294,6 @@ function resetUnsavedCount({ exported = false } = {}) {
 function snoozeBackupReminder() {
   localStorage.setItem('quantifi-backup-snoozed-until', String(Date.now() + BACKUP_SNOOZE_MS));
   updateBackupBanner();
-}
-
-function formatStrengthSession(entry) {
-  if (!entry) return '—';
-  const sets = entry.sets || [];
-  if (!Array.isArray(sets) || sets.length === 0) {
-    return entry.value !== null && entry.value !== undefined ? `${Number(entry.value).toFixed(1)} kg` : '—';
-  }
-  const summaryLoad = Number(entry.loadKg ?? entry.value ?? 0).toFixed(1);
-  const repsSeries = sets.map((s) => s.reps).join('/');
-  return `${summaryLoad} kg × ${repsSeries} reps × ${sets.length} sets`;
 }
 
 function resetEntryFormDateTime() {
