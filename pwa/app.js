@@ -764,14 +764,18 @@ function ensureEntriesTableMarkup() {
       </div>
     `;
   }
+  ui.entriesTableBody = body.querySelector('#entriesTableBody');
 }
 
 async function openStrengthSessionDetails(metricId) {
+  const actionId = ++entriesModalActionId;
   const metrics = await listMetrics(true);
+  if (actionId !== entriesModalActionId) return;
   const metric = metrics.find((m) => m.id === metricId);
   if (!metric) return;
 
   const entries = await listEntries();
+  if (actionId !== entriesModalActionId) return;
   const metricEntries = entries
     .filter((entry) => entry.metricId === metricId)
     .sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));
@@ -931,6 +935,7 @@ let metricSearchTerm = '';
 let currentMetricId = null;
 let suppressDetailsReset = false;
 let settingsMode = 'categories';
+let entriesModalActionId = 0;
 
 function updateSettingsSectionAvailability() {
   const manageAttributes = document.querySelector('#manageAttributesDetails');
@@ -2349,16 +2354,21 @@ ui.statsSummary.addEventListener('click', (event) => {
 });
 
 async function openEntriesModal(metricId) {
+  const actionId = ++entriesModalActionId;
   const metrics = await listMetrics(true);
+  if (actionId !== entriesModalActionId) return;
   const metric = metrics.find(m => m.id === metricId);
   if (!metric) return;
 
+  ensureEntriesTableMarkup();
   ui.entriesModalTitle.textContent = metric.name;
-  await renderEntriesTable(metricId, metric);
+  await renderEntriesTable(metricId, metric, actionId);
+  if (actionId !== entriesModalActionId) return;
   ui.entriesModal.classList.remove('hidden');
 }
 
 async function closeEntriesModal() {
+  entriesModalActionId += 1;
   ui.entriesModal.classList.add('hidden');
   await renderHome();
 }
@@ -2566,13 +2576,14 @@ window.handleDeleteEntry = async function(entryId, metricId, metricName) {
   }
 }
 
-async function renderEntriesTable(metricId, metric) {
+async function renderEntriesTable(metricId, metric, actionId = null) {
   const valueHeader = ui.entriesModal.querySelector('#entriesTable thead th:nth-child(2)');
   if (valueHeader) {
     valueHeader.textContent = metric.metricKind === 'strength_session' ? 'Entry' : 'Value';
   }
 
   const entries = await listEntries();
+  if (actionId !== null && actionId !== entriesModalActionId) return;
   const metricEntries = entries.filter(e => e.metricId === metricId);
   metricEntries.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));
 
