@@ -40,11 +40,17 @@
       <main>
         <section id="view-home" class="view active">
           <div class="panel">
-            <label class="search-label">
-              Search
-              <input type="search" id="homeSearch" list="homeSearchDatalist" class="search-field" placeholder="Search metrics or categories..." autocomplete="off" />
-              <datalist id="homeSearchDatalist"></datalist>
-            </label>
+            <div class="search-label">
+              <label for="homeSearch">Search</label>
+              <div class="search-dropdown-control">
+                <input type="search" id="homeSearch" class="search-field" placeholder="Search metrics or categories..." autocomplete="off" aria-controls="homeSearchSuggestions" aria-expanded="false" />
+                <button id="homeSearchClear" class="search-dropdown-clear hidden" type="button" aria-label="Clear search">×</button>
+                <button id="homeSearchExpand" class="search-dropdown-expand" type="button" aria-label="Show matching metrics and categories" aria-controls="homeSearchSuggestions" aria-expanded="false">
+                  <span aria-hidden="true">⌄</span>
+                </button>
+                <div id="homeSearchSuggestions" class="search-dropdown-suggestions hidden" role="listbox" aria-label="Matching metrics and categories"></div>
+              </div>
+            </div>
             <div id="metricGrid" class="metric-grid"></div>
           </div>
         </section>
@@ -53,12 +59,20 @@
           <button class="back-button secondary">← Back</button>
           <div class="panel">
             <form id="entryForm" class="stacked-form" novalidate>
-              <label class="search-label">
-                Search metrics
-                <input type="search" id="metricSelectSearch" class="search-field" placeholder="Type a metric or category..." autocomplete="off" enterkeyhint="search" />
-              </label>
-              <div id="metricSelectPills" class="metric-choice-list" role="group" aria-label="Choose a metric for a new entry"></div>
-              <p id="selectedMetricLabel" class="muted-text hidden" aria-live="polite"></p>
+              <div id="addMetricPicker" class="metric-picker">
+                <div class="search-label">
+                  <label for="metricSelectSearch">Search metrics</label>
+                  <div class="search-dropdown-control">
+                    <input type="search" id="metricSelectSearch" class="search-field" placeholder="Type a metric or category..." autocomplete="off" enterkeyhint="search" aria-controls="addMetricSuggestions" aria-expanded="false" />
+                    <button id="addMetricClear" class="search-dropdown-clear hidden" type="button" aria-label="Clear metric search">×</button>
+                    <button id="addMetricExpand" class="search-dropdown-expand" type="button" aria-label="Show matching metrics" aria-controls="addMetricSuggestions" aria-expanded="false">
+                      <span aria-hidden="true">⌄</span>
+                    </button>
+                    <div id="addMetricSuggestions" class="search-dropdown-suggestions hidden" role="listbox" aria-label="Matching metrics"></div>
+                  </div>
+                </div>
+                <div id="addSelectedMetric" class="selected-metric-indicator" aria-live="polite"></div>
+              </div>
               <p id="entryFieldsHint" class="muted-text">Choose a metric to enable the entry fields.</p>
               <select id="metricSelect" class="hidden" tabindex="-1" aria-hidden="true"></select>
               <fieldset id="entryFields" disabled>
@@ -115,11 +129,20 @@
           <button class="back-button secondary">← Back</button>
           <div class="panel">
             <div class="stacked-form" style="margin-bottom: 15px;">
-              <label class="search-label">
-                Search metrics
-                <input type="search" id="statsMetricSearch" class="search-field" placeholder="Type a metric or category..." autocomplete="off" />
-              </label>
-              <div id="statsMetricPills" class="metric-choice-list" role="group" aria-label="Choose a metric to view stats"></div>
+              <div id="statsMetricPicker" class="metric-picker">
+                <div class="search-label">
+                  <label for="statsMetricSearch">Search metrics</label>
+                  <div class="search-dropdown-control">
+                    <input type="search" id="statsMetricSearch" class="search-field" placeholder="Type a metric or category..." autocomplete="off" aria-controls="statsMetricSuggestions" aria-expanded="false" />
+                    <button id="statsMetricClear" class="search-dropdown-clear hidden" type="button" aria-label="Clear metric search">×</button>
+                    <button id="statsMetricExpand" class="search-dropdown-expand" type="button" aria-label="Show matching metrics" aria-controls="statsMetricSuggestions" aria-expanded="false">
+                      <span aria-hidden="true">⌄</span>
+                    </button>
+                    <div id="statsMetricSuggestions" class="search-dropdown-suggestions hidden" role="listbox" aria-label="Matching metrics"></div>
+                  </div>
+                </div>
+                <div id="statsSelectedMetric" class="selected-metric-indicator" aria-live="polite"></div>
+              </div>
               <select id="statsMetricSelect" class="hidden" tabindex="-1" aria-hidden="true"></select>
 
               <div id="statsControls" class="viz-controls hidden" style="margin-top: 12px;">

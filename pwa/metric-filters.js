@@ -1,3 +1,18 @@
+function getMetricKind(metric) {
+  if (metric.metricKind) return metric.metricKind;
+  if (metric.unitType === 'integer_range') return 'score';
+  if (metric.unitType === 'integer') return 'count';
+  return 'quantitative';
+}
+
+export function canKeepMetricValues(currentMetric, nextMetric) {
+  return Boolean(
+    currentMetric
+    && nextMetric
+    && getMetricKind(currentMetric) === getMetricKind(nextMetric)
+  );
+}
+
 export function getRecentMetricIds(entries, limit = 5) {
   if (!entries || entries.length === 0 || limit <= 0) return [];
   const sorted = [...entries].sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));

@@ -29,6 +29,7 @@ import {
 } from './strength.js';
 import { resampleAndProcessData } from './stats.js';
 import {
+  canKeepMetricValues,
   filterMetricsBySearch,
   filterMetricsByView,
   sortMetricsByRecentEntry,
@@ -39,13 +40,23 @@ const ui = {
   tabs: Array.from(document.querySelectorAll('.tab')),
   views: Array.from(document.querySelectorAll('.view')),
   metricGrid: document.querySelector('#metricGrid'),
+  homeSearchClear: document.querySelector('#homeSearchClear'),
+  homeSearchExpand: document.querySelector('#homeSearchExpand'),
+  homeSearchSuggestions: document.querySelector('#homeSearchSuggestions'),
   metricSelect: document.querySelector('#metricSelect'),
-  metricSelectPills: document.querySelector('#metricSelectPills'),
+  addMetricPicker: document.querySelector('#addMetricPicker'),
+  addSelectedMetric: document.querySelector('#addSelectedMetric'),
   metricSelectSearch: document.querySelector('#metricSelectSearch'),
-  statsMetricPills: document.querySelector('#statsMetricPills'),
+  addMetricExpand: document.querySelector('#addMetricExpand'),
+  addMetricClear: document.querySelector('#addMetricClear'),
+  addMetricSuggestions: document.querySelector('#addMetricSuggestions'),
+  statsMetricPicker: document.querySelector('#statsMetricPicker'),
+  statsSelectedMetric: document.querySelector('#statsSelectedMetric'),
   statsMetricSearch: document.querySelector('#statsMetricSearch'),
+  statsMetricExpand: document.querySelector('#statsMetricExpand'),
+  statsMetricClear: document.querySelector('#statsMetricClear'),
+  statsMetricSuggestions: document.querySelector('#statsMetricSuggestions'),
   entryFields: document.querySelector('#entryFields'),
-  selectedMetricLabel: document.querySelector('#selectedMetricLabel'),
   entryFieldsHint: document.querySelector('#entryFieldsHint'),
   metricSwitchModal: document.querySelector('#metricSwitchModal'),
   metricSwitchMessage: document.querySelector('#metricSwitchMessage'),
@@ -113,7 +124,6 @@ const ui = {
   dateTimeFields: document.querySelector('#dateTimeFields'),
   targetActionPills: document.querySelector('#targetActionPills'),
   homeSearch: document.querySelector('#homeSearch'),
-  homeSearchDatalist: document.querySelector('#homeSearchDatalist'),
   showCategoriesBtn: document.querySelector('#showCategoriesBtn'),
   showMetricsBtn: document.querySelector('#showMetricsBtn'),
   settingsCategoriesPanel: document.querySelector('#settingsCategoriesPanel'),
@@ -157,13 +167,15 @@ let editingEntryId = null;
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
 let homeSearchTerm = '';
+let homeSearchOptions = [];
+let homeSearchSuggestionsOpen = false;
 let addMetricSearchTerm = '';
 let statsMetricSearchTerm = '';
 let addMetricCandidates = [];
 let addMetricCategories = [];
 let statsMetricCandidates = [];
-let addVisibleMetricCount = 8;
-let statsVisibleMetricCount = 8;
+let addMetricPickerOpen = false;
+let statsMetricPickerOpen = false;
 let statsRenderRequestId = 0;
 const SHOW_ARCHIVED_METRICS_KEY = 'quantifi-show-archived-metrics';
 let showArchivedMetrics = localStorage.getItem(SHOW_ARCHIVED_METRICS_KEY) === 'true';
@@ -260,6 +272,67 @@ function selectMetric(metricId) {
   if (!metricId) return;
   currentMetricId = metricId;
   activeVizSettings.metricId = metricId;
+}
+
+function updateHomeSearchClearButton() {
+  ui.homeSearchClear?.classList.toggle('hidden', !ui.homeSearch?.value);
+}
+
+function renderHomeSearchSuggestions() {
+  const suggestions = ui.homeSearchSuggestions;
+  const searchTerm = ui.homeSearch?.value.trim().toLowerCase() || '';
+  const archivedOnly = searchTerm.startsWith('#');
+  const query = archivedOnly ? searchTerm.slice(1).trim() : searchTerm;
+  const matchingOptions = homeSearchOptions.filter((option) => {
+    if (archivedOnly && !option.isArchived) return false;
+    return !query || option.value.toLowerCase().includes(query);
+  });
+
+  suggestions.replaceChildren();
+  matchingOptions.slice(0, 12).forEach((option) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'search-dropdown-suggestion';
+    button.setAttribute('role', 'option');
+    button.textContent = option.value;
+    button.addEventListener('click', () => {
+      ui.homeSearch.value = option.value;
+      homeSearchTerm = option.value.trim().toLowerCase();
+      homeSearchSuggestionsOpen = false;
+      updateHomeSearchClearButton();
+      renderHome();
+      ui.homeSearch.focus();
+    });
+    suggestions.append(button);
+  });
+
+  if (!matchingOptions.length) {
+    const emptyMessage = document.createElement('p');
+    emptyMessage.className = 'search-dropdown-empty';
+    emptyMessage.textContent = 'No matching metrics or categories.';
+    suggestions.append(emptyMessage);
+  }
+
+  suggestions.classList.toggle('hidden', !homeSearchSuggestionsOpen);
+  ui.homeSearchExpand?.setAttribute('aria-expanded', String(homeSearchSuggestionsOpen));
+  ui.homeSearch?.setAttribute('aria-expanded', String(homeSearchSuggestionsOpen));
+  ui.homeSearchExpand?.setAttribute(
+    'aria-label',
+    homeSearchSuggestionsOpen ? 'Hide matching metrics and categories' : 'Show matching metrics and categories'
+  );
+}
+
+function setHomeSearchOptions(categories, metrics) {
+  const options = new Map();
+  categories.forEach((category) => {
+    options.set(category.name.toLowerCase(), { value: category.name, isArchived: false });
+  });
+  metrics.forEach((metric) => {
+    const value = `${metric.isArchived ? '# ' : ''}${metric.name}`;
+    options.set(value.toLowerCase(), { value, isArchived: metric.isArchived });
+  });
+  homeSearchOptions = [...options.values()].sort((a, b) => a.value.localeCompare(b.value));
+  renderHomeSearchSuggestions();
 }
 
 function isStandalonePwa() {
@@ -481,11 +554,6 @@ async function renderMetricDropdown() {
 }
 
 function renderAddMetricSelect() {
-  const filteredMetrics = filterMetricsBySearch(
-    addMetricCandidates,
-    addMetricCategories,
-    addMetricSearchTerm
-  );
   const currentMetricIsAvailable = addMetricCandidates.some((metric) => metric.id === addSelectedMetricId);
   const selectedMetricId = currentMetricIsAvailable ? addSelectedMetricId : '';
   ui.metricSelect.innerHTML = addMetricCandidates
@@ -495,18 +563,16 @@ function renderAddMetricSelect() {
   ui.entryFields.disabled = !selectedMetricId;
   ui.entryFieldsHint.classList.toggle('hidden', Boolean(selectedMetricId));
   const selectedMetric = addMetricCandidates.find((metric) => metric.id === selectedMetricId);
-  const selectionIsVisible = filteredMetrics.some((metric) => metric.id === selectedMetricId);
-  ui.selectedMetricLabel.textContent = selectedMetric ? `Selected: ${selectedMetric.name}` : '';
-  ui.selectedMetricLabel.classList.toggle('hidden', !selectedMetric || selectionIsVisible);
-  renderMetricChoicePills({
-    container: ui.metricSelectPills,
-    metrics: filteredMetrics,
-    selectedMetricId,
-    visibleCount: addVisibleMetricCount,
-    onShowMore: () => {
-      addVisibleMetricCount += 8;
-      renderAddMetricSelect();
-    },
+  renderMetricPicker({
+    selectedContainer: ui.addSelectedMetric,
+    suggestionsContainer: ui.addMetricSuggestions,
+    searchInput: ui.metricSelectSearch,
+    clearButton: ui.addMetricClear,
+    expandButton: ui.addMetricExpand,
+    metrics: addMetricCandidates,
+    categories: addMetricCategories,
+    selectedMetric,
+    isOpen: addMetricPickerOpen,
   });
 }
 
@@ -536,9 +602,10 @@ function clearEntryValues() {
   renderStrengthSetList();
 }
 
-function requestMetricSwitchChoice() {
+function requestMetricSwitchChoice(canKeepValues) {
   return new Promise((resolve) => {
     metricSwitchChoiceResolver = resolve;
+    ui.keepMetricValues.classList.toggle('hidden', !canKeepValues);
     ui.metricSwitchModal.classList.remove('hidden');
     ui.cancelMetricSwitch.focus();
   });
@@ -561,10 +628,13 @@ async function changeAddMetric(metricId) {
 
   if (hasEntryValues()) {
     const currentMetric = metrics.find((item) => item.id === addSelectedMetricId);
-    ui.metricSwitchMessage.textContent =
-      `You have entered data for ${currentMetric?.name || 'the current metric'}. `
-      + `Switch to ${metric.name}? You can keep the entered values or clear them.`;
-    const choice = await requestMetricSwitchChoice();
+    const canKeepValues = canKeepMetricValues(currentMetric, metric);
+    ui.metricSwitchMessage.textContent = canKeepValues
+      ? `You have entered data for ${currentMetric.name}. `
+        + `Switch to ${metric.name}? You can keep the entered values or clear them.`
+      : `You have entered data for ${currentMetric?.name || 'the current metric'}. `
+        + `Switching to ${metric.name} uses a different metric type, so the entered values must be cleared.`;
+    const choice = await requestMetricSwitchChoice(canKeepValues);
     if (choice === 'cancel') return false;
     if (choice === 'clear') {
       clearEntryValues();
@@ -590,48 +660,55 @@ async function changeAddMetric(metricId) {
   return true;
 }
 
-function renderMetricChoicePills({
-  container,
+function renderMetricPicker({
+  selectedContainer,
+  suggestionsContainer,
+  searchInput,
+  clearButton,
+  expandButton,
   metrics,
-  selectedMetricId,
-  visibleCount,
-  onShowMore,
+  categories,
+  selectedMetric,
+  isOpen,
 }) {
-  container.replaceChildren();
-  const visibleMetrics = metrics.slice(0, visibleCount);
-  for (const metric of visibleMetrics) {
-    const label = `${metric.isArchived ? '# ' : ''}${metric.name}`;
-    const button = document.createElement('button');
-    const labelElement = document.createElement('span');
-    button.type = 'button';
-    button.className = 'metric-choice';
-    button.dataset.metricId = metric.id;
-    button.setAttribute('aria-pressed', String(metric.id === selectedMetricId));
-    button.setAttribute('aria-label', `${label}${metric.isArchived ? ', archived' : ''}`);
-    button.title = label;
-    labelElement.className = 'metric-choice-label';
-    labelElement.textContent = label;
-    button.append(labelElement);
-    container.append(button);
+  selectedContainer.replaceChildren();
+  suggestionsContainer.replaceChildren();
+  if (selectedMetric) {
+    const selected = document.createElement('span');
+    selected.className = 'selected-metric-chip';
+    selected.setAttribute('aria-label', `Selected metric: ${selectedMetric.name}`);
+    selected.textContent = selectedMetric.name;
+    selectedContainer.append(selected);
   }
 
-  if (visibleMetrics.length < metrics.length) {
-    const remainingCount = metrics.length - visibleMetrics.length;
-    const moreButton = document.createElement('button');
-    moreButton.type = 'button';
-    moreButton.className = 'metric-choice metric-choice-more';
-    moreButton.textContent = `... +${remainingCount} more`;
-    moreButton.setAttribute('aria-label', `Show the next metrics, ${remainingCount} remaining`);
-    moreButton.addEventListener('click', onShowMore, { once: true });
-    container.append(moreButton);
-  }
+  const matchingMetrics = filterMetricsBySearch(metrics, categories, searchInput.value);
+  matchingMetrics.forEach((metric) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'search-dropdown-suggestion';
+    option.dataset.metricId = metric.id;
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(metric.id === selectedMetric?.id));
+    option.textContent = `${metric.isArchived ? '# ' : ''}${metric.name}`;
+    suggestionsContainer.append(option);
+  });
 
-  if (!metrics.length) {
+  if (!matchingMetrics.length) {
     const emptyMessage = document.createElement('p');
-    emptyMessage.className = 'muted-text';
+    emptyMessage.className = 'search-dropdown-empty';
     emptyMessage.textContent = 'No metrics match this search.';
-    container.append(emptyMessage);
+    suggestionsContainer.append(emptyMessage);
   }
+
+  clearButton.classList.toggle('hidden', !searchInput.value);
+  setMetricPickerOpen(isOpen, suggestionsContainer, searchInput, expandButton);
+}
+
+function setMetricPickerOpen(isOpen, suggestionsContainer, searchInput, expandButton) {
+  suggestionsContainer.classList.toggle('hidden', !isOpen);
+  expandButton.setAttribute('aria-expanded', String(isOpen));
+  searchInput.setAttribute('aria-expanded', String(isOpen));
+  expandButton.setAttribute('aria-label', isOpen ? 'Hide matching metrics' : 'Show matching metrics');
 }
 
 async function renderHome() {
@@ -644,10 +721,11 @@ async function renderHome() {
   console.log('Metrics:', metrics.length, 'Active:', metrics.filter(m => !m.isArchived).length);
 
   const visibleMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
-  renderHomeSearchDatalist(categories, visibleMetrics);
+  setHomeSearchOptions(categories, visibleMetrics);
   let filteredMetrics = filterMetricsByView(activeFilters.home, visibleMetrics, entries, categories);
   const currentSearchTerm = ui.homeSearch ? ui.homeSearch.value.trim().toLowerCase() : homeSearchTerm;
   homeSearchTerm = currentSearchTerm;
+  updateHomeSearchClearButton();
   filteredMetrics = filterMetricsBySearch(filteredMetrics, categories, currentSearchTerm);
 
   const categoryMap = Object.fromEntries(categories.map((category) => [category.id, category.name]));
@@ -1006,29 +1084,29 @@ async function renderStats() {
   filteredMetrics = sortMetricsByRecentEntry(filteredMetrics, entries);
   ui.statsMetricSearch.value = statsMetricSearchTerm;
   const metricCandidates = filteredMetrics;
-  const matchingMetrics = filterMetricsBySearch(metricCandidates, categories, statsMetricSearchTerm);
 
   const currentMetricIsAvailable = metricCandidates.some((metric) => metric.id === currentMetricId);
   const selectedMetricId = currentMetricIsAvailable
     ? currentMetricId
-    : matchingMetrics[0]?.id ?? '';
-  statsMetricCandidates = matchingMetrics;
+    : metricCandidates[0]?.id ?? '';
+  statsMetricCandidates = metricCandidates;
   ui.statsMetricSelect.innerHTML = metricCandidates
     .map((m) => `<option value="${m.id}">${m.isArchived ? '# ' : ''}${m.name}${m.isArchived ? ' (Archived)' : ''}</option>`)
     .join('');
   ui.statsMetricSelect.value = selectedMetricId;
-  renderMetricChoicePills({
-    container: ui.statsMetricPills,
-    metrics: statsMetricCandidates,
-    selectedMetricId,
-    visibleCount: statsVisibleMetricCount,
-    onShowMore: () => {
-      statsVisibleMetricCount += 8;
-      renderStatsMetricPills();
-    },
-  });
   if (selectedMetricId) selectMetric(selectedMetricId);
   const selectedMetric = metricCandidates.find((m) => m.id === selectedMetricId);
+  renderMetricPicker({
+    selectedContainer: ui.statsSelectedMetric,
+    suggestionsContainer: ui.statsMetricSuggestions,
+    searchInput: ui.statsMetricSearch,
+    clearButton: ui.statsMetricClear,
+    expandButton: ui.statsMetricExpand,
+    metrics: statsMetricCandidates,
+    categories,
+    selectedMetric,
+    isOpen: statsMetricPickerOpen,
+  });
 
   if (selectedMetric) {
     ui.statsControls.classList.remove('hidden');
@@ -1102,20 +1180,6 @@ async function renderStats() {
       `;
     });
   ui.statsSummary.innerHTML = selectedSummary.join('') || '<p>No stats match this filter.</p>';
-}
-
-function renderStatsMetricPills() {
-  const selectedMetricId = ui.statsMetricSelect.value;
-  renderMetricChoicePills({
-    container: ui.statsMetricPills,
-    metrics: statsMetricCandidates,
-    selectedMetricId,
-    visibleCount: statsVisibleMetricCount,
-    onShowMore: () => {
-      statsVisibleMetricCount += 8;
-      renderStatsMetricPills();
-    },
-  });
 }
 
 let settingsShowCategories = false;
@@ -1283,6 +1347,7 @@ ui.tabs.forEach((tab) => {
       if (selectedMetric && ui.homeSearch) {
         ui.homeSearch.value = selectedMetric.name;
         homeSearchTerm = selectedMetric.name.toLowerCase();
+        updateHomeSearchClearButton();
       }
     }
 
@@ -1353,27 +1418,49 @@ document.querySelectorAll('.back-button').forEach((btn) => {
   });
 });
 
-ui.metricSelect.addEventListener('change', () => {
-  selectMetric(ui.metricSelect.value);
-  syncAddFormMode();
+ui.metricSelect.addEventListener('change', async () => {
+  const changed = await changeAddMetric(ui.metricSelect.value);
+  if (!changed) renderAddMetricSelect();
 });
 
 ui.metricSelectSearch.addEventListener('input', () => {
   addMetricSearchTerm = ui.metricSelectSearch.value.trim();
-  addVisibleMetricCount = 8;
+  addMetricPickerOpen = Boolean(addMetricSearchTerm);
   renderAddMetricSelect();
-  syncAddFormMode();
 });
 
 ui.metricSelectSearch.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') event.preventDefault();
+  if (event.key === 'Escape' && addMetricPickerOpen) {
+    addMetricPickerOpen = false;
+    setMetricPickerOpen(false, ui.addMetricSuggestions, ui.metricSelectSearch, ui.addMetricExpand);
+  }
 });
 
-ui.metricSelectPills.addEventListener('click', async (event) => {
+ui.addMetricExpand.addEventListener('click', () => {
+  addMetricPickerOpen = !addMetricPickerOpen;
+  renderAddMetricSelect();
+  if (addMetricPickerOpen) ui.metricSelectSearch.focus();
+});
+
+ui.addMetricClear.addEventListener('click', () => {
+  addMetricSearchTerm = '';
+  ui.metricSelectSearch.value = '';
+  addMetricPickerOpen = false;
+  renderAddMetricSelect();
+  ui.metricSelectSearch.focus();
+});
+
+ui.addMetricSuggestions.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-metric-id]');
   if (!button) return;
 
-  await changeAddMetric(button.dataset.metricId);
+  const changed = await changeAddMetric(button.dataset.metricId);
+  if (!changed) return;
+  addMetricSearchTerm = '';
+  ui.metricSelectSearch.value = '';
+  addMetricPickerOpen = false;
+  renderAddMetricSelect();
 });
 
 ui.metricSwitchModal.addEventListener('click', (event) => {
@@ -1398,16 +1485,93 @@ ui.strengthRepsInput.addEventListener('input', () => { strengthInputsDirty = tru
 
 ui.statsMetricSearch.addEventListener('input', () => {
   statsMetricSearchTerm = ui.statsMetricSearch.value.trim();
-  statsVisibleMetricCount = 8;
+  statsMetricPickerOpen = Boolean(statsMetricSearchTerm);
+  renderStats();
+});
+
+ui.statsMetricSearch.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') event.preventDefault();
+  if (event.key === 'Escape' && statsMetricPickerOpen) {
+    statsMetricPickerOpen = false;
+    setMetricPickerOpen(false, ui.statsMetricSuggestions, ui.statsMetricSearch, ui.statsMetricExpand);
+  }
+});
+
+ui.statsMetricExpand.addEventListener('click', () => {
+  statsMetricPickerOpen = !statsMetricPickerOpen;
+  renderStats();
+  if (statsMetricPickerOpen) ui.statsMetricSearch.focus();
+});
+
+ui.statsMetricClear.addEventListener('click', () => {
+  statsMetricSearchTerm = '';
+  ui.statsMetricSearch.value = '';
+  statsMetricPickerOpen = false;
+  renderStats();
+  ui.statsMetricSearch.focus();
+});
+
+ui.statsMetricSuggestions.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-metric-id]');
+  if (!button) return;
+
+  selectMetric(button.dataset.metricId);
+  ui.statsMetricSelect.value = button.dataset.metricId;
+  statsMetricSearchTerm = '';
+  ui.statsMetricSearch.value = '';
+  statsMetricPickerOpen = false;
   renderStats();
 });
 
 if (ui.homeSearch) {
   ui.homeSearch.addEventListener('input', () => {
     homeSearchTerm = ui.homeSearch.value.trim().toLowerCase();
+    homeSearchSuggestionsOpen = Boolean(ui.homeSearch.value.trim());
+    updateHomeSearchClearButton();
+    renderHomeSearchSuggestions();
     renderHome();
   });
+  ui.homeSearch.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && homeSearchSuggestionsOpen) {
+      homeSearchSuggestionsOpen = false;
+      renderHomeSearchSuggestions();
+    }
+  });
 }
+
+ui.homeSearchExpand?.addEventListener('click', () => {
+  homeSearchSuggestionsOpen = !homeSearchSuggestionsOpen;
+  renderHomeSearchSuggestions();
+  if (homeSearchSuggestionsOpen) ui.homeSearch.focus();
+});
+
+ui.homeSearchClear?.addEventListener('click', () => {
+  ui.homeSearch.value = '';
+  homeSearchTerm = '';
+  homeSearchSuggestionsOpen = false;
+  updateHomeSearchClearButton();
+  renderHomeSearchSuggestions();
+  renderHome();
+  ui.homeSearch.focus();
+});
+
+document.addEventListener('click', (event) => {
+  if (addMetricPickerOpen && !event.target.closest('#addMetricPicker')) {
+    addMetricPickerOpen = false;
+    setMetricPickerOpen(false, ui.addMetricSuggestions, ui.metricSelectSearch, ui.addMetricExpand);
+  }
+  if (statsMetricPickerOpen && !event.target.closest('#statsMetricPicker')) {
+    statsMetricPickerOpen = false;
+    setMetricPickerOpen(false, ui.statsMetricSuggestions, ui.statsMetricSearch, ui.statsMetricExpand);
+  }
+  if (
+    homeSearchSuggestionsOpen
+    && !event.target.closest('.search-dropdown-control')
+  ) {
+    homeSearchSuggestionsOpen = false;
+    renderHomeSearchSuggestions();
+  }
+});
 
 ui.strengthAddSetButton.addEventListener('click', () => {
   const loadKg = Number(ui.strengthLoadInput.value);
@@ -2329,20 +2493,6 @@ function renderMetricSearchDatalist(metrics) {
     .join('');
 }
 
-function renderHomeSearchDatalist(categories, metrics) {
-  if (!ui.homeSearchDatalist) return;
-  const options = [
-    ...new Set([
-      ...categories.map((category) => category.name),
-      ...metrics.map((metric) => `${metric.isArchived ? '# ' : ''}${metric.name}`),
-    ]),
-  ].sort((a, b) => a.localeCompare(b));
-
-  ui.homeSearchDatalist.innerHTML = options
-    .map((value) => `<option value="${value}"></option>`)
-    .join('');
-}
-
 async function confirmAndDeleteCategory(categoryId) {
   const categories = await listCategories();
   const category = categories.find((cat) => cat.id === categoryId);
@@ -2512,13 +2662,14 @@ ui.metricGrid.addEventListener('click', async (event) => {
       if (!didSwitchMetric) return;
       addMetricSearchTerm = '';
       ui.metricSelectSearch.value = '';
-      addVisibleMetricCount = 8;
+      addMetricPickerOpen = false;
       renderAddMetricSelect();
       const metrics = await listMetrics(false);
       const metric = metrics.find((item) => item.id === metricId);
       if (metric && ui.homeSearch) {
         ui.homeSearch.value = metric.name;
         homeSearchTerm = metric.name.toLowerCase();
+        updateHomeSearchClearButton();
       }
       await renderMetricDropdown();
       ui.metricSelect.value = metricId;
@@ -2528,11 +2679,15 @@ ui.metricGrid.addEventListener('click', async (event) => {
     } else if (action === 'stats') {
       activeFilters.stats = 'Recent';
       selectMetric(metricId);
+      statsMetricSearchTerm = '';
+      ui.statsMetricSearch.value = '';
+      statsMetricPickerOpen = false;
       const metrics = await listMetrics(false);
       const metric = metrics.find((item) => item.id === metricId);
       if (metric && ui.homeSearch) {
         ui.homeSearch.value = metric.name;
         homeSearchTerm = metric.name.toLowerCase();
+        updateHomeSearchClearButton();
       }
       const statsTab = document.querySelector('.tab[data-view="stats"]');
       if (statsTab) statsTab.click();
@@ -2589,12 +2744,15 @@ ui.statsMetricSelect.addEventListener('change', () => {
   renderStats();
 });
 
-ui.statsMetricPills.addEventListener('click', (event) => {
+ui.statsMetricSuggestions.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-metric-id]');
   if (!button) return;
 
   selectMetric(button.dataset.metricId);
   ui.statsMetricSelect.value = button.dataset.metricId;
+  statsMetricSearchTerm = '';
+  ui.statsMetricSearch.value = '';
+  statsMetricPickerOpen = false;
   renderStats();
 });
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  canKeepMetricValues,
   filterMetricsBySearch,
   filterMetricsByView,
   getRecentMetricIds,
@@ -18,6 +19,51 @@ const categories = [
   { id: 'general', name: 'general' },
   { id: 'health', name: 'health' },
 ];
+
+test('allows keeping values when metric kinds match', () => {
+  assert.equal(
+    canKeepMetricValues(
+      { metricKind: 'quantitative' },
+      { metricKind: 'quantitative' }
+    ),
+    true
+  );
+  assert.equal(
+    canKeepMetricValues(
+      { metricKind: 'strength_session' },
+      { metricKind: 'strength_session' }
+    ),
+    true
+  );
+});
+
+test('requires clearing values when metric kinds differ or are unavailable', () => {
+  assert.equal(
+    canKeepMetricValues(
+      { metricKind: 'quantitative' },
+      { metricKind: 'strength_session' }
+    ),
+    false
+  );
+  assert.equal(canKeepMetricValues(null, { metricKind: 'quantitative' }), false);
+});
+
+test('infers metric kind for legacy metrics without one', () => {
+  assert.equal(
+    canKeepMetricValues(
+      { unitType: 'integer_range' },
+      { metricKind: 'score' }
+    ),
+    true
+  );
+  assert.equal(
+    canKeepMetricValues(
+      { unitType: 'integer' },
+      { metricKind: 'count' }
+    ),
+    true
+  );
+});
 
 test('orders recent metrics by latest entry, then alphabetically', () => {
   const entries = [
