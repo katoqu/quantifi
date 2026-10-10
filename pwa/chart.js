@@ -1,3 +1,30 @@
+function escapeSvgText(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&apos;',
+  })[character]);
+}
+
+function getNiceStep(value) {
+  const exponent = Math.floor(Math.log10(value));
+  const magnitude = 10 ** exponent;
+  const fraction = value / magnitude;
+  const niceFractions = [1, 2, 2.5, 5, 10];
+  const closestFraction = niceFractions.reduce((closest, candidate) => (
+    Math.abs(candidate - fraction) < Math.abs(closest - fraction) ? candidate : closest
+  ));
+  return closestFraction * magnitude;
+}
+
+function formatAxisTick(value, step) {
+  const decimalPlaces = Math.max(0, -Math.floor(Math.log10(step)));
+  if (decimalPlaces === 0) return String(Math.round(value));
+  return value.toFixed(decimalPlaces).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+
 export function generateSvgChart(data, metric) {
   if (data.length === 0) {
     return `<div style="text-align: center; padding: 40px; color: var(--muted, #64748b);">No data in this period.</div>`;
@@ -11,6 +38,25 @@ export function generateSvgChart(data, metric) {
   const xMin = padding.left;
   const yMax = height - padding.bottom;
   const yMin = padding.top;
+  const pointLabel = (d) => {
+    const unit = metric.unitName ? ` ${metric.unitName}` : '';
+    return `${d.dateStr}: ${d.value}${unit}`;
+  };
+  const renderTooltip = (d, x, y) => {
+    const label = pointLabel(d);
+    const tooltipWidth = Math.min(width - 16, Math.max(84, label.length * 7 + 16));
+    const tooltipX = Math.max(
+      tooltipWidth / 2 + 8,
+      Math.min(width - tooltipWidth / 2 - 8, x)
+    );
+    const tooltipY = y > 58 ? y - 4 : y + 34;
+    return `
+      <g class="chart-tooltip" transform="translate(${tooltipX} ${tooltipY})" aria-hidden="true">
+        <rect x="${-tooltipWidth / 2}" y="-26" width="${tooltipWidth}" height="22" rx="5" />
+        <text x="0" y="-11" text-anchor="middle">${escapeSvgText(label)}</text>
+      </g>
+    `;
+  };
 
   const values = data.map((d) => d.value);
   let minVal = Math.min(...values);
@@ -33,6 +79,39 @@ export function generateSvgChart(data, metric) {
     }
   }
 
+  let yTickValues;
+  let yTickStep;
+  if (isScore) {
+    yTickStep = Math.max(1, Math.ceil((maxVal - minVal) / 4));
+    yTickValues = [];
+    for (let value = minVal; value <= maxVal; value += yTickStep) {
+      yTickValues.push(value);
+    }
+    if (yTickValues.at(-1) !== maxVal) yTickValues.push(maxVal);
+  } else {
+    const originalRange = maxVal - minVal;
+    yTickStep = getNiceStep(originalRange / 4);
+    let tickMin = Math.floor(minVal / yTickStep) * yTickStep;
+    let tickMax = Math.ceil(maxVal / yTickStep) * yTickStep;
+    while ((tickMax - tickMin) / yTickStep > 5) {
+      const magnitude = 10 ** Math.floor(Math.log10(yTickStep));
+      const fraction = yTickStep / magnitude;
+      const nextFraction = [1, 2, 2.5, 5, 10].find((candidate) => candidate > fraction);
+      yTickStep = nextFraction
+        ? nextFraction * magnitude
+        : 10 * magnitude;
+      tickMin = Math.floor(minVal / yTickStep) * yTickStep;
+      tickMax = Math.ceil(maxVal / yTickStep) * yTickStep;
+    }
+    minVal = tickMin;
+    maxVal = tickMax;
+    const intervalCount = Math.round((tickMax - tickMin) / yTickStep);
+    yTickValues = Array.from(
+      { length: intervalCount + 1 },
+      (_, index) => tickMin + index * yTickStep
+    );
+  }
+
   const times = data.map((d) => d.date.getTime());
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
@@ -50,15 +129,12 @@ export function generateSvgChart(data, metric) {
   const avgVal = values.reduce((s, v) => s + v, 0) / values.length;
   const yBaseline = getY(avgVal);
 
-  const yTicks = 4;
   let yGridHtml = '';
-  for (let i = 0; i <= yTicks; i++) {
-    const ratio = i / yTicks;
-    const val = minVal + ratio * (maxVal - minVal);
+  for (const val of yTickValues) {
     const y = getY(val);
     yGridHtml += `
       <line x1="${xMin}" y1="${y}" x2="${xMax}" y2="${y}" stroke="var(--border, #cbd5e1)" stroke-dasharray="2,4" opacity="0.4" />
-      <text x="${xMin - 10}" y="${y + 4}" font-size="10" fill="var(--muted, #64748b)" text-anchor="end">${val.toFixed(isScore ? 0 : 1)}</text>
+      <text x="${xMin - 10}" y="${y + 4}" font-size="10" fill="var(--muted, #64748b)" text-anchor="end">${formatAxisTick(val, yTickStep)}</text>
     `;
   }
 
@@ -90,9 +166,14 @@ export function generateSvgChart(data, metric) {
       const y = getY(d.value);
       const barHeight = yMax - y;
       const color = isScore ? 'var(--primary, #3b82f6)' : 'rgba(59, 130, 246, 0.8)';
-      return `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" rx="2" opacity="0.85">
-        <title>${d.dateStr}: ${d.value.toFixed(1)}</title>
-      </rect>`;
+      const label = pointLabel(d);
+      return `<g class="chart-point" tabindex="0" role="img" aria-label="${escapeSvgText(label)}">
+        <rect class="chart-mark" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" rx="2" opacity="0.85">
+          <title>${escapeSvgText(label)}</title>
+        </rect>
+        <circle class="chart-point-hit-area" cx="${xPositions[index]}" cy="${y}" r="12" />
+        ${renderTooltip(d, xPositions[index], y)}
+      </g>`;
     }).join('');
   } else {
     let pathD = '';
@@ -115,9 +196,18 @@ export function generateSvgChart(data, metric) {
 
     chartElements = `
       <path d="${pathD}" fill="none" stroke="var(--primary, #3b82f6)" stroke-width="3" />
-      ${data.map((d) => `<circle cx="${getX(d.date)}" cy="${getY(d.value)}" r="4" fill="var(--primary, #3b82f6)" stroke="white" stroke-width="1">
-        <title>${d.dateStr}: ${d.value.toFixed(1)}</title>
-      </circle>`).join('')}
+      ${data.map((d) => {
+        const x = getX(d.date);
+        const y = getY(d.value);
+        const label = pointLabel(d);
+        return `<g class="chart-point" tabindex="0" role="img" aria-label="${escapeSvgText(label)}">
+          <circle class="chart-mark" cx="${x}" cy="${y}" r="4" fill="var(--primary, #3b82f6)" stroke="white" stroke-width="1">
+            <title>${escapeSvgText(label)}</title>
+          </circle>
+          <circle class="chart-point-hit-area" cx="${x}" cy="${y}" r="12" />
+          ${renderTooltip(d, x, y)}
+        </g>`;
+      }).join('')}
     `;
   }
 

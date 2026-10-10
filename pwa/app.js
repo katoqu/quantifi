@@ -2444,6 +2444,15 @@ ui.installButton.addEventListener('click', async () => {
   ui.installButton.classList.add('hidden');
 });
 
+ui.statsChartContainer.addEventListener('click', (event) => {
+  const point = event.target.closest('.chart-point');
+  const wasOpen = point?.classList.contains('is-open');
+  ui.statsChartContainer.querySelectorAll('.chart-point.is-open').forEach((openPoint) => {
+    openPoint.classList.remove('is-open');
+  });
+  if (point && !wasOpen) point.classList.add('is-open');
+});
+
 
 // Date pills handler
 if (ui.entryDatePills) {

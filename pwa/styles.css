@@ -733,6 +733,42 @@ main {
   background: transparent;
 }
 
+.chart-point {
+  cursor: pointer;
+  outline: none;
+}
+
+.chart-point-hit-area {
+  fill: transparent;
+}
+
+.chart-tooltip {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.chart-point:hover .chart-tooltip,
+.chart-point:focus .chart-tooltip,
+.chart-point.is-open .chart-tooltip {
+  opacity: 1;
+}
+
+.chart-tooltip rect {
+  fill: #0f172a;
+}
+
+.chart-tooltip text {
+  fill: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.chart-point:focus-visible .chart-mark {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
 /* Dark Mode support variables & styles */
 html[data-theme="dark"] {
   --bg: #0f172a;
