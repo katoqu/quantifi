@@ -13,19 +13,37 @@ export function getRecentMetricIds(entries, limit = 5) {
   return recentIds;
 }
 
+export function sortMetricsByRecentEntry(metrics, entries) {
+  const latestEntryByMetric = new Map();
+  for (const entry of entries) {
+    const timestamp = new Date(entry.recordedAt).getTime();
+    if (!Number.isFinite(timestamp)) continue;
+    latestEntryByMetric.set(
+      entry.metricId,
+      Math.max(latestEntryByMetric.get(entry.metricId) ?? -Infinity, timestamp)
+    );
+  }
+  return [...metrics].sort((a, b) => {
+    const aLatest = latestEntryByMetric.get(a.id) ?? -Infinity;
+    const bLatest = latestEntryByMetric.get(b.id) ?? -Infinity;
+    if (aLatest !== bLatest) return bLatest - aLatest;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export function filterMetricsByView(filter, metrics, entries, categories) {
   if (!filter || filter === 'Recent') {
     const recentIds = getRecentMetricIds(entries, 5);
-    if (recentIds.length > 0) {
-      const recentMap = new Map(recentIds.map((id, index) => [id, index]));
-      return [...metrics].sort((a, b) => {
-        const aIndex = recentMap.has(a.id) ? recentMap.get(a.id) : Infinity;
-        const bIndex = recentMap.has(b.id) ? recentMap.get(b.id) : Infinity;
-        if (aIndex !== bIndex) return aIndex - bIndex;
-        return a.name.localeCompare(b.name);
-      });
+    if (!recentIds.length) {
+      return [...metrics].sort((a, b) => a.name.localeCompare(b.name));
     }
-    return [...metrics].sort((a, b) => a.name.localeCompare(b.name));
+    const recentMap = new Map(recentIds.map((id, index) => [id, index]));
+    return [...metrics].sort((a, b) => {
+      const aIndex = recentMap.has(a.id) ? recentMap.get(a.id) : Infinity;
+      const bIndex = recentMap.has(b.id) ? recentMap.get(b.id) : Infinity;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      return a.name.localeCompare(b.name);
+    });
   }
   const category = categories.find((item) => item.name.toLowerCase() === filter.toLowerCase());
   if (!category) return [];

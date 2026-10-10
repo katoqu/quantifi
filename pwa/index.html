@@ -57,54 +57,56 @@
                 Search metrics
                 <input type="search" id="metricSelectSearch" class="search-field" placeholder="Type a metric or category..." autocomplete="off" enterkeyhint="search" />
               </label>
-              <label>
-                Metric
-                <select id="metricSelect"></select>
-              </label>
-              <label>
-                Date
-                <div id="entryDatePills" class="pills-container"></div>
-                <div id="dateTimeFields" class="hidden">
+              <div id="metricSelectPills" class="metric-choice-list" role="group" aria-label="Choose a metric for a new entry"></div>
+              <p id="selectedMetricLabel" class="muted-text hidden" aria-live="polite"></p>
+              <p id="entryFieldsHint" class="muted-text">Choose a metric to enable the entry fields.</p>
+              <select id="metricSelect" class="hidden" tabindex="-1" aria-hidden="true"></select>
+              <fieldset id="entryFields" disabled>
+                <label>
+                  Date
+                  <div id="entryDatePills" class="pills-container"></div>
+                  <div id="dateTimeFields" class="hidden">
+                    <div class="strength-grid">
+                      <label>
+                        Date
+                        <input type="date" id="entryDate" />
+                      </label>
+                      <label>
+                        Time
+                        <input type="time" id="entryTime" />
+                      </label>
+                    </div>
+                  </div>
+                </label>
+                <div id="numericValueField">
+                  <label>
+                    Value
+                    <input type="number" id="entryValue" step="any" />
+                  </label>
+                </div>
+                <div id="strengthWorkoutFields" class="hidden">
+                  <div id="strengthBaseline" class="info-banner hidden"></div>
                   <div class="strength-grid">
                     <label>
-                      Date
-                      <input type="date" id="entryDate" />
+                      Load (kg)
+                      <input type="number" id="strengthLoadInput" step="0.5" min="0" />
                     </label>
                     <label>
-                      Time
-                      <input type="time" id="entryTime" />
+                      Reps
+                      <input type="number" id="strengthRepsInput" step="1" min="1" value="5" />
                     </label>
                   </div>
+                  <button id="strengthAddSetButton" type="button" class="secondary">Add set</button>
+                  <div id="strengthSetList" class="list"></div>
                 </div>
-              </label>
-              <div id="numericValueField">
-                <label>
-                  Value
-                  <input type="number" id="entryValue" step="any" />
-                </label>
-              </div>
-              <div id="strengthWorkoutFields" class="hidden">
-                <div id="strengthBaseline" class="info-banner hidden"></div>
-                <div class="strength-grid">
+                <div id="targetActionField">
                   <label>
-                    Load (kg)
-                    <input type="number" id="strengthLoadInput" step="0.5" min="0" />
-                  </label>
-                  <label>
-                    Reps
-                    <input type="number" id="strengthRepsInput" step="1" min="1" value="5" />
+                    Target for next session
+                    <div id="targetActionPills" class="pills-container"></div>
                   </label>
                 </div>
-                <button id="strengthAddSetButton" type="button" class="secondary">Add set</button>
-                <div id="strengthSetList" class="list"></div>
-              </div>
-              <div id="targetActionField">
-                <label>
-                  Target for next session
-                  <div id="targetActionPills" class="pills-container"></div>
-                </label>
-              </div>
-              <button type="submit" class="primary">Save entry</button>
+                <button type="submit" class="primary">Save entry</button>
+              </fieldset>
             </form>
           </div>
         </section>
@@ -117,10 +119,8 @@
                 Search metrics
                 <input type="search" id="statsMetricSearch" class="search-field" placeholder="Type a metric or category..." autocomplete="off" />
               </label>
-              <label>
-                Select Metric
-                <select id="statsMetricSelect"></select>
-              </label>
+              <div id="statsMetricPills" class="metric-choice-list" role="group" aria-label="Choose a metric to view stats"></div>
+              <select id="statsMetricSelect" class="hidden" tabindex="-1" aria-hidden="true"></select>
 
               <div id="statsControls" class="viz-controls hidden" style="margin-top: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
@@ -367,6 +367,23 @@
               </thead>
               <tbody id="entriesTableBody"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="metricSwitchModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="metricSwitchTitle" aria-describedby="metricSwitchMessage">
+      <div class="modal-overlay"></div>
+      <div class="modal-content metric-switch-content">
+        <div class="modal-header">
+          <h2 id="metricSwitchTitle">Switch metric?</h2>
+        </div>
+        <div class="modal-body">
+          <p id="metricSwitchMessage">You have entered data for this metric. Choose whether to keep or clear it before switching.</p>
+          <div class="metric-switch-actions">
+            <button type="button" id="cancelMetricSwitch" class="secondary">Cancel</button>
+            <button type="button" id="keepMetricValues" class="primary">Switch and keep values</button>
+            <button type="button" id="clearMetricValues" class="secondary">Switch and clear values</button>
           </div>
         </div>
       </div>

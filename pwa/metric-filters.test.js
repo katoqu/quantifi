@@ -5,6 +5,7 @@ import {
   filterMetricsBySearch,
   filterMetricsByView,
   getRecentMetricIds,
+  sortMetricsByRecentEntry,
 } from './metric-filters.js';
 
 const metrics = [
@@ -29,6 +30,25 @@ test('orders recent metrics by latest entry, then alphabetically', () => {
   assert.deepEqual(
     filterMetricsByView('Recent', metrics, entries, categories).map((metric) => metric.id),
     ['mood', 'water', 'sleep']
+  );
+});
+
+test('orders all metrics by recency, then alphabetically for metrics without entries', () => {
+  const metricsWithOlderEntries = [
+    ...metrics,
+    { id: 'reading', name: 'reading', categoryId: 'general', isArchived: false },
+    { id: 'walking', name: 'walking', categoryId: 'general', isArchived: false },
+  ];
+  const entries = [
+    { metricId: 'sleep', recordedAt: '2026-04-01T10:00:00Z' },
+    { metricId: 'water', recordedAt: '2026-03-01T10:00:00Z' },
+    { metricId: 'mood', recordedAt: '2026-05-01T10:00:00Z' },
+    { metricId: 'reading', recordedAt: '2026-02-01T10:00:00Z' },
+  ];
+
+  assert.deepEqual(
+    sortMetricsByRecentEntry(metricsWithOlderEntries, entries).map((metric) => metric.id),
+    ['mood', 'sleep', 'water', 'reading', 'walking']
   );
 });
 
