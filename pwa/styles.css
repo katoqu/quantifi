@@ -6,6 +6,8 @@
   --muted: #64748b;
   --primary: #2563eb;
   --primary-strong: #1d4ed8;
+  --metric-choice-bg: #d1fae5;
+  --metric-choice-accent: #0f766e;
 }
 
 * { box-sizing: border-box; }
@@ -124,6 +126,14 @@ button:hover { filter: brightness(0.98); }
   background: var(--primary);
   color: white;
   border-color: var(--primary);
+}
+
+#entryDatePills .pill,
+#targetActionPills .pill {
+  min-height: 32px;
+  padding: 3px 9px;
+  border-radius: 10px;
+  font-size: 0.78rem;
 }
 
 .panel {
@@ -331,28 +341,51 @@ textarea {
   max-width: 100%;
   min-height: 44px;
   padding: 8px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--metric-choice-bg);
   color: var(--text);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 
 .metric-choice[aria-pressed="true"] {
-  border-color: var(--primary);
-  background: var(--primary);
+  border-color: var(--metric-choice-accent);
+  background: var(--metric-choice-accent);
   color: white;
+}
+
+.metric-choice[aria-pressed="true"]::before {
+  content: "✓";
+  font-size: 0.8em;
+  font-weight: 700;
+}
+
+.metric-choice:active {
+  transform: scale(0.97);
+}
+
+.metric-choice:focus-visible {
+  outline: 2px solid var(--metric-choice-accent);
+  outline-offset: 2px;
 }
 
 .metric-choice-label {
   display: block;
   max-width: min(58vw, 240px);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .metric-choice-more {
+  border-style: dashed;
+  background: transparent;
   color: var(--primary);
 }
 
@@ -709,6 +742,8 @@ html[data-theme="dark"] {
   --muted: #94a3b8;
   --primary: #3b82f6;
   --primary-strong: #60a5fa;
+  --metric-choice-bg: #1a514a;
+  --metric-choice-accent: #0f766e;
   --gradient-start: #1e1b4b;
 }
 
