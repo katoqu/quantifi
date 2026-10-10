@@ -5,6 +5,7 @@ import {
   createMetric,
   deleteCategory,
   deleteEntry,
+  deleteMetric,
   exportDataAsCsv,
   getMetricByName,
   importCsvText,
@@ -56,6 +57,7 @@ const ui = {
   saveMetricEdit: document.querySelector('#saveMetricEdit'),
   cancelMetricEdit: document.querySelector('#cancelMetricEdit'),
   archiveMetricEdit: document.querySelector('#archiveMetricEdit'),
+  deleteMetricEdit: document.querySelector('#deleteMetricEdit'),
   cancelMetric: document.querySelector('#cancelMetric'),
   categoryList: document.querySelector('#categoryList'),
   categoryForm: document.querySelector('#categoryForm'),
@@ -1042,12 +1044,15 @@ async function renderSettings() {
 
   if (isEditingMetric && selectedMetricForEdit) {
     const selectedMetric = metrics.find(m => m.id === selectedMetricForEdit);
+    ui.deleteMetricEdit.hidden = !selectedMetric?.isArchived;
     if (selectedMetric) {
       ui.editMetricName.value = selectedMetric.name || '';
       ui.editMetricDescription.value = selectedMetric.description || '';
       // Set archive button text based on current state
       ui.archiveMetricEdit.textContent = selectedMetric.isArchived ? 'Unarchive' : 'Archive';
     }
+  } else {
+    ui.deleteMetricEdit.hidden = true;
   }
 
   renderMetricSearchDatalist(metrics);
@@ -1660,6 +1665,46 @@ ui.archiveMetricEdit.addEventListener('click', async () => {
   // Update the button text based on new state
   ui.archiveMetricEdit.textContent = newArchiveState ? 'Unarchive' : 'Archive';
   
+  incrementUnsavedCount();
+  renderAll();
+});
+
+ui.deleteMetricEdit.addEventListener('click', async () => {
+  if (!selectedMetricForEdit) return;
+
+  const metrics = await listMetrics(true);
+  const metric = metrics.find((item) => item.id === selectedMetricForEdit);
+  if (!metric) {
+    window.alert('Metric not found.');
+    return;
+  }
+  if (!metric.isArchived) {
+    window.alert('Only archived metrics can be deleted.');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Permanently delete the archived metric "${metric.name}" and all of its entries? This cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  try {
+    await deleteMetric(metric.id);
+  } catch (error) {
+    console.error('Metric deletion error:', error);
+    window.alert(`Unable to delete metric: ${error.message}`);
+    return;
+  }
+
+  isEditingMetric = false;
+  selectedMetricForEdit = null;
+  metricSearchTerm = '';
+  ui.metricSearch.value = '';
+  ui.metricEditForm.style.display = 'none';
+  ui.metricEditFields.style.display = 'none';
+  ui.addMetricBtn.classList.remove('active');
+  ui.editMetricBtn.classList.remove('active');
+
   incrementUnsavedCount();
   renderAll();
 });

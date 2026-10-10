@@ -225,6 +225,14 @@ export async function archiveMetric(metricId) {
 }
 
 export async function deleteMetric(metricId) {
+  const metric = await getRecord(STORE_NAMES.metrics, metricId);
+  if (!metric) {
+    throw new Error('Metric not found.');
+  }
+  if (!metric.isArchived) {
+    throw new Error('Only archived metrics can be deleted.');
+  }
+
   await deleteRecord(STORE_NAMES.metrics, metricId);
   const entries = await listEntriesForMetric(metricId);
   for (const entry of entries) {
