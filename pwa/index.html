@@ -53,6 +53,10 @@
           <button class="back-button secondary">← Back</button>
           <div class="panel">
             <form id="entryForm" class="stacked-form" novalidate>
+              <label class="search-label">
+                Search metrics
+                <input type="search" id="metricSelectSearch" class="search-field" placeholder="Type a metric or category..." autocomplete="off" enterkeyhint="search" />
+              </label>
               <label>
                 Metric
                 <select id="metricSelect"></select>
@@ -109,6 +113,10 @@
           <button class="back-button secondary">← Back</button>
           <div class="panel">
             <div class="stacked-form" style="margin-bottom: 15px;">
+              <label class="search-label">
+                Search metrics
+                <input type="search" id="statsMetricSearch" class="search-field" placeholder="Type a metric or category..." autocomplete="off" />
+              </label>
               <label>
                 Select Metric
                 <select id="statsMetricSelect"></select>

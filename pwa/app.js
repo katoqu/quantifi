@@ -39,6 +39,8 @@ const ui = {
   views: Array.from(document.querySelectorAll('.view')),
   metricGrid: document.querySelector('#metricGrid'),
   metricSelect: document.querySelector('#metricSelect'),
+  metricSelectSearch: document.querySelector('#metricSelectSearch'),
+  statsMetricSearch: document.querySelector('#statsMetricSearch'),
   metricName: document.querySelector('#metricName'),
   metricCategory: document.querySelector('#metricCategory'),
   metricUnit: document.querySelector('#metricUnit'),
@@ -140,6 +142,10 @@ let editingEntryId = null;
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
 let homeSearchTerm = '';
+let addMetricSearchTerm = '';
+let statsMetricSearchTerm = '';
+let addMetricCandidates = [];
+let addMetricCategories = [];
 const SHOW_ARCHIVED_METRICS_KEY = 'quantifi-show-archived-metrics';
 let showArchivedMetrics = localStorage.getItem(SHOW_ARCHIVED_METRICS_KEY) === 'true';
 const BACKUP_CHANGE_THRESHOLD = 10;
@@ -440,27 +446,43 @@ async function renderMetricDropdown() {
   if (currentMetric && !filteredMetrics.some((metric) => metric.id === currentMetric.id)) {
     filteredMetrics = [...filteredMetrics, currentMetric];
   }
+  ui.metricSelectSearch.value = addMetricSearchTerm;
+  addMetricCandidates = filteredMetrics;
+  addMetricCategories = categories;
+  renderAddMetricSelect();
+  await syncAddFormMode();
+}
+
+function renderAddMetricSelect() {
+  const filteredMetrics = filterMetricsBySearch(
+    addMetricCandidates,
+    addMetricCategories,
+    addMetricSearchTerm
+  );
   const previousValue = currentMetricId || ui.metricSelect.value;
+  const hasPreviousValue = filteredMetrics.some((metric) => metric.id === previousValue);
+  const needsPlaceholder = Boolean(addMetricSearchTerm)
+    || filteredMetrics.length === 0
+    || (Boolean(currentMetricId) && !hasPreviousValue);
+  const placeholderText = addMetricSearchTerm
+    ? (filteredMetrics.length ? 'Choose a matching metric' : 'No matching metrics')
+    : (currentMetricId ? 'Select an active metric to add an entry' : 'No active metrics available');
 
-  ui.metricSelect.innerHTML = filteredMetrics
+  ui.metricSelect.innerHTML = `${needsPlaceholder ? `<option value="">${placeholderText}</option>` : ''}${filteredMetrics
     .map((metric) => `<option value="${metric.id}">${metric.name}</option>`)
-    .join('');
+    .join('')}`;
 
-  if (filteredMetrics.some((m) => m.id === previousValue)) {
+  if (hasPreviousValue) {
     ui.metricSelect.value = previousValue;
-  } else if (currentMetricId) {
+  } else if (currentMetricId || addMetricSearchTerm) {
     ui.metricSelect.value = '';
   } else {
     ui.metricSelect.value = filteredMetrics[0]?.id ?? '';
   }
 
-  if (!ui.metricSelect.value && currentMetricId) {
-    ui.metricSelect.insertAdjacentHTML('afterbegin', '<option value="">Select an active metric to add an entry</option>');
-  }
   if (ui.metricSelect.value && !currentMetricId) {
     selectMetric(ui.metricSelect.value);
   }
-  await syncAddFormMode();
 }
 
 async function renderHome() {
@@ -830,11 +852,13 @@ async function renderStats() {
   if (currentMetric && !filteredMetrics.some((metric) => metric.id === currentMetric.id)) {
     filteredMetrics = [...filteredMetrics, currentMetric];
   }
+  ui.statsMetricSearch.value = statsMetricSearchTerm;
+  filteredMetrics = filterMetricsBySearch(filteredMetrics, categories, statsMetricSearchTerm);
 
   const prevSelectedValue = currentMetricId || ui.statsMetricSelect.value;
-  ui.statsMetricSelect.innerHTML = filteredMetrics
+  ui.statsMetricSelect.innerHTML = `${filteredMetrics.length ? '' : `<option value="">${statsMetricSearchTerm ? 'No matching metrics' : 'No metrics available'}</option>`}${filteredMetrics
     .map((m) => `<option value="${m.id}">${m.isArchived ? '# ' : ''}${m.name}${m.isArchived ? ' (Archived)' : ''}</option>`)
-    .join('');
+    .join('')}`;
 
   if (filteredMetrics.some((m) => m.id === prevSelectedValue)) {
     ui.statsMetricSelect.value = prevSelectedValue;
@@ -1154,6 +1178,20 @@ document.querySelectorAll('.back-button').forEach((btn) => {
 ui.metricSelect.addEventListener('change', () => {
   selectMetric(ui.metricSelect.value);
   syncAddFormMode();
+});
+
+ui.metricSelectSearch.addEventListener('input', () => {
+  addMetricSearchTerm = ui.metricSelectSearch.value.trim();
+  renderAddMetricSelect();
+});
+
+ui.metricSelectSearch.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') event.preventDefault();
+});
+
+ui.statsMetricSearch.addEventListener('input', () => {
+  statsMetricSearchTerm = ui.statsMetricSearch.value.trim();
+  renderStats();
 });
 
 if (ui.homeSearch) {
