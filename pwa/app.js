@@ -50,6 +50,18 @@ const ui = {
   tabs: Array.from(document.querySelectorAll('.tab')),
   views: Array.from(document.querySelectorAll('.view')),
   metricGrid: document.querySelector('#metricGrid'),
+  homeNoMetrics: document.querySelector('#homeNoMetrics'),
+  createFirstMetric: document.querySelector('#createFirstMetric'),
+  quickStartCard: document.querySelector('#quickStartCard'),
+  dismissQuickStart: document.querySelector('#dismissQuickStart'),
+  neverShowQuickStart: document.querySelector('#neverShowQuickStart'),
+  showQuickStart: document.querySelector('#showQuickStart'),
+  homeCreateDetails: document.querySelector('#homeCreateDetails'),
+  homeCreateToggle: document.querySelector('#homeCreateToggle'),
+  homeCreateExpand: document.querySelector('#homeCreateExpand'),
+  homeCreateContent: document.querySelector('#homeCreateContent'),
+  homeSettingsLink: document.querySelector('#homeSettingsLink'),
+  manageAttributesDetails: document.querySelector('#manageAttributesDetails'),
   homeSearchClear: document.querySelector('#homeSearchClear'),
   homeSearchExpand: document.querySelector('#homeSearchExpand'),
   homeSearchSuggestions: document.querySelector('#homeSearchSuggestions'),
@@ -198,6 +210,8 @@ let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Rece
 let homeSearchTerm = '';
 let homeSearchOptions = [];
 let homeSearchSuggestionsOpen = false;
+let homeCreatePanelInitialized = false;
+let openManageAttributesOnSettings = false;
 let addMetricSearchTerm = '';
 let statsMetricSearchTerm = '';
 let addMetricCandidates = [];
@@ -207,6 +221,8 @@ let addMetricPickerOpen = false;
 let statsMetricPickerOpen = false;
 let statsRenderRequestId = 0;
 const SHOW_ARCHIVED_METRICS_KEY = 'quantifi-show-archived-metrics';
+const QUICK_START_DISMISSED_KEY = 'quantifi-quick-start-dismissed';
+const QUICK_START_NEVER_SHOW_KEY = 'quantifi-quick-start-never-show';
 let showArchivedMetrics = localStorage.getItem(SHOW_ARCHIVED_METRICS_KEY) === 'true';
 const BACKUP_CHANGE_THRESHOLD = 10;
 const BACKUP_REMINDER_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -449,6 +465,10 @@ async function initializeDatabase() {
     });
   }
 
+  const quickStartDismissed = localStorage.getItem(QUICK_START_DISMISSED_KEY) === 'true';
+  const quickStartNeverShow = localStorage.getItem(QUICK_START_NEVER_SHOW_KEY) === 'true';
+  ui.quickStartCard.classList.toggle('hidden', quickStartDismissed || quickStartNeverShow);
+  ui.showQuickStart.classList.toggle('hidden', !quickStartDismissed || quickStartNeverShow);
   await seedBaseData();
   resetEntryFormDateTime();
   resetChangeFormDateTime();
@@ -659,6 +679,11 @@ async function renderHome() {
   console.log('Metrics:', metrics.length, 'Active:', metrics.filter(m => !m.isArchived).length);
 
   const visibleMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
+  const hasActiveMetrics = metrics.some((metric) => !metric.isArchived);
+  if (!homeCreatePanelInitialized) {
+    setHomeCreateOpen(!hasActiveMetrics);
+    homeCreatePanelInitialized = true;
+  }
   setHomeSearchOptions(categories, visibleMetrics);
   let filteredMetrics = filterMetricsByView(activeFilters.home, visibleMetrics, entries, categories);
   const currentSearchTerm = ui.homeSearch ? ui.homeSearch.value.trim().toLowerCase() : homeSearchTerm;
@@ -746,6 +771,7 @@ async function renderHome() {
   }).join('') || (currentSearchTerm.startsWith('#') && !showArchivedMetrics
     ? '<p>No archived metrics shown. Enable “Show archived metrics in search and Stats” in Settings → Default behaviour.</p>'
     : '<p>No metrics match this filter.</p>');
+  ui.homeNoMetrics.classList.toggle('hidden', hasActiveMetrics || Boolean(currentSearchTerm));
 }
 
 async function renderLogs() {
@@ -1134,6 +1160,14 @@ let suppressDetailsReset = false;
 let settingsMode = 'categories';
 let entriesModalActionId = 0;
 
+function setHomeCreateOpen(open) {
+  ui.homeCreateContent.classList.toggle('hidden', !open);
+  ui.homeCreateToggle.setAttribute('aria-expanded', String(open));
+  ui.homeCreateExpand.setAttribute('aria-expanded', String(open));
+  ui.homeCreateExpand.setAttribute('aria-label', open ? 'Collapse create options' : 'Expand create options');
+  ui.homeCreateDetails.classList.toggle('is-open', open);
+}
+
 function updateSettingsSectionAvailability() {
   const manageAttributes = document.querySelector('#manageAttributesDetails');
   const exclusiveSections = [
@@ -1262,8 +1296,45 @@ async function renderSettings() {
   // Don't show metric cards when searching - only show edit fields when there's an exact match
   ui.metricList.innerHTML = '';
   
-  ui.metricCategory.innerHTML = categories.map((category) => `<option value="${category.id}">${category.name}</option>`).join('');
+  ui.metricCategory.innerHTML = '<option value="">No category</option>' + categories
+    .map((category) => `<option value="${category.id}">${category.name}</option>`)
+    .join('');
 }
+
+ui.dismissQuickStart.addEventListener('click', () => {
+  localStorage.setItem(QUICK_START_DISMISSED_KEY, 'true');
+  ui.quickStartCard.classList.add('hidden');
+  ui.showQuickStart.classList.remove('hidden');
+});
+
+ui.neverShowQuickStart.addEventListener('click', () => {
+  localStorage.setItem(QUICK_START_NEVER_SHOW_KEY, 'true');
+  localStorage.removeItem(QUICK_START_DISMISSED_KEY);
+  ui.quickStartCard.classList.add('hidden');
+  ui.showQuickStart.classList.add('hidden');
+});
+
+ui.showQuickStart.addEventListener('click', () => {
+  localStorage.removeItem(QUICK_START_DISMISSED_KEY);
+  ui.quickStartCard.classList.remove('hidden');
+  ui.showQuickStart.classList.add('hidden');
+});
+
+ui.createFirstMetric.addEventListener('click', () => ui.addMetricBtn.click());
+
+ui.homeCreateToggle.addEventListener('click', () => {
+  setHomeCreateOpen(ui.homeCreateContent.classList.contains('hidden'));
+});
+
+ui.homeCreateExpand.addEventListener('click', () => {
+  setHomeCreateOpen(ui.homeCreateContent.classList.contains('hidden'));
+});
+
+ui.homeSettingsLink.addEventListener('click', (event) => {
+  event.preventDefault();
+  openManageAttributesOnSettings = true;
+  document.querySelector('.tab[data-view="settings"]').click();
+});
 
 ui.tabs.forEach((tab) => {
   tab.addEventListener('click', async () => {
@@ -1300,7 +1371,14 @@ ui.tabs.forEach((tab) => {
       d.removeAttribute('open');
     });
     suppressDetailsReset = false;
+    if (tab.dataset.view === 'home' && (await listMetrics(false)).length === 0) {
+      setHomeCreateOpen(true);
+    }
     if (tab.dataset.view === 'settings') updateSettingsSectionAvailability();
+    if (tab.dataset.view === 'settings' && openManageAttributesOnSettings) {
+      ui.manageAttributesDetails.open = true;
+      openManageAttributesOnSettings = false;
+    }
     // Initialize Add form if switching to Add tab
     if (tab.dataset.view === 'add') {
       await renderMetricDropdown();
@@ -1656,17 +1734,24 @@ ui.categoryForm.addEventListener('submit', async (event) => {
 
 // Add category button
 ui.addCategoryBtn.addEventListener('click', () => {
+  setHomeCreateOpen(true);
   isAddingCategory = true;
   isEditingCategory = false;
+  isAddingMetric = false;
+  isEditingMetric = false;
   selectedCategoryForEdit = null;
   categorySearchTerm = '';
   ui.categoryName.value = '';
   ui.categoryForm.style.display = 'grid';
   ui.categoryEditForm.style.display = 'none';
-  
+  ui.metricForm.style.display = 'none';
+  ui.metricEditForm.style.display = 'none';
+
   // Update active button states
   ui.addCategoryBtn.classList.add('active');
   ui.editCategoryBtn.classList.remove('active');
+  ui.addMetricBtn.classList.remove('active');
+  ui.editMetricBtn.classList.remove('active');
 });
 
 // Edit category button
@@ -1815,8 +1900,11 @@ ui.cancelCategory.addEventListener('click', () => {
 
 // Add metric button
 ui.addMetricBtn.addEventListener('click', () => {
+  setHomeCreateOpen(true);
   isAddingMetric = true;
   isEditingMetric = false;
+  isAddingCategory = false;
+  isEditingCategory = false;
   selectedMetricForEdit = null;
   metricSearchTerm = '';
   ui.metricName.value = '';
@@ -1824,10 +1912,14 @@ ui.addMetricBtn.addEventListener('click', () => {
   ui.metricDescription.value = '';
   ui.metricForm.style.display = 'grid';
   ui.metricEditForm.style.display = 'none';
-  
+  ui.categoryForm.style.display = 'none';
+  ui.categoryEditForm.style.display = 'none';
+
   // Update active button states
   ui.addMetricBtn.classList.add('active');
   ui.editMetricBtn.classList.remove('active');
+  ui.addCategoryBtn.classList.remove('active');
+  ui.editCategoryBtn.classList.remove('active');
 });
 
 // Edit metric button
@@ -2060,6 +2152,7 @@ ui.metricForm.addEventListener('submit', async (event) => {
   isAddingMetric = false;
   ui.metricForm.reset();
   ui.metricForm.style.display = 'none';
+  setHomeCreateOpen(false);
   
   // Clear active button states
   ui.addMetricBtn.classList.remove('active');

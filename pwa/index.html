@@ -40,6 +40,100 @@
 
       <main>
         <section id="view-home" class="view active">
+          <div id="quickStartCard" class="panel quick-start-card">
+            <div class="quick-start-heading">
+              <div>
+                <h2>How to get started</h2>
+                <p class="muted-text">Three quick steps to start tracking your progress.</p>
+              </div>
+            </div>
+            <ol class="quick-start-steps">
+              <li><strong>Create a metric</strong><span>Choose something you want to track, like sleep, reading, or a workout.</span></li>
+              <li><strong>Add an entry</strong><span>Record a value whenever you want to check in.</span></li>
+              <li><strong>Review your progress</strong><span>Open Stats to see how your metric changes over time.</span></li>
+            </ol>
+            <div class="quick-start-actions">
+              <button id="dismissQuickStart" class="secondary" type="button">Hide for now</button>
+              <button id="neverShowQuickStart" class="text-button" type="button">Don’t show again</button>
+            </div>
+          </div>
+          <button id="showQuickStart" class="secondary show-quick-start hidden" type="button">How to get started</button>
+
+          <div id="homeCreateDetails" class="panel home-create-panel">
+            <div class="home-create-toolbar">
+              <button id="homeCreateToggle" class="home-create-toggle" type="button" aria-expanded="false" aria-controls="homeCreateContent">
+                <span>Create new</span>
+              </button>
+              <span class="home-create-settings-hint">
+                <span class="home-create-settings-full">Edit metrics or categories in</span>
+                <span class="home-create-settings-compact">Edit in</span>
+                <a href="#settings" id="homeSettingsLink">Settings</a>
+              </span>
+              <div class="home-create-actions">
+                <button id="addMetricBtn" class="primary" type="button">Metric</button>
+                <button id="addCategoryBtn" class="secondary" type="button">Category</button>
+              </div>
+              <button id="homeCreateExpand" class="home-create-expand" type="button" aria-label="Expand create options" aria-expanded="false" aria-controls="homeCreateContent">
+                <span class="collapse-indicator" aria-hidden="true">▶</span>
+              </button>
+            </div>
+            <div id="homeCreateContent" class="home-create-content hidden">
+              <form id="metricForm" class="stacked-form home-create-form" style="display: none;">
+                <label>
+                  Name
+                  <input type="text" id="metricName" required />
+                </label>
+                <label>
+                  Description (optional)
+                  <input type="text" id="metricDescription" />
+                </label>
+                <label>
+                  Category (optional)
+                  <select id="metricCategory"></select>
+                </label>
+                <label>
+                  Unit
+                  <input type="text" id="metricUnit" placeholder="kg, steps, score" />
+                </label>
+                <label>
+                  Type
+                  <select id="metricType">
+                    <option value="float">Decimal</option>
+                    <option value="integer">Whole number</option>
+                    <option value="integer_range">Number in a range</option>
+                  </select>
+                </label>
+                <label>
+                  Kind
+                  <select id="metricKind">
+                    <option value="quantitative">Quantitative</option>
+                    <option value="count">Count</option>
+                    <option value="score">Score</option>
+                    <option value="strength_session">Strength session</option>
+                  </select>
+                </label>
+                <div class="metric-add-buttons">
+                  <button type="submit" class="primary">Save metric</button>
+                  <button type="button" id="cancelMetric" class="secondary">Cancel</button>
+                </div>
+              </form>
+              <form id="categoryForm" class="stacked-form home-create-form" style="display: none;">
+                <label>
+                  Name
+                  <input type="text" id="categoryName" placeholder="Category name" required />
+                </label>
+                <label>
+                  Description (optional)
+                  <input type="text" id="categoryDescriptionAdd" placeholder="Description (optional)" />
+                </label>
+                <div class="category-edit-buttons">
+                  <button type="submit" class="primary">Save category</button>
+                  <button type="button" id="cancelCategory" class="secondary">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
           <div class="panel">
             <div class="search-label">
               <label for="homeSearch">Search</label>
@@ -53,6 +147,10 @@
               </div>
             </div>
             <div id="metricGrid" class="metric-grid"></div>
+            <div id="homeNoMetrics" class="empty-state hidden">
+              <p>You haven’t created a metric yet. Create one to start recording and seeing your progress here.</p>
+              <button id="createFirstMetric" class="primary" type="button">Create your first metric</button>
+            </div>
           </div>
         </section>
 
@@ -255,17 +353,8 @@
 
               <div id="settingsCategoriesPanel" class="panel settings-panel">
                 <div class="category-actions">
-                  <button id="addCategoryBtn" class="icon-button primary" title="Add new category">Add new</button>
                   <button id="editCategoryBtn" class="icon-button secondary" title="Edit or delete category">Edit / Delete</button>
                 </div>
-            <form id="categoryForm" class="stacked-form" style="display: none;">
-              <input type="text" id="categoryName" placeholder="Category name" required />
-              <input type="text" id="categoryDescriptionAdd" placeholder="Description (optional)" />
-              <div class="category-edit-buttons">
-                <button type="submit" class="primary">Save</button>
-                <button type="button" id="cancelCategory" class="secondary">Cancel</button>
-              </div>
-            </form>
             <div id="categoryEditForm" class="stacked-form" style="display: none;">
               <label class="search-label">
                 <span>Search category to edit</span>
@@ -290,48 +379,8 @@
 
           <div id="settingsMetricsPanel" class="panel settings-panel hidden">
             <div class="metric-actions">
-              <button id="addMetricBtn" class="icon-button primary" title="Add new metric">Add new</button>
               <button id="editMetricBtn" class="icon-button secondary" title="Edit or archive metric">Edit / Archive</button>
             </div>
-            <form id="metricForm" class="stacked-form" style="display: none;">
-              <label>
-                Name
-                <input type="text" id="metricName" required />
-              </label>
-              <label>
-                Description (optional)
-                <input type="text" id="metricDescription" />
-              </label>
-              <label>
-                Category
-                <select id="metricCategory"></select>
-              </label>
-              <label>
-                Unit
-                <input type="text" id="metricUnit" placeholder="kg, steps, score" />
-              </label>
-              <label>
-                Type
-                <select id="metricType">
-                  <option value="float">float</option>
-                  <option value="integer">integer</option>
-                  <option value="integer_range">integer_range</option>
-                </select>
-              </label>
-              <label>
-                Kind
-                <select id="metricKind">
-                  <option value="quantitative">quantitative</option>
-                  <option value="count">count</option>
-                  <option value="score">score</option>
-                  <option value="strength_session">strength_session</option>
-                </select>
-              </label>
-              <div class="metric-add-buttons">
-                <button type="submit" class="primary">Save</button>
-                <button type="button" id="cancelMetric" class="secondary">Cancel</button>
-              </div>
-            </form>
             <div id="metricEditForm" class="stacked-form" style="display: none;">
               <label class="search-label">
                 <span>Search metric to edit</span>
