@@ -154,6 +154,44 @@ button:hover { filter: brightness(0.98); }
   font-size: 1rem;
 }
 
+.workout-mode-switch {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+}
+
+.workout-mode-switch button {
+  flex: 1;
+  font-weight: 700;
+}
+
+.workout-mode-switch button.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.workout-exercise-card {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.workout-exercise-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.workout-exercise-actions button {
+  flex: 1;
+}
+
+.workout-review-result {
+  display: grid;
+  gap: 10px;
+}
+
 .settings-panel {
   border-color: transparent;
   box-shadow: none;

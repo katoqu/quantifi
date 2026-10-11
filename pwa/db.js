@@ -1,11 +1,15 @@
+import { validateWorkoutPlan } from './workout-model.js';
+
 const DB_NAME = 'quantifi-pwa';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORE_NAMES = {
   categories: 'categories',
   metrics: 'metrics',
   entries: 'entries',
   changeEvents: 'changeEvents',
+  workoutPlans: 'workoutPlans',
+  workoutSessions: 'workoutSessions',
 };
 
 let dbPromise;
@@ -250,6 +254,8 @@ export async function createEntry(payload) {
     targetAction: payload.targetAction || null,
     recordedAt: payload.recordedAt || nowIso(),
     createdAt: nowIso(),
+    ...(payload.workoutPlanId ? { workoutPlanId: payload.workoutPlanId } : {}),
+    ...(payload.workoutSessionId ? { workoutSessionId: payload.workoutSessionId } : {}),
   };
   await putRecord(STORE_NAMES.entries, record);
   return record;
@@ -359,6 +365,16 @@ function parseSetsField(value) {
   }
 }
 
+function parseWorkoutDataField(value, label) {
+  try {
+    const parsed = JSON.parse(String(value || ''));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+    return parsed;
+  } catch {
+    throw new Error(`The CSV contains invalid ${label} data.`);
+  }
+}
+
 function toBoolean(value) {
   return String(value).trim().toLowerCase() === 'true';
 }
@@ -391,7 +407,7 @@ export async function cleanupDuplicates() {
   const entryGroups = {};
   for (const entry of entries) {
     const naiveKeys = getNaiveKeys(entry.recordedAt);
-    const key = `${entry.metricId}_${naiveKeys[0]}`;
+    const key = `${entry.metricId}_${entry.workoutSessionId || 'standalone'}_${naiveKeys[0]}`;
     if (!entryGroups[key]) {
       entryGroups[key] = [];
     }
@@ -454,10 +470,18 @@ export async function importCsvText(csvText) {
     metrics: 0,
     entries: 0,
     changes: 0,
+    workoutPlans: 0,
+    workoutSessions: 0,
   };
 
   const existingEntries = await listEntries();
   const existingChanges = await listChangeEvents();
+  const existingWorkoutPlans = await getAll(STORE_NAMES.workoutPlans);
+  const existingWorkoutSessions = await getAll(STORE_NAMES.workoutSessions);
+  const knownPlanIds = new Set(existingWorkoutPlans.map((plan) => plan.id));
+  const knownSessionIds = new Set(existingWorkoutSessions.map((session) => session.id));
+  const metricIdLookup = new Map();
+  const entryIdLookup = new Map();
 
   const normalizeDate = (dStr) => {
     if (!dStr) return '';
@@ -482,8 +506,11 @@ export async function importCsvText(csvText) {
   for (const e of existingEntries) {
     const keys = getNaiveKeys(e.recordedAt);
     for (const key of keys) {
-      entryLookup.add(`${e.metricId}_${key}`);
+      const lookupKey = `${e.metricId}_${e.workoutSessionId || 'standalone'}_${key}`;
+      entryLookup.add(lookupKey);
+      entryIdLookup.set(lookupKey, e.id);
     }
+    entryIdLookup.set(`source:${e.id}`, e.id);
   }
 
   const changeLookup = new Set();
@@ -497,6 +524,31 @@ export async function importCsvText(csvText) {
 
   for (const row of rows) {
     const rowType = String(row.RowType || '').trim().toLowerCase();
+    if (rowType === 'metric') {
+      const categoryName = String(row.Category || '').trim().toLowerCase();
+      const targetCategory = categoryName ? await getOrCreateCategory(categoryName) : null;
+      let metric = await getMetricByName(String(row.Metric || '').trim().toLowerCase());
+      if (!metric) {
+        const unitType = String(row.Type || 'float').trim().toLowerCase();
+        metric = await createMetric({
+          name: row.Metric,
+          description: String(row.Description || '').trim() || null,
+          unitName: String(row.Unit || '').trim() || null,
+          unitType,
+          metricKind: String(row.Kind || '').trim().toLowerCase()
+            || (unitType === 'integer_range' ? 'score' : unitType === 'integer' ? 'count' : 'quantitative'),
+          rangeStart: coerceNumber(row.Min),
+          rangeEnd: coerceNumber(row.Max),
+          higherIsBetter: row.HigherIsBetter === '' ? true : toBoolean(row.HigherIsBetter),
+          isArchived: toBoolean(row.Archived),
+          categoryId: targetCategory?.id || null,
+        });
+        imported.metrics += 1;
+      }
+      if (row.RecordId) metricIdLookup.set(row.RecordId, metric.id);
+      continue;
+    }
+
     if (rowType === 'entry') {
       const categoryName = String(row.Category || '').trim().toLowerCase();
       const metricName = String(row.Metric || '').trim().toLowerCase();
@@ -521,30 +573,43 @@ export async function importCsvText(csvText) {
         });
         imported.metrics += 1;
       }
+      if (row.MetricId) metricIdLookup.set(row.MetricId, metric.id);
 
       const normalizedDate = normalizeDate(row.Date);
       const naiveKeys = getNaiveKeys(normalizedDate);
+      const workoutSessionId = String(row.WorkoutSessionId || '').trim() || null;
+      const entryLookupPrefix = `${metric.id}_${workoutSessionId || 'standalone'}_`;
       let isDuplicate = false;
+      let duplicateId = null;
       for (const key of naiveKeys) {
-        if (entryLookup.has(`${metric.id}_${key}`)) {
+        const lookupKey = `${entryLookupPrefix}${key}`;
+        if (entryLookup.has(lookupKey)) {
           isDuplicate = true;
+          duplicateId = entryIdLookup.get(lookupKey) || duplicateId;
           break;
         }
       }
 
       if (!isDuplicate) {
-        await createEntry({
+        const entry = await createEntry({
           metricId: metric.id,
           value: coerceNumber(row.Value),
           loadKg: coerceNumber(row.LoadKg),
           sets: parseSetsField(row.Sets),
           targetAction: String(row.Target || '').trim() || null,
           recordedAt: normalizedDate,
+          workoutSessionId,
+          workoutPlanId: String(row.WorkoutPlanId || '').trim() || null,
         });
         for (const key of naiveKeys) {
-          entryLookup.add(`${metric.id}_${key}`);
+          const lookupKey = `${entryLookupPrefix}${key}`;
+          entryLookup.add(lookupKey);
+          entryIdLookup.set(lookupKey, entry.id);
         }
+        if (row.RecordId) entryIdLookup.set(`source:${row.RecordId}`, entry.id);
         imported.entries += 1;
+      } else if (row.RecordId && duplicateId) {
+        entryIdLookup.set(`source:${row.RecordId}`, duplicateId);
       }
     }
 
@@ -577,6 +642,55 @@ export async function importCsvText(csvText) {
         imported.changes += 1;
       }
     }
+
+    if (rowType === 'workout_plan') {
+      const source = parseWorkoutDataField(row.WorkoutData, 'workout plan');
+      const sourceId = String(row.RecordId || source.id || '').trim();
+      if (!sourceId) throw new Error('The CSV contains a workout plan without an ID.');
+      if (knownPlanIds.has(sourceId)) continue;
+      const currentMetrics = await listMetrics(true);
+      const resolveMetricId = (sourceMetricId, name) => metricIdLookup.get(sourceMetricId)
+        || currentMetrics.find((metric) => String(metric.name).toLowerCase() === String(name || '').toLowerCase())?.id
+        || (currentMetrics.some((metric) => metric.id === sourceMetricId) ? sourceMetricId : '');
+      const mapped = {
+        ...source,
+        id: sourceId,
+        exercises: (source.exercises || []).map((exercise) => ({
+          ...exercise,
+          metricId: resolveMetricId(exercise.metricId, exercise.metricName),
+        })),
+        outcomeMetrics: (source.outcomeMetrics || []).map((outcome) => ({
+          ...outcome,
+          metricId: resolveMetricId(outcome.metricId, outcome.metricName),
+        })),
+      };
+      const plan = validateWorkoutPlan(mapped);
+      await putRecord(STORE_NAMES.workoutPlans, {
+        ...plan,
+        id: sourceId,
+        isArchived: Boolean(source.isArchived),
+        createdAt: source.createdAt || nowIso(),
+        updatedAt: source.updatedAt || nowIso(),
+      });
+      knownPlanIds.add(sourceId);
+      imported.workoutPlans += 1;
+    }
+
+    if (rowType === 'workout_session') {
+      const source = parseWorkoutDataField(row.WorkoutData, 'workout session');
+      const sourceId = String(row.RecordId || source.id || '').trim();
+      if (!sourceId) throw new Error('The CSV contains a workout session without an ID.');
+      if (knownSessionIds.has(sourceId)) continue;
+      const exercises = (source.exercises || []).map((exercise) => ({
+        ...exercise,
+        entryId: entryIdLookup.get(`source:${exercise.entryId}`) || exercise.entryId,
+        metricId: metricIdLookup.get(exercise.metricId) || exercise.metricId,
+      }));
+      const session = { ...source, id: sourceId, exercises };
+      await putRecord(STORE_NAMES.workoutSessions, session);
+      knownSessionIds.add(sourceId);
+      imported.workoutSessions += 1;
+    }
   }
 
   return imported;
@@ -593,61 +707,94 @@ export async function getOrCreateCategory(name) {
 }
 
 export async function exportDataAsCsv() {
-  const [categories, metrics, entries, changeEvents] = await Promise.all([
+  const [categories, metrics, entries, changeEvents, workoutPlans, workoutSessions] = await Promise.all([
     listCategories(),
     listMetrics(true),
     listEntries(),
     listChangeEvents(),
+    getAll(STORE_NAMES.workoutPlans),
+    getAll(STORE_NAMES.workoutSessions),
   ]);
 
   const categoryMap = Object.fromEntries(categories.map((category) => [category.id, category.name]));
   const metricMap = Object.fromEntries(metrics.map((metric) => [metric.id, metric]));
-
+  const headers = [
+    'RowType', 'Date', 'Category', 'Metric', 'Description', 'Archived', 'Value', 'Unit',
+    'Type', 'Kind', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadKg', 'Sets', 'Title',
+    'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData',
+  ];
+  const toRow = (values) => headers.map((header) => values[header] ?? '');
   const rows = [
-    ['RowType', 'Date', 'Category', 'Metric', 'Description', 'Archived', 'Value', 'Unit', 'Type', 'Kind', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadKg', 'Sets', 'Title', 'Notes', 'EndDate'],
+    headers,
+    ...metrics.map((metric) => toRow({
+      RowType: 'metric',
+      Category: categoryMap[metric.categoryId] || '',
+      Metric: metric.name || '',
+      Description: metric.description || '',
+      Archived: Boolean(metric.isArchived),
+      Unit: metric.unitName || '',
+      Type: metric.unitType || '',
+      Kind: metric.metricKind || '',
+      Min: metric.rangeStart ?? '',
+      Max: metric.rangeEnd ?? '',
+      HigherIsBetter: metric.higherIsBetter ?? true,
+      RecordId: metric.id,
+    })),
     ...entries.map((entry) => {
       const metric = metricMap[entry.metricId] || {};
-      return [
-        'entry',
-        entry.recordedAt,
-        categoryMap[metric.categoryId] || '',
-        metric.name || '',
-        metric.description || '',
-        Boolean(metric.isArchived),
-        entry.value ?? '',
-        metric.unitName || '',
-        metric.unitType || '',
-        metric.metricKind || '',
-        metric.rangeStart ?? '',
-        metric.rangeEnd ?? '',
-        metric.higherIsBetter ?? true,
-        entry.targetAction ?? '',
-        entry.loadKg ?? '',
-        JSON.stringify(entry.sets || []),
-        '',
-        '',
-        '',
-      ];
+      return toRow({
+        RowType: 'entry',
+        Date: entry.recordedAt,
+        Category: categoryMap[metric.categoryId] || '',
+        Metric: metric.name || '',
+        Description: metric.description || '',
+        Archived: Boolean(metric.isArchived),
+        Value: entry.value ?? '',
+        Unit: metric.unitName || '',
+        Type: metric.unitType || '',
+        Kind: metric.metricKind || '',
+        Min: metric.rangeStart ?? '',
+        Max: metric.rangeEnd ?? '',
+        HigherIsBetter: metric.higherIsBetter ?? true,
+        Target: entry.targetAction ?? '',
+        LoadKg: entry.loadKg ?? '',
+        Sets: JSON.stringify(entry.sets || []),
+        RecordId: entry.id,
+        MetricId: entry.metricId,
+        WorkoutSessionId: entry.workoutSessionId || '',
+        WorkoutPlanId: entry.workoutPlanId || '',
+      });
     }),
-    ...changeEvents.map((event) => [
-      'change',
-      event.recordedAt,
-      categoryMap[event.categoryId] || '',
-      '',
-      '',
-      Boolean(event.isArchived),
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      event.title || '',
-      event.notes || '',
-      event.endAt || '',
-    ]),
+    ...changeEvents.map((event) => toRow({
+      RowType: 'change',
+      Date: event.recordedAt,
+      Category: categoryMap[event.categoryId] || '',
+      Archived: Boolean(event.isArchived),
+      Title: event.title || '',
+      Notes: event.notes || '',
+      EndDate: event.endAt || '',
+      RecordId: event.id,
+    })),
+    ...workoutPlans.map((plan) => toRow({
+      RowType: 'workout_plan',
+      RecordId: plan.id,
+      WorkoutData: JSON.stringify({
+        ...plan,
+        exercises: plan.exercises.map((exercise) => ({
+          ...exercise,
+          metricName: metricMap[exercise.metricId]?.name || '',
+        })),
+        outcomeMetrics: (plan.outcomeMetrics || []).map((outcome) => ({
+          ...outcome,
+          metricName: metricMap[outcome.metricId]?.name || '',
+        })),
+      }),
+    })),
+    ...workoutSessions.map((session) => toRow({
+      RowType: 'workout_session',
+      RecordId: session.id,
+      WorkoutData: JSON.stringify(session),
+    })),
   ];
 
   return rows

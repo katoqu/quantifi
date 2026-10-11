@@ -25,7 +25,8 @@
         <button class="tab active" data-view="home">Home</button>
         <button class="tab" data-view="add">Add</button>
         <button class="tab" data-view="stats">Stats</button>
-        <button class="tab" data-view="log">Log</button>
+        <button class="tab" data-view="workouts">Workouts</button>
+        <button class="tab" data-view="log">Changes</button>
         <button class="tab" data-view="settings">Settings</button>
       </nav>
 
@@ -185,6 +186,11 @@
           </div>
         </section>
 
+        <section id="view-workouts" class="view">
+          <button class="back-button secondary">← Back</button>
+          <div id="workoutApp"></div>
+        </section>
+
         <section id="view-log" class="view">
           <button class="back-button secondary">← Back</button>
           <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 6px;">
@@ -207,7 +213,7 @@
                 </label>
                 <label>
                   Notes (Markdown supported)
-                  <textarea id="changeNotes" rows="4" placeholder="Optional context, routine details, exceptions..."></textarea>
+                  <textarea id="changeNotes" rows="4" placeholder="Optional context, experiment details, exceptions..."></textarea>
                 </label>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                   <label>
@@ -226,7 +232,7 @@
 
           <div class="panel collapsible-container">
             <details class="collapsible">
-              <summary><h2>Existing Routines</h2><span class="collapse-indicator">▼</span></summary>
+              <summary><h2>Changes</h2><span class="collapse-indicator">▼</span></summary>
               <div id="changeList" class="list"></div>
             </details>
           </div>

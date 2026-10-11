@@ -35,6 +35,16 @@ import {
   sortMetricsByRecentEntry,
 } from './metric-filters.js';
 import { generateSvgChart, renderSparkline } from './chart.js';
+import { mountStrengthSetEditor } from './strength-set-editor.js';
+import { renderMetricPicker, setMetricPickerOpen } from './metric-picker.js';
+import {
+  archiveWorkoutPlan,
+  listWorkoutPlans,
+  listWorkoutSessions,
+  saveWorkoutPlan,
+  saveWorkoutSession,
+} from './workout-data.js';
+import { mountWorkoutsView } from './workouts-view.js';
 
 const ui = {
   tabs: Array.from(document.querySelectorAll('.tab')),
@@ -100,6 +110,7 @@ const ui = {
   cancelCategoryEdit: document.querySelector('#cancelCategoryEdit'),
   cancelCategory: document.querySelector('#cancelCategory'),
   changeList: document.querySelector('#changeList'),
+  workoutApp: document.querySelector('#workoutApp'),
   statsSummary: document.querySelector('#statsSummary'),
   entryForm: document.querySelector('#entryForm'),
   changeForm: document.querySelector('#changeForm'),
@@ -153,12 +164,30 @@ const ui = {
 };
 
 let deferredPrompt = null;
-let strengthSets = [];
-let editingSetIndex = null;
 let addSelectedMetricId = null;
 let strengthInputsDirty = false;
 let metricSwitchChoiceResolver = null;
 let suppressStrengthLoadPrefill = false;
+const strengthSetEditor = mountStrengthSetEditor({
+  container: ui.strengthSetList,
+  loadInput: ui.strengthLoadInput,
+  repsInput: ui.strengthRepsInput,
+  addButton: ui.strengthAddSetButton,
+});
+const workoutsView = mountWorkoutsView(ui.workoutApp, {
+  listMetrics: (includeArchived = false) => listMetrics(includeArchived),
+  listCategories,
+  listEntries,
+  listWorkoutPlans,
+  listWorkoutSessions,
+  saveWorkoutPlan,
+  archiveWorkoutPlan,
+  saveWorkoutSession,
+  onDataChanged: async () => {
+    incrementUnsavedCount();
+    await renderAll();
+  },
+});
 
 let editingEventId = null;
 let endingEventId = null;
@@ -433,45 +462,7 @@ async function renderAll() {
   await renderLogs();
   await renderStats();
   await renderSettings();
-}
-
-function renderStrengthSetList() {
-  ui.strengthSetList.innerHTML = strengthSets.length
-    ? strengthSets.map((set, index) => {
-        const isEditing = editingSetIndex === index;
-        if (isEditing) {
-          return `
-            <div class="item edit-mode">
-              <strong>Set ${index + 1} (Editing)</strong>
-              <div class="strength-grid" style="margin: 0.5rem 0;">
-                <label>
-                  Load (kg)
-                  <input type="number" id="editSetLoad" step="0.5" min="0" value="${set.loadKg}" style="width: 100%;" />
-                </label>
-                <label>
-                  Reps
-                  <input type="number" id="editSetReps" step="1" min="1" value="${set.reps}" style="width: 100%;" />
-                </label>
-              </div>
-              <div style="display: flex; gap: 0.5rem; width: 100%;">
-                <button type="button" id="saveEditSetButton" class="primary" style="flex: 1;">Save</button>
-                <button type="button" id="cancelEditSetButton" class="secondary" style="flex: 1;">Cancel</button>
-              </div>
-            </div>
-          `;
-        }
-        return `
-          <div class="item">
-            <strong>Set ${index + 1}</strong>
-            <div>${Number(set.loadKg).toFixed(1)} kg × ${set.reps} reps</div>
-            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-              <button type="button" data-edit-set="${index}" class="secondary">Edit</button>
-              <button type="button" data-remove-set="${index}" class="secondary">Remove</button>
-            </div>
-          </div>
-        `;
-      }).join('')
-    : '<p>No sets yet.</p>';
+  await workoutsView.render();
 }
 
 async function syncAddFormMode() {
@@ -507,7 +498,7 @@ async function syncAddFormMode() {
       ui.strengthBaseline.classList.add('hidden');
     }
 
-    renderStrengthSetList();
+    strengthSetEditor.render();
   }
 }
 
@@ -580,7 +571,7 @@ function hasEntryValues() {
   const activeTarget = ui.targetActionPills.querySelector('.pill.active');
   return Boolean(
     ui.entryValue.value.trim()
-    || strengthSets.length
+    || strengthSetEditor.getSets().length
     || (
       strengthInputsDirty
       && (ui.strengthLoadInput.value.trim() || ui.strengthRepsInput.value !== '5')
@@ -593,13 +584,11 @@ function clearEntryValues() {
   ui.entryValue.value = '';
   ui.strengthLoadInput.value = '';
   ui.strengthRepsInput.value = '5';
-  strengthSets = [];
-  editingSetIndex = null;
+  strengthSetEditor.clear();
   strengthInputsDirty = false;
   ui.targetActionPills.querySelectorAll('.pill').forEach((pill) => {
     pill.classList.toggle('active', pill.dataset.target === 'None');
   });
-  renderStrengthSetList();
 }
 
 function requestMetricSwitchChoice(canKeepValues) {
@@ -658,57 +647,6 @@ async function changeAddMetric(metricId) {
   renderAddMetricSelect();
   await syncAddFormMode();
   return true;
-}
-
-function renderMetricPicker({
-  selectedContainer,
-  suggestionsContainer,
-  searchInput,
-  clearButton,
-  expandButton,
-  metrics,
-  categories,
-  selectedMetric,
-  isOpen,
-}) {
-  selectedContainer.replaceChildren();
-  suggestionsContainer.replaceChildren();
-  if (selectedMetric) {
-    const selected = document.createElement('span');
-    selected.className = 'selected-metric-chip';
-    selected.setAttribute('aria-label', `Selected metric: ${selectedMetric.name}`);
-    selected.textContent = selectedMetric.name;
-    selectedContainer.append(selected);
-  }
-
-  const matchingMetrics = filterMetricsBySearch(metrics, categories, searchInput.value);
-  matchingMetrics.forEach((metric) => {
-    const option = document.createElement('button');
-    option.type = 'button';
-    option.className = 'search-dropdown-suggestion';
-    option.dataset.metricId = metric.id;
-    option.setAttribute('role', 'option');
-    option.setAttribute('aria-selected', String(metric.id === selectedMetric?.id));
-    option.textContent = `${metric.isArchived ? '# ' : ''}${metric.name}`;
-    suggestionsContainer.append(option);
-  });
-
-  if (!matchingMetrics.length) {
-    const emptyMessage = document.createElement('p');
-    emptyMessage.className = 'search-dropdown-empty';
-    emptyMessage.textContent = 'No metrics match this search.';
-    suggestionsContainer.append(emptyMessage);
-  }
-
-  clearButton.classList.toggle('hidden', !searchInput.value);
-  setMetricPickerOpen(isOpen, suggestionsContainer, searchInput, expandButton);
-}
-
-function setMetricPickerOpen(isOpen, suggestionsContainer, searchInput, expandButton) {
-  suggestionsContainer.classList.toggle('hidden', !isOpen);
-  expandButton.setAttribute('aria-expanded', String(isOpen));
-  searchInput.setAttribute('aria-expanded', String(isOpen));
-  expandButton.setAttribute('aria-label', isOpen ? 'Hide matching metrics' : 'Show matching metrics');
 }
 
 async function renderHome() {
@@ -861,7 +799,7 @@ async function renderLogs() {
     if (isEditing) {
       return `
         <div class="item edit-mode" style="padding: 12px; border: 1px solid var(--primary); border-radius: 8px; margin-bottom: 8px;">
-          <strong>Edit Routine</strong>
+          <strong>Edit Change</strong>
           <form class="stacked-form" data-edit-form-id="${event.id}" style="margin-top: 8px;">
             <label>
               Category
@@ -903,8 +841,8 @@ async function renderLogs() {
       const nowTimeStr = now.toTimeString().slice(0, 5);
       return `
         <div class="item edit-mode" style="padding: 12px; border: 1px solid var(--primary); border-radius: 8px; margin-bottom: 8px;">
-          <strong>End Routine</strong>
-          <p style="font-size: 0.85rem; color: var(--muted); margin: 4px 0 8px 0;">Pick the date/time when this routine ended.</p>
+          <strong>End Change</strong>
+          <p style="font-size: 0.85rem; color: var(--muted); margin: 4px 0 8px 0;">Pick the date/time when this change ended.</p>
           <form class="stacked-form" data-end-form-id="${event.id}">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
               <label>
@@ -931,8 +869,8 @@ async function renderLogs() {
       const nowTimeStr = now.toTimeString().slice(0, 5);
       return `
         <div class="item edit-mode" style="padding: 12px; border: 1px solid var(--primary); border-radius: 8px; margin-bottom: 8px;">
-          <strong>Revive Routine</strong>
-          <p style="font-size: 0.85rem; color: var(--muted); margin: 4px 0 8px 0;">Pick a new start date/time to revive this routine.</p>
+          <strong>Restart Change</strong>
+          <p style="font-size: 0.85rem; color: var(--muted); margin: 4px 0 8px 0;">Pick a new start date/time to restart this change.</p>
           <form class="stacked-form" data-revive-form-id="${event.id}">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
               <label>
@@ -982,8 +920,8 @@ async function renderLogs() {
           <div style="margin-bottom: 10px;"><small style="color: var(--muted); font-weight: 500;">${metadataStr}</small></div>
           <div style="display: flex; gap: 6px;">
           ${event.isArchived 
-            ? `<button type="button" data-action="revive" data-id="${event.id}" class="primary" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;">Revive</button>`
-            : `<button type="button" data-action="end" data-id="${event.id}" class="primary" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;">End routine</button>`
+            ? `<button type="button" data-action="revive" data-id="${event.id}" class="primary" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;">Restart change</button>`
+            : `<button type="button" data-action="end" data-id="${event.id}" class="primary" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;">End change</button>`
           }
           <button type="button" data-action="edit-event" data-id="${event.id}" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;">Edit</button>
           <button type="button" data-action="delete-event" data-id="${event.id}" style="flex: 1; padding: 6px 8px; min-height: 32px; font-size: 0.85rem;" class="secondary">Delete</button>
@@ -1375,6 +1313,9 @@ ui.tabs.forEach((tab) => {
       activateSettingsMode(settingsMode);
       await renderSettings();
     }
+    if (tab.dataset.view === 'workouts') {
+      await workoutsView.render();
+    }
     // Render Home when switching to Home tab
     if (tab.dataset.view === 'home') {
       await renderHome();
@@ -1573,58 +1514,6 @@ document.addEventListener('click', (event) => {
   }
 });
 
-ui.strengthAddSetButton.addEventListener('click', () => {
-  const loadKg = Number(ui.strengthLoadInput.value);
-  const reps = Number(ui.strengthRepsInput.value);
-  if (!Number.isFinite(loadKg) || !Number.isFinite(reps) || reps < 1) {
-    return;
-  }
-
-  strengthSets.push({ loadKg, reps: Math.round(reps) });
-  renderStrengthSetList();
-  ui.strengthLoadInput.value = loadKg;
-  ui.strengthRepsInput.value = 5;
-});
-
-ui.strengthSetList.addEventListener('click', async (event) => {
-  const removeButton = event.target.closest('[data-remove-set]');
-  if (removeButton) {
-    const index = Number(removeButton.dataset.removeSet);
-    strengthSets.splice(index, 1);
-    if (editingSetIndex === index) {
-      editingSetIndex = null;
-    } else if (editingSetIndex > index) {
-      editingSetIndex -= 1;
-    }
-    renderStrengthSetList();
-    return;
-  }
-
-  const editButton = event.target.closest('[data-edit-set]');
-  if (editButton) {
-    editingSetIndex = Number(editButton.dataset.editSet);
-    renderStrengthSetList();
-    return;
-  }
-
-  if (event.target.id === 'saveEditSetButton') {
-    const editLoad = Number(document.querySelector('#editSetLoad').value);
-    const editReps = Number(document.querySelector('#editSetReps').value);
-    if (Number.isFinite(editLoad) && Number.isFinite(editReps) && editReps >= 1) {
-      strengthSets[editingSetIndex] = { loadKg: editLoad, reps: Math.round(editReps) };
-    }
-    editingSetIndex = null;
-    renderStrengthSetList();
-    return;
-  }
-
-  if (event.target.id === 'cancelEditSetButton') {
-    editingSetIndex = null;
-    renderStrengthSetList();
-    return;
-  }
-});
-
 ui.entryForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
@@ -1659,6 +1548,7 @@ ui.entryForm.addEventListener('submit', async (event) => {
     const entry = (await listEntries()).find(e => e.id === editingEntryId);
     if (entry) {
       if (metric?.metricKind === 'strength_session') {
+        const strengthSets = strengthSetEditor.getSets();
         if (!strengthSets.length) {
           window.alert('Add at least one set before saving the workout.');
           return;
@@ -1695,6 +1585,7 @@ ui.entryForm.addEventListener('submit', async (event) => {
   } else {
     // Create new entry
     if (metric?.metricKind === 'strength_session') {
+      const strengthSets = strengthSetEditor.getSets();
       if (!strengthSets.length) {
         window.alert('Add at least one set before saving the workout.');
         return;
@@ -1725,8 +1616,7 @@ ui.entryForm.addEventListener('submit', async (event) => {
   }
 
   window.alert('Entry saved!');
-  strengthSets = [];
-  editingSetIndex = null;
+  strengthSetEditor.clear();
   strengthInputsDirty = false;
   suppressStrengthLoadPrefill = false;
   ui.targetActionPills.querySelectorAll('.pill').forEach((pill) => {
@@ -2220,7 +2110,7 @@ ui.changeList.addEventListener('click', async (event) => {
       endingEventId = null;
       renderLogs();
     } else if (action === 'delete-event') {
-      if (window.confirm('Delete this routine?')) {
+      if (window.confirm('Delete this change?')) {
         await deleteChangeEvent(eventId);
         incrementUnsavedCount();
         renderAll();
@@ -2566,7 +2456,7 @@ ui.importFile.addEventListener('change', async (event) => {
   const summary = await importCsvText(text);
   resetUnsavedCount();
   await renderAll();
-  alert(`Import complete. ${summary.entries} entries imported, ${summary.changes} changes, ${summary.metrics} new metrics created. Matching metrics were reused where possible.`);
+  alert(`Import complete. ${summary.entries} entries, ${summary.changes} changes, ${summary.workoutPlans} workout plans, and ${summary.workoutSessions} workout sessions imported; ${summary.metrics} new metrics created. Matching metrics were reused where possible.`);
 
   const statsTab = document.querySelector('.tab[data-view="stats"]');
   if (statsTab) {
