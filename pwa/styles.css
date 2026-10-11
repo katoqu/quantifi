@@ -145,6 +145,15 @@ button:hover { filter: brightness(0.98); }
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
 }
 
+.workflow-form {
+  gap: 0;
+}
+
+.workflow-card-heading {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
 .settings-panel {
   border-color: transparent;
   box-shadow: none;

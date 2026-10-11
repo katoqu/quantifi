@@ -57,8 +57,9 @@
 
         <section id="view-add" class="view">
           <button class="back-button secondary">← Back</button>
-          <div class="panel">
-            <form id="entryForm" class="stacked-form" novalidate>
+          <form id="entryForm" class="stacked-form workflow-form" novalidate>
+            <div class="panel workflow-card">
+              <h2 class="workflow-card-heading">1. Choose a metric</h2>
               <div id="addMetricPicker" class="metric-picker">
                 <div class="search-label">
                   <label for="metricSelectSearch">Search metrics</label>
@@ -73,8 +74,11 @@
                 </div>
                 <div id="addSelectedMetric" class="selected-metric-indicator" aria-live="polite"></div>
               </div>
-              <p id="entryFieldsHint" class="muted-text">Choose a metric to enable the entry fields.</p>
               <select id="metricSelect" class="hidden" tabindex="-1" aria-hidden="true"></select>
+            </div>
+            <div class="panel workflow-card">
+              <h2 class="workflow-card-heading">2. Add an entry</h2>
+              <p id="entryFieldsHint" class="muted-text">Choose a metric to enable the entry fields.</p>
               <fieldset id="entryFields" disabled>
                 <label>
                   Date
@@ -121,14 +125,15 @@
                 </div>
                 <button type="submit" class="primary">Save entry</button>
               </fieldset>
-            </form>
-          </div>
+            </div>
+          </form>
         </section>
 
         <section id="view-stats" class="view">
           <button class="back-button secondary">← Back</button>
-          <div class="panel">
-            <div class="stacked-form" style="margin-bottom: 15px;">
+          <div class="panel workflow-card">
+            <h2 class="workflow-card-heading">1. Choose a metric</h2>
+            <div class="stacked-form">
               <div id="statsMetricPicker" class="metric-picker">
                 <div class="search-label">
                   <label for="statsMetricSearch">Search metrics</label>
@@ -144,35 +149,37 @@
                 <div id="statsSelectedMetric" class="selected-metric-indicator" aria-live="polite"></div>
               </div>
               <select id="statsMetricSelect" class="hidden" tabindex="-1" aria-hidden="true"></select>
+            </div>
+          </div>
 
-              <div id="statsControls" class="viz-controls hidden" style="margin-top: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                  <div class="segmented-control" id="statsPeriodControl" style="display: flex; background: var(--secondary-background-color, #1e293b); border-radius: 8px; padding: 2px;">
-                    <button type="button" class="segment active" data-period="Month" style="background: var(--primary, #3b82f6); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Month</button>
-                    <button type="button" class="segment" data-period="Week" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Week</button>
-                    <button type="button" class="segment" data-period="6M" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">6M</button>
-                    <button type="button" class="segment" data-period="Year" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Year</button>
-                    <button type="button" class="segment" data-period="All" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">All</button>
-                  </div>
-                  <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer;">
-                    <input type="checkbox" id="statsZerosToggle" /> Zeros
-                  </label>
+          <div class="panel workflow-card">
+            <h2 class="workflow-card-heading">2. Explore stats</h2>
+            <div id="statsControls" class="viz-controls hidden" style="margin-top: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div class="segmented-control" id="statsPeriodControl" style="display: flex; background: var(--secondary-background-color, #1e293b); border-radius: 8px; padding: 2px;">
+                  <button type="button" class="segment active" data-period="Month" style="background: var(--primary, #3b82f6); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Month</button>
+                  <button type="button" class="segment" data-period="Week" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Week</button>
+                  <button type="button" class="segment" data-period="6M" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">6M</button>
+                  <button type="button" class="segment" data-period="Year" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Year</button>
+                  <button type="button" class="segment" data-period="All" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">All</button>
                 </div>
+                <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer;">
+                  <input type="checkbox" id="statsZerosToggle" /> Zeros
+                </label>
+              </div>
 
-                <div id="statsStrengthControl" class="hidden" style="margin-top: 12px;">
-                  <label>
-                    Strength Aggregate
-                    <select id="statsStrengthSelect">
-                      <option value="Total Volume">Total Volume</option>
-                      <option value="Max Load">Max Load</option>
-                      <option value="Average Load">Average Load</option>
-                      <option value="Max e1RM">Max e1RM</option>
-                    </select>
-                  </label>
-                </div>
+              <div id="statsStrengthControl" class="hidden" style="margin-top: 12px;">
+                <label>
+                  Strength Aggregate
+                  <select id="statsStrengthSelect">
+                    <option value="Total Volume">Total Volume</option>
+                    <option value="Max Load">Max Load</option>
+                    <option value="Average Load">Average Load</option>
+                    <option value="Max e1RM">Max e1RM</option>
+                  </select>
+                </label>
               </div>
             </div>
-
             <div id="statsChartContainer" class="chart-container hidden" style="margin: 20px 0; min-height: 200px;"></div>
             <div id="statsSummary" class="stats-summary"></div>
           </div>
