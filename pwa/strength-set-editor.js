@@ -1,13 +1,13 @@
 export function normalizeStrengthSet(loadValue, repsValue) {
-  const loadKg = Number(loadValue);
+  const load = Number(loadValue);
   const reps = Number(repsValue);
-  if (String(loadValue).trim() === '' || !Number.isFinite(loadKg) || loadKg < 0) {
+  if (String(loadValue).trim() === '' || !Number.isFinite(load) || load < 0) {
     throw new Error('Enter a valid load for the set.');
   }
   if (String(repsValue).trim() === '' || !Number.isInteger(reps) || reps < 1) {
     throw new Error('Enter a whole-number rep count greater than zero.');
   }
-  return { loadKg, reps };
+  return { loadValue: load, reps };
 }
 
 export function mountStrengthSetEditor({
@@ -17,9 +17,11 @@ export function mountStrengthSetEditor({
   addButton,
   onChange,
   defaultReps = 5,
+  loadUnit = 'kg',
 }) {
   let sets = [];
   let editingIndex = null;
+  let currentLoadUnit = loadUnit;
 
   const emitChange = () => onChange?.(sets.map((set) => ({ ...set })));
 
@@ -32,8 +34,8 @@ export function mountStrengthSetEditor({
               <strong>Set ${index + 1} (Editing)</strong>
               <div class="strength-grid" style="margin: 0.5rem 0;">
                 <label>
-                  Load (kg)
-                  <input type="number" class="strength-set-edit-load" step="0.5" min="0" value="${set.loadKg}" />
+                  Load (${currentLoadUnit})
+                  <input type="number" class="strength-set-edit-load" step="0.5" min="0" value="${set.loadValue}" />
                 </label>
                 <label>
                   Reps
@@ -50,7 +52,7 @@ export function mountStrengthSetEditor({
         return `
           <div class="item">
             <strong>Set ${index + 1}</strong>
-            <div>${set.loadKg.toFixed(1)} kg × ${set.reps} reps</div>
+            <div>${set.loadValue.toFixed(1)} ${currentLoadUnit} × ${set.reps} reps</div>
             <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
               <button type="button" data-edit-strength-set="${index}" class="secondary">Edit</button>
               <button type="button" data-remove-strength-set="${index}" class="secondary">Remove</button>
@@ -65,7 +67,7 @@ export function mountStrengthSetEditor({
     const set = normalizeStrengthSet(loadInput.value, repsInput.value);
     sets.push(set);
     render();
-    loadInput.value = set.loadKg;
+    loadInput.value = set.loadValue;
     repsInput.value = defaultReps;
     emitChange();
   };
@@ -130,8 +132,12 @@ export function mountStrengthSetEditor({
       return sets.map((set) => ({ ...set }));
     },
     render,
+    setLoadUnit(unit) {
+      currentLoadUnit = unit || 'kg';
+      render();
+    },
     replace(nextSets) {
-      sets = nextSets.map((set) => normalizeStrengthSet(set.loadKg ?? set.load_kg, set.reps));
+      sets = nextSets.map((set) => normalizeStrengthSet(set.loadValue ?? set.loadKg ?? set.load_kg, set.reps));
       editingIndex = null;
       render();
       emitChange();

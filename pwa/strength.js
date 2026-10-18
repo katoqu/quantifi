@@ -1,7 +1,7 @@
 export function computeStrengthValue(entry, aggType) {
   const sets = entry.sets || [];
   if (!Array.isArray(sets) || sets.length === 0) {
-    const baseValue = Number(entry.value ?? entry.loadKg ?? 0);
+    const baseValue = Number(entry.value ?? entry.loadValue ?? entry.loadKg ?? 0);
     if (aggType === 'Total Volume') {
       return baseValue * 10 * 3;
     } else if (aggType === 'Max e1RM') {
@@ -11,32 +11,40 @@ export function computeStrengthValue(entry, aggType) {
   }
 
   const setData = sets.map((s) => ({
-    loadKg: Number(s.loadKg ?? s.load_kg ?? 0),
+    load: Number(s.loadValue ?? s.loadKg ?? s.load_kg ?? 0),
     reps: Number(s.reps ?? 10),
   }));
 
   if (aggType === 'Total Volume') {
-    return setData.reduce((sum, s) => sum + s.loadKg * s.reps, 0);
+    return setData.reduce((sum, s) => sum + s.load * s.reps, 0);
   } else if (aggType === 'Max Load') {
-    return Math.max(...setData.map((s) => s.loadKg));
+    return Math.max(...setData.map((s) => s.load));
   } else if (aggType === 'Average Load') {
-    return setData.reduce((sum, s) => sum + s.loadKg, 0) / setData.length;
+    return setData.reduce((sum, s) => sum + s.load, 0) / setData.length;
   } else if (aggType === 'Max e1RM') {
-    const e1rms = setData.map((s) => s.loadKg * (1 + s.reps / 30));
+    const e1rms = setData.map((s) => s.load * (1 + s.reps / 30));
     return Math.max(...e1rms);
   }
-  return setData.reduce((sum, s) => sum + s.loadKg, 0);
+  return setData.reduce((sum, s) => sum + s.load, 0);
 }
 
-export function formatStrengthSession(entry) {
+export function formatStrengthSession(entry, loadUnit = 'kg') {
   if (!entry) return '—';
   const sets = entry.sets || [];
   if (!Array.isArray(sets) || sets.length === 0) {
-    return entry.value !== null && entry.value !== undefined ? `${Number(entry.value).toFixed(1)} kg` : '—';
+    return entry.value !== null && entry.value !== undefined ? `${Number(entry.value).toFixed(1)} ${loadUnit}` : '—';
   }
-  const summaryLoad = Number(entry.loadKg ?? entry.value ?? 0).toFixed(1);
+  const summaryLoad = Number(
+    entry.loadValue
+      ?? entry.loadKg
+      ?? entry.value
+      ?? sets[0].loadValue
+      ?? sets[0].loadKg
+      ?? sets[0].load_kg
+      ?? 0
+  ).toFixed(1);
   const repsSeries = sets.map((s) => s.reps).join('/');
-  return `${summaryLoad} kg × ${repsSeries} reps × ${sets.length} sets`;
+  return `${summaryLoad} ${loadUnit} × ${repsSeries} reps × ${sets.length} sets`;
 }
 
 export function getLastStrengthSet(entry) {
@@ -44,12 +52,12 @@ export function getLastStrengthSet(entry) {
   if (sets.length > 0) {
     const lastSet = sets[sets.length - 1];
     return {
-      loadKg: Number(lastSet.loadKg ?? lastSet.load_kg ?? 0),
+      loadValue: Number(lastSet.loadValue ?? lastSet.loadKg ?? lastSet.load_kg ?? 0),
       reps: Number(lastSet.reps ?? 0),
     };
   }
   return {
-    loadKg: Number(entry.loadKg ?? entry.value ?? 0),
+    loadValue: Number(entry.loadValue ?? entry.loadKg ?? entry.value ?? 0),
     reps: Number(entry.reps ?? 0),
   };
 }
@@ -61,21 +69,21 @@ function roundIncrementToWeightStep(increment) {
   }, steps[0]);
 }
 
-export function buildStrengthProgressRecommendation(entries) {
+export function buildStrengthProgressRecommendation(entries, loadUnit = 'kg') {
   if (!entries || entries.length === 0) return null;
   const latest = entries[0];
   const latestSet = getLastStrengthSet(latest);
 
   if (latestSet.reps === 12) {
-    const desiredIncrease = latestSet.loadKg * 0.05;
+    const desiredIncrease = latestSet.loadValue * 0.05;
     const increment = roundIncrementToWeightStep(desiredIncrease);
-    return `Try increasing your last set by +${increment.toFixed(2).replace(/\.00$/, '')} kg (about 5%).`;
+    return `Try increasing your last set by +${increment.toFixed(2).replace(/\.00$/, '')} ${loadUnit} (about 5%).`;
   }
 
   const lastFour = entries.slice(0, 4);
   const unchangedCount = lastFour.filter((entry) => {
     const set = getLastStrengthSet(entry);
-    return set.loadKg === latestSet.loadKg && set.reps === latestSet.reps;
+    return set.loadValue === latestSet.loadValue && set.reps === latestSet.reps;
   }).length;
 
   if (unchangedCount === 4) {

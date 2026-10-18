@@ -135,6 +135,7 @@ const ui = {
   entryValue: document.querySelector('#entryValue'),
   strengthWorkoutFields: document.querySelector('#strengthWorkoutFields'),
   strengthLoadInput: document.querySelector('#strengthLoadInput'),
+  strengthLoadLabel: document.querySelector('#strengthLoadLabel'),
   strengthRepsInput: document.querySelector('#strengthRepsInput'),
   strengthAddSetButton: document.querySelector('#strengthAddSetButton'),
   strengthSetList: document.querySelector('#strengthSetList'),
@@ -497,18 +498,21 @@ async function syncAddFormMode() {
   ui.targetActionField.classList.toggle('hidden', isScore);
 
   if (isStrength) {
+    const loadUnit = metric.unitName || 'kg';
+    ui.strengthLoadLabel.textContent = `Load (${loadUnit})`;
+    strengthSetEditor.setLoadUnit(loadUnit);
     const [entries] = await Promise.all([listEntries()]);
     const metricEntries = entries.filter((entry) => entry.metricId === metric.id);
     const lastEntry = metricEntries.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0];
     if (suppressStrengthLoadPrefill) {
       ui.strengthLoadInput.value = '';
     } else if (!strengthInputsDirty) {
-      ui.strengthLoadInput.value = lastEntry?.loadKg ?? lastEntry?.value ?? 0;
+      ui.strengthLoadInput.value = lastEntry?.loadValue ?? lastEntry?.loadKg ?? lastEntry?.value ?? 0;
     }
     
     if (lastEntry && Array.isArray(lastEntry.sets) && lastEntry.sets.length > 0) {
       const formattedSets = lastEntry.sets
-        .map((set, index) => `Set ${index + 1}: ${Number(set.loadKg || set.load_kg || 0).toFixed(1)} kg × ${set.reps} reps`)
+        .map((set, index) => `Set ${index + 1}: ${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0).toFixed(1)} ${loadUnit} × ${set.reps} reps`)
         .join(' — ');
       const dateStr = new Date(lastEntry.recordedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
       ui.strengthBaseline.innerHTML = `<strong>📊 Previous Session (${dateStr}):</strong><br>${formattedSets}`;
@@ -1000,15 +1004,16 @@ async function openStrengthSessionDetails(metricId) {
     body.innerHTML = '<p>No strength sessions recorded yet for this metric.</p>';
   } else {
     const latest = metricEntries[0];
-    const recommendation = buildStrengthProgressRecommendation(metricEntries);
+    const loadUnit = metric.unitName || 'kg';
+    const recommendation = buildStrengthProgressRecommendation(metricEntries, loadUnit);
     const sets = Array.isArray(latest.sets) ? latest.sets : [];
     const setLines = sets.length
       ? sets.map((set, index) => {
-          const load = Number(set.loadKg ?? set.load_kg ?? 0).toFixed(1);
+          const load = Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0).toFixed(1);
           const reps = Number(set.reps ?? 0);
-          return `<li>Set ${index + 1}: ${load} kg × ${reps} reps</li>`;
+          return `<li>Set ${index + 1}: ${load} ${loadUnit} × ${reps} reps</li>`;
         }).join('')
-      : `<li>${Number(latest.loadKg ?? latest.value ?? 0).toFixed(1)} kg × ${Number(latest.reps ?? 0)} reps</li>`;
+      : `<li>${Number(latest.loadValue ?? latest.loadKg ?? latest.value ?? 0).toFixed(1)} ${loadUnit} × ${Number(latest.reps ?? 0)} reps</li>`;
     const totalVolume = computeStrengthValue(latest, 'Total Volume');
     const maxLoad = computeStrengthValue(latest, 'Max Load');
 
@@ -1016,8 +1021,8 @@ async function openStrengthSessionDetails(metricId) {
       <div class="session-detail">
         <p><strong>Last session:</strong> ${new Date(latest.recordedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
         <ul class="session-sets">${setLines}</ul>
-        <p><strong>Total volume:</strong> ${Number(totalVolume).toFixed(1)} kg</p>
-        <p><strong>Max load:</strong> ${Number(maxLoad).toFixed(1)} kg</p>
+        <p><strong>Total volume:</strong> ${Number(totalVolume).toFixed(1)} ${loadUnit} × reps</p>
+        <p><strong>Max load:</strong> ${Number(maxLoad).toFixed(1)} ${loadUnit}</p>
         <div class="recommendation">
           <strong>Recommendation</strong>
           <p>${recommendation ?? 'No progression recommendation for this session.'}</p>
@@ -1124,7 +1129,7 @@ async function renderStats() {
       let latestLabel = '—';
       if (latestEntry) {
         if (metric.metricKind === 'strength_session') {
-          latestLabel = formatStrengthSession(latestEntry);
+          latestLabel = formatStrengthSession(latestEntry, metric.unitName || 'kg');
         } else {
           latestLabel = latestEntry.value !== null && latestEntry.value !== undefined ? latestEntry.value : '—';
           if (latestEntry.targetAction) {
@@ -1631,11 +1636,11 @@ ui.entryForm.addEventListener('submit', async (event) => {
           window.alert('Add at least one set before saving the workout.');
           return;
         }
-        const summaryLoad = strengthSets[0].loadKg;
+        const summaryLoad = strengthSets[0].loadValue;
         await updateEntry(editingEntryId, {
           metricId,
           value: summaryLoad,
-          loadKg: summaryLoad,
+          loadValue: summaryLoad,
           sets: strengthSets,
           targetAction,
           recordedAt,
@@ -1669,11 +1674,11 @@ ui.entryForm.addEventListener('submit', async (event) => {
         return;
       }
 
-      const summaryLoad = strengthSets[0].loadKg;
+      const summaryLoad = strengthSets[0].loadValue;
       await createEntry({
         metricId,
         value: summaryLoad,
-        loadKg: summaryLoad,
+        loadValue: summaryLoad,
         sets: strengthSets,
         targetAction,
         recordedAt,
@@ -2802,9 +2807,14 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
     editor.className = 'strength-edit-sets';
     const setHeader = document.createElement('div');
     setHeader.className = 'strength-edit-set-header';
-    setHeader.innerHTML = '<span>Load (kg)</span><span>Reps</span><span aria-hidden="true"></span>';
+    setHeader.innerHTML = `<span>Load (${metric.unitName || 'kg'})</span><span>Reps</span><span aria-hidden="true"></span>`;
     editor.append(setHeader);
-    sets.forEach((set) => addStrengthSetEditorRow(editor, set.loadKg, set.reps));
+    sets.forEach((set) => addStrengthSetEditorRow(
+      editor,
+      set.loadValue ?? set.loadKg ?? set.load_kg,
+      set.reps,
+      metric.unitName || 'kg'
+    ));
 
     const addButton = document.createElement('button');
     addButton.type = 'button';
@@ -2846,7 +2856,7 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
   editingEntryId = null;
 }
 
-function addStrengthSetEditorRow(container, loadKg = '', reps = '') {
+function addStrengthSetEditorRow(container, loadValue = '', reps = '', loadUnit = 'kg') {
   const row = document.createElement('div');
   row.className = 'strength-edit-set';
   row.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px;';
@@ -2856,9 +2866,9 @@ function addStrengthSetEditorRow(container, loadKg = '', reps = '') {
   loadInput.step = '0.5';
   loadInput.min = '0';
   loadInput.required = true;
-  loadInput.placeholder = 'Load (kg)';
+  loadInput.placeholder = `Load (${loadUnit})`;
   loadInput.dataset.strengthLoad = '';
-  loadInput.value = loadKg;
+  loadInput.value = loadValue;
 
   const repsInput = document.createElement('input');
   repsInput.type = 'number';
@@ -2891,21 +2901,21 @@ window.saveStrengthSessionEdit = async function(trElement) {
   for (const row of rows) {
     const loadInput = row.querySelector('[data-strength-load]');
     const repsInput = row.querySelector('[data-strength-reps]');
-    const loadKg = Number(loadInput.value);
+    const loadValue = Number(loadInput.value);
     const reps = Number(repsInput.value);
-    if (!loadInput.value.trim() || !Number.isFinite(loadKg) || loadKg < 0
+    if (!loadInput.value.trim() || !Number.isFinite(loadValue) || loadValue < 0
       || !repsInput.value.trim() || !Number.isInteger(reps) || reps < 1) {
       window.alert('Enter a valid load and a whole-number rep count for every set.');
       (loadInput.value.trim() ? repsInput : loadInput).focus();
       return;
     }
-    sets.push({ loadKg, reps });
+    sets.push({ loadValue, reps });
   }
 
   await updateEntry(trElement.dataset.entryId, {
     sets,
-    value: sets[0].loadKg,
-    loadKg: sets[0].loadKg,
+    value: sets[0].loadValue,
+    loadValue: sets[0].loadValue,
   });
   const closeModal = window.confirm(
     'Entry updated. Close the edit window? Choose Cancel to edit another entry.'
@@ -3013,9 +3023,9 @@ async function renderEntriesTable(metricId, metric, actionId = null) {
       const sets = Array.isArray(entry.sets) ? entry.sets : [];
       if (sets.length) {
         const setRows = sets.map((set, index) => {
-          const loadKg = Number(set.loadKg ?? set.load_kg ?? 0);
+          const loadValue = Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0);
           const reps = Number(set.reps ?? 0);
-          return `<li>Set ${index + 1}: ${loadKg.toFixed(1)} kg × ${reps} reps</li>`;
+          return `<li>Set ${index + 1}: ${loadValue.toFixed(1)} ${metric.unitName || 'kg'} × ${reps} reps</li>`;
         }).join('');
         displayContent = `<strong>Total volume: ${displayValue}</strong><ul class="entry-strength-sets">${setRows}</ul>`;
       }

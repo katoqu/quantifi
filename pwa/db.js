@@ -1,7 +1,7 @@
 import { validateWorkoutPlan } from './workout-model.js';
 
 const DB_NAME = 'quantifi-pwa';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORE_NAMES = {
   categories: 'categories',
@@ -34,6 +34,39 @@ export function openDb() {
           if (!current.objectStoreNames.contains(storeName)) {
             current.createObjectStore(storeName, { keyPath: 'id' });
           }
+        }
+        if (event.oldVersion < 3 && current.objectStoreNames.contains(STORE_NAMES.entries)) {
+          const entries = request.transaction.objectStore(STORE_NAMES.entries);
+          const cursorRequest = entries.openCursor();
+          cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result;
+            if (!cursor) return;
+            const entry = cursor.value;
+            let changed = false;
+            if (!Object.hasOwn(entry, 'loadValue') && Object.hasOwn(entry, 'loadKg')) {
+              entry.loadValue = entry.loadKg;
+              changed = true;
+            }
+            if (Object.hasOwn(entry, 'loadKg')) {
+              delete entry.loadKg;
+              changed = true;
+            }
+            if (Array.isArray(entry.sets)) {
+              entry.sets = entry.sets.map((set) => {
+                if (!Object.hasOwn(set, 'loadKg') && !Object.hasOwn(set, 'load_kg')) return set;
+                const migratedSet = {
+                  ...set,
+                  ...(!Object.hasOwn(set, 'loadValue') ? { loadValue: set.loadKg ?? set.load_kg } : {}),
+                };
+                delete migratedSet.loadKg;
+                delete migratedSet.load_kg;
+                changed = true;
+                return migratedSet;
+              });
+            }
+            if (changed) cursor.update(entry);
+            cursor.continue();
+          };
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -249,7 +282,7 @@ export async function createEntry(payload) {
     id: uid(),
     metricId: payload.metricId,
     value: payload.value ?? null,
-    loadKg: payload.loadKg ?? null,
+    loadValue: payload.loadValue ?? payload.loadKg ?? null,
     sets: Array.isArray(payload.sets) ? payload.sets : [],
     targetAction: payload.targetAction || null,
     recordedAt: payload.recordedAt || nowIso(),
@@ -594,8 +627,13 @@ export async function importCsvText(csvText) {
         const entry = await createEntry({
           metricId: metric.id,
           value: coerceNumber(row.Value),
-          loadKg: coerceNumber(row.LoadKg),
-          sets: parseSetsField(row.Sets),
+          loadValue: coerceNumber(row.LoadValue) ?? coerceNumber(row.LoadKg),
+          sets: parseSetsField(row.Sets).map((set) => ({
+            ...set,
+            ...(!Object.hasOwn(set, 'loadValue') && (Object.hasOwn(set, 'loadKg') || Object.hasOwn(set, 'load_kg'))
+              ? { loadValue: set.loadKg ?? set.load_kg }
+              : {}),
+          })).map(({ loadKg, load_kg, ...set }) => set),
           targetAction: String(row.Target || '').trim() || null,
           recordedAt: normalizedDate,
           workoutSessionId,
@@ -720,7 +758,7 @@ export async function exportDataAsCsv() {
   const metricMap = Object.fromEntries(metrics.map((metric) => [metric.id, metric]));
   const headers = [
     'RowType', 'Date', 'Category', 'Metric', 'Description', 'Archived', 'Value', 'Unit',
-    'Type', 'Kind', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadKg', 'Sets', 'Title',
+    'Type', 'Kind', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadValue', 'Sets', 'Title',
     'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData',
   ];
   const toRow = (values) => headers.map((header) => values[header] ?? '');
@@ -757,7 +795,7 @@ export async function exportDataAsCsv() {
         Max: metric.rangeEnd ?? '',
         HigherIsBetter: metric.higherIsBetter ?? true,
         Target: entry.targetAction ?? '',
-        LoadKg: entry.loadKg ?? '',
+        LoadValue: entry.loadValue ?? entry.loadKg ?? '',
         Sets: JSON.stringify(entry.sets || []),
         RecordId: entry.id,
         MetricId: entry.metricId,

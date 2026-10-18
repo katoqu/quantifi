@@ -58,10 +58,10 @@ test('gets the final set, with legacy entry fields as fallback', () => {
     getLastStrengthSet({
       sets: [{ loadKg: 40, reps: 8 }, { load_kg: '45', reps: '6' }],
     }),
-    { loadKg: 45, reps: 6 }
+    { loadValue: 45, reps: 6 }
   );
   assert.deepEqual(getLastStrengthSet({ value: '35', reps: '10' }), {
-    loadKg: 35,
+    loadValue: 35,
     reps: 10,
   });
 });
@@ -70,8 +70,21 @@ test('recommends a rounded load increase after a 12-rep final set', () => {
   assert.equal(
     buildStrengthProgressRecommendation([{
       sets: [{ loadKg: 50, reps: 12 }],
+    }], 'lb'),
+    'Try increasing your last set by +2.50 lb (about 5%).'
+  );
+  assert.equal(
+    buildStrengthProgressRecommendation([{
+      sets: [{ loadKg: 50, reps: 12 }],
     }]),
     'Try increasing your last set by +2.50 kg (about 5%).'
+  );
+});
+
+test('formats strength load using the metric unit', () => {
+  assert.equal(
+    formatStrengthSession({ sets: [{ loadValue: 70, reps: 8 }] }, 'lb'),
+    '70.0 lb × 8 reps × 1 sets'
   );
 });
 

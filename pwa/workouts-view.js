@@ -206,12 +206,13 @@ export function mountWorkoutsView(root, {
     if (!selectedPlan) return '';
     const exerciseCards = selectedPlan.exercises.map((exercise, index) => {
       const metric = metricFor(exercise.metricId);
+      const loadUnit = metric?.unitName || 'kg';
       const previous = entries
         .filter((entry) => entry.metricId === exercise.metricId)
         .sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0];
       const previousSets = previous?.sets || [];
       const previousHtml = previousSets.length
-        ? `<p class="muted-text">Previous: ${previousSets.map((set) => `${Number(set.loadKg ?? set.load_kg ?? 0)} kg × ${escapeHtml(set.reps)} reps`).join(' · ')}</p>`
+        ? `<p class="muted-text">Previous: ${previousSets.map((set) => `${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0)} ${escapeHtml(loadUnit)} × ${escapeHtml(set.reps)} reps`).join(' · ')}</p>`
         : '';
       return `
         <article class="panel workout-exercise-card" data-session-exercise="${index}">
@@ -219,7 +220,7 @@ export function mountWorkoutsView(root, {
           <p class="muted-text">Target: ${exercise.targetSets} sets × ${exercise.targetReps} reps</p>
           ${previousHtml}
           <div class="strength-grid">
-            <label>Load (kg)<input type="number" class="workout-load" min="0" step="0.5" value="${escapeHtml(previous?.loadKg ?? previous?.value ?? '')}" /></label>
+            <label>Load (${escapeHtml(loadUnit)})<input type="number" class="workout-load" min="0" step="0.5" value="${escapeHtml(previous?.loadValue ?? previous?.loadKg ?? previous?.value ?? '')}" /></label>
             <label>Reps<input type="number" class="workout-reps" min="1" step="1" value="${exercise.targetReps}" /></label>
           </div>
           <button type="button" class="secondary workout-add-set">Add set</button>
@@ -256,7 +257,7 @@ export function mountWorkoutsView(root, {
               const entry = entryMap.get(exercise.entryId);
               const sets = entry?.sets || [];
               const detail = sets.length
-                ? sets.map((set) => `${Number(set.loadKg ?? set.load_kg ?? 0)} kg × ${set.reps}`).join(' · ')
+                ? sets.map((set) => `${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0)} ${metricFor(exercise.metricId)?.unitName || 'kg'} × ${set.reps}`).join(' · ')
                 : 'Entry no longer available';
               return `<li><strong>${escapeHtml(exercise.metricName)}</strong>: ${escapeHtml(detail)}</li>`;
             }).join('')}
@@ -282,10 +283,11 @@ export function mountWorkoutsView(root, {
         <h4>Strength progress</h4>
         ${reviewResult.exerciseProgress.map((progress) => {
           const metric = metricFor(progress.metricId);
+          const loadUnit = metric?.unitName || 'kg';
           let detail = 'Not enough sessions to compare.';
           if (progress.change !== null) {
             const sign = progress.change > 0 ? '+' : '';
-            detail = `Estimated 1RM: ${progress.firstEstimatedOneRepMax.toFixed(1)} kg → ${progress.latestEstimatedOneRepMax.toFixed(1)} kg (${sign}${progress.change.toFixed(1)} kg across ${progress.sessions} sessions).`;
+            detail = `Estimated 1RM: ${progress.firstEstimatedOneRepMax.toFixed(1)} ${loadUnit} → ${progress.latestEstimatedOneRepMax.toFixed(1)} ${loadUnit} (${sign}${progress.change.toFixed(1)} ${loadUnit} across ${progress.sessions} sessions).`;
           }
           return `<p><strong>${escapeHtml(metric?.name || 'Archived exercise')}:</strong> ${escapeHtml(detail)}</p>`;
         }).join('')}
@@ -497,6 +499,7 @@ export function mountWorkoutsView(root, {
         repsInput,
         addButton: card.querySelector('.workout-add-set'),
         defaultReps: exercise.targetReps,
+        loadUnit: metricFor(exercise.metricId)?.unitName || 'kg',
         onChange: (sets) => { sessionSets[index] = sets; },
       });
       editor.replace(sessionSets[index] || []);

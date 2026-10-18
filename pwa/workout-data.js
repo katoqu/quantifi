@@ -66,14 +66,14 @@ export async function saveWorkoutSession(plan, { recordedAt, exercises }) {
     if (exercise.metricId !== planned.metricId || !Array.isArray(exercise.sets) || !exercise.sets.length) {
       throw new Error('Add at least one valid set for every exercise.');
     }
-    const sets = exercise.sets.map((set) => normalizeStrengthSet(set.loadKg ?? set.load_kg, set.reps));
+    const sets = exercise.sets.map((set) => normalizeStrengthSet(set.loadValue ?? set.loadKg ?? set.load_kg, set.reps));
     const entryId = uid();
     return {
       entry: {
         id: entryId,
         metricId: planned.metricId,
-        value: sets[0].loadKg,
-        loadKg: sets[0].loadKg,
+        value: sets[0].loadValue,
+        loadValue: sets[0].loadValue,
         sets,
         targetAction: null,
         recordedAt,
