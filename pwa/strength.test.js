@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   buildStrengthProgressRecommendation,
+  computeDurationValue,
   computeStrengthValue,
   formatStrengthSession,
   getLastStrengthSet,
@@ -32,8 +33,8 @@ test('accepts legacy set load field and defaults missing repetitions', () => {
 test('formats strength sessions with sets', () => {
   assert.equal(
     formatStrengthSession({
-      loadKg: 70,
-      sets: [{ loadKg: 60, reps: 8 }, { loadKg: 70, reps: 5 }],
+      loadValue: 70,
+      sets: [{ loadValue: 60, reps: 8 }, { loadValue: 70, reps: 5 }],
     }),
     '70.0 kg × 8/5 reps × 2 sets'
   );
@@ -86,6 +87,14 @@ test('formats strength load using the metric unit', () => {
     formatStrengthSession({ sets: [{ loadValue: 70, reps: 8 }] }, 'lb'),
     '70.0 lb × 8 reps × 1 sets'
   );
+});
+
+test('computes and formats timed strength sessions without applying load aggregates', () => {
+  const entry = { value: 30, sets: [{ durationSeconds: 25 }, { durationSeconds: 30, loadValue: 5 }] };
+  assert.equal(computeDurationValue(entry, 'Max Duration'), 30);
+  assert.equal(computeDurationValue(entry, 'Total Duration'), 55);
+  assert.equal(formatStrengthSession(entry), '25 sec hold · 30 sec hold + 5 kg');
+  assert.equal(formatStrengthSession({ value: 30 }, 'lb', 'duration'), '30 sec');
 });
 
 test('recommends extra repetitions after four unchanged sessions', () => {

@@ -112,6 +112,13 @@
                     <option value="strength_session">Strength session</option>
                   </select>
                 </label>
+                <label id="strengthMeasureField" class="hidden">
+                  Strength measure
+                  <select id="strengthMeasure">
+                    <option value="reps">Reps</option>
+                    <option value="duration">Duration</option>
+                  </select>
+                </label>
                 <div class="metric-add-buttons">
                   <button type="submit" class="primary">Save metric</button>
                   <button type="button" id="cancelMetric" class="secondary">Cancel</button>
@@ -209,7 +216,7 @@
                       <input type="number" id="strengthLoadInput" step="0.5" min="0" />
                     </label>
                     <label>
-                      Reps
+                      <span id="strengthMeasureLabel">Reps</span>
                       <input type="number" id="strengthRepsInput" step="1" min="1" value="5" />
                     </label>
                   </div>

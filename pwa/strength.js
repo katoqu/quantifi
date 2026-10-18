@@ -28,9 +28,25 @@ export function computeStrengthValue(entry, aggType) {
   return setData.reduce((sum, s) => sum + s.load, 0);
 }
 
-export function formatStrengthSession(entry, loadUnit = 'kg') {
+export function computeDurationValue(entry, aggType = 'Max Duration') {
+  const durations = (entry.sets || [])
+    .map((set) => Number(set.durationSeconds))
+    .filter(Number.isFinite);
+  if (durations.length === 0) return Number(entry.value ?? 0);
+  return aggType === 'Total Duration'
+    ? durations.reduce((sum, duration) => sum + duration, 0)
+    : Math.max(...durations);
+}
+
+export function formatStrengthSession(entry, loadUnit = 'kg', strengthMeasure = 'reps') {
   if (!entry) return '—';
   const sets = entry.sets || [];
+  if (strengthMeasure === 'duration' || sets.some((set) => set.durationSeconds !== undefined)) {
+    if (!sets.length) {
+      return entry.value !== null && entry.value !== undefined ? `${Number(entry.value)} sec` : '—';
+    }
+    return sets.map((set) => `${set.durationSeconds} sec hold${set.loadValue === undefined ? '' : ` + ${set.loadValue} ${loadUnit}`}`).join(' · ');
+  }
   if (!Array.isArray(sets) || sets.length === 0) {
     return entry.value !== null && entry.value !== undefined ? `${Number(entry.value).toFixed(1)} ${loadUnit}` : '—';
   }

@@ -66,14 +66,22 @@ export async function saveWorkoutSession(plan, { recordedAt, exercises }) {
     if (exercise.metricId !== planned.metricId || !Array.isArray(exercise.sets) || !exercise.sets.length) {
       throw new Error('Add at least one valid set for every exercise.');
     }
-    const sets = exercise.sets.map((set) => normalizeStrengthSet(set.loadValue ?? set.loadKg ?? set.load_kg, set.reps));
+    const strengthMeasure = planned.strengthMeasure || 'reps';
+    const sets = exercise.sets.map((set) => normalizeStrengthSet(
+      set.loadValue ?? set.loadKg ?? set.load_kg,
+      strengthMeasure === 'duration' ? set.durationSeconds : set.reps,
+      strengthMeasure
+    ));
     const entryId = uid();
+    const firstSetValue = strengthMeasure === 'duration'
+      ? sets[0].durationSeconds
+      : sets[0].loadValue;
     return {
       entry: {
         id: entryId,
         metricId: planned.metricId,
-        value: sets[0].loadValue,
-        loadValue: sets[0].loadValue,
+        value: firstSetValue,
+        ...(sets[0].loadValue === undefined ? {} : { loadValue: sets[0].loadValue }),
         sets,
         targetAction: null,
         recordedAt,
@@ -85,8 +93,11 @@ export async function saveWorkoutSession(plan, { recordedAt, exercises }) {
         metricId: planned.metricId,
         metricName: String(exercise.metricName || ''),
         entryId,
+        strengthMeasure,
         targetSets: planned.targetSets,
-        targetReps: planned.targetReps,
+        ...(strengthMeasure === 'duration'
+          ? { targetDurationSeconds: planned.targetDurationSeconds }
+          : { targetReps: planned.targetReps }),
       },
     };
   });

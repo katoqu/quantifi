@@ -9,3 +9,9 @@ test('normalizes valid strength sets and rejects invalid load or reps', () => {
   assert.throws(() => normalizeStrengthSet('50', '0'), /whole-number rep count/);
   assert.throws(() => normalizeStrengthSet('50', '8.5'), /whole-number rep count/);
 });
+
+test('normalizes timed sets with optional added load', () => {
+  assert.deepEqual(normalizeStrengthSet('', '30', 'duration'), { durationSeconds: 30 });
+  assert.deepEqual(normalizeStrengthSet('5', '30', 'duration'), { loadValue: 5, durationSeconds: 30 });
+  assert.throws(() => normalizeStrengthSet('', '0', 'duration'), /duration/);
+});

@@ -1,4 +1,4 @@
-import { computeStrengthValue } from './strength.js';
+import { computeDurationValue, computeStrengthValue } from './strength.js';
 
 export function getStartDateForPeriod(period, maxDate) {
   const end = maxDate ? new Date(maxDate) : new Date();
@@ -35,7 +35,9 @@ export function resampleAndProcessData(entries, metric, period, zeros, strengthA
     day.setHours(0, 0, 0, 0);
     const key = day.toISOString();
     const value = metric.metricKind === 'strength_session'
-      ? computeStrengthValue(entry, strengthAgg)
+      ? (metric.strengthMeasure === 'duration'
+        ? computeDurationValue(entry, strengthAgg)
+        : computeStrengthValue(entry, strengthAgg))
       : Number(entry.value);
     if (Number.isNaN(value)) continue;
     const existing = bucketMap.get(key);

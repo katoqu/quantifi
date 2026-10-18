@@ -62,3 +62,18 @@ test('resamples strength entries using the selected aggregate', () => {
   assert.equal(result.length, 1);
   assert.equal(result[0].value, 830);
 });
+
+test('resamples timed strength entries as durations rather than loads', () => {
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  const result = resampleAndProcessData([
+    {
+      metricId: 'plank',
+      recordedAt: today.toISOString(),
+      sets: [{ durationSeconds: 25 }, { durationSeconds: 30 }],
+    },
+  ], { id: 'plank', metricKind: 'strength_session', strengthMeasure: 'duration' }, 'Week', false, 'Max Duration');
+
+  assert.equal(result[0].value, 30);
+});

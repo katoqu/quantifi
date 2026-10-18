@@ -141,6 +141,7 @@ test('saves grouped workout entries and includes plans and sessions in CSV backu
     exercises: [{ metricId: bench.id, targetSets: 3, targetReps: 8 }],
     outcomeMetrics: [{ metricId: row.id, direction: 'decrease' }],
   });
+
   const session = await saveWorkoutSession(plan, {
     recordedAt: '2026-10-11T10:00:00.000Z',
     exercises: [{
@@ -191,4 +192,44 @@ test('saves grouped workout entries and includes plans and sessions in CSV backu
   assert.equal(restoredSession.exercises[0].entryId, restoredEntry.id);
   assert.equal(restoredEntry.workoutSessionId, restoredSession.id);
   assert.deepEqual(restoredEntry.sets, [{ loadValue: 50, reps: 8 }, { loadValue: 52.5, reps: 7 }]);
+});
+
+test('saves duration sets with optional added load and exports their metric measure', async () => {
+  for (const records of stores.values()) records.clear();
+  const [
+    { createMetric, exportDataAsCsv, listEntries },
+    { saveWorkoutPlan, saveWorkoutSession },
+  ] = await Promise.all([
+    import('./db.js'),
+    import('./workout-data.js'),
+  ]);
+  const plank = await createMetric({
+    name: 'workout-test-plank',
+    metricKind: 'strength_session',
+    strengthMeasure: 'duration',
+    unitName: 'lb',
+  });
+  const plan = await saveWorkoutPlan({
+    name: 'Timed core',
+    exercises: [{
+      metricId: plank.id,
+      targetSets: 3,
+      strengthMeasure: 'duration',
+      targetDurationSeconds: 30,
+    }],
+  });
+  await saveWorkoutSession(plan, {
+    recordedAt: '2026-10-12T10:00:00.000Z',
+    exercises: [{
+      metricId: plank.id,
+      metricName: plank.name,
+      sets: [{ durationSeconds: 30 }, { durationSeconds: 25, loadValue: 5 }],
+    }],
+  });
+  const [entry] = await listEntries();
+  assert.deepEqual(entry.sets, [{ durationSeconds: 30 }, { loadValue: 5, durationSeconds: 25 }]);
+  assert.equal(entry.value, 30);
+  const csv = await exportDataAsCsv();
+  assert.match(csv, /StrengthMeasure/);
+  assert.match(csv, /duration/);
 });

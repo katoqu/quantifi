@@ -10,6 +10,10 @@ export function canKeepMetricValues(currentMetric, nextMetric) {
     currentMetric
     && nextMetric
     && getMetricKind(currentMetric) === getMetricKind(nextMetric)
+    && (
+      getMetricKind(currentMetric) !== 'strength_session'
+      || (currentMetric.strengthMeasure || 'reps') === (nextMetric.strengthMeasure || 'reps')
+    )
   );
 }
 

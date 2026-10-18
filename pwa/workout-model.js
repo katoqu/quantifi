@@ -11,17 +11,25 @@ export function validateWorkoutPlan(plan) {
   const normalizedExercises = exercises.map((exercise) => {
     const metricId = String(exercise.metricId || '').trim();
     const targetSets = Number(exercise.targetSets);
-    const targetReps = Number(exercise.targetReps);
+    const strengthMeasure = exercise.strengthMeasure === 'duration' ? 'duration' : 'reps';
+    const targetValue = Number(strengthMeasure === 'duration'
+      ? exercise.targetDurationSeconds
+      : exercise.targetReps);
     if (!metricId) throw new Error('Choose a strength metric for every exercise.');
     if (exerciseMetricIds.has(metricId)) throw new Error('Add each strength metric only once to a plan.');
     if (!Number.isInteger(targetSets) || targetSets < 1) {
       throw new Error('Target sets must be a whole number greater than zero.');
     }
-    if (!Number.isInteger(targetReps) || targetReps < 1) {
-      throw new Error('Target reps must be a whole number greater than zero.');
+    if (!Number.isFinite(targetValue) || targetValue <= 0
+      || (strengthMeasure === 'reps' && !Number.isInteger(targetValue))) {
+      throw new Error(strengthMeasure === 'duration'
+        ? 'Target duration must be greater than zero seconds.'
+        : 'Target reps must be a whole number greater than zero.');
     }
     exerciseMetricIds.add(metricId);
-    return { metricId, targetSets, targetReps };
+    return strengthMeasure === 'duration'
+      ? { metricId, targetSets, strengthMeasure, targetDurationSeconds: targetValue }
+      : { metricId, targetSets, strengthMeasure, targetReps: targetValue };
   });
 
   const outcomeMetrics = Array.isArray(plan.outcomeMetrics) ? plan.outcomeMetrics : [];
@@ -45,6 +53,11 @@ export function validateWorkoutPlan(plan) {
 function getEntryBestEstimatedOneRepMax(entry) {
   if (!Array.isArray(entry?.sets) || entry.sets.length === 0) return null;
   return computeStrengthValue(entry, 'Max e1RM');
+}
+
+function getEntryBestDuration(entry) {
+  const durations = (entry?.sets || []).map((set) => Number(set.durationSeconds)).filter(Number.isFinite);
+  return durations.length ? Math.max(...durations) : null;
 }
 
 function compareOutcomeValues(first, last, direction) {
@@ -88,16 +101,20 @@ export function summarizeWorkoutBlock({ plan, sessions, entries, metrics, startA
     for (const session of includedSessions) {
       const matchingEntry = (sessionEntryMap.get(session.id) || [])
         .find((entry) => entry.metricId === exercise.metricId);
-      const best = getEntryBestEstimatedOneRepMax(matchingEntry);
+      const strengthMeasure = exercise.strengthMeasure || 'reps';
+      const best = strengthMeasure === 'duration'
+        ? getEntryBestDuration(matchingEntry)
+        : getEntryBestEstimatedOneRepMax(matchingEntry);
       if (best !== null && Number.isFinite(best)) readings.push(best);
     }
     const first = readings[0] ?? null;
     const latest = readings.at(-1) ?? null;
     return {
       metricId: exercise.metricId,
+      strengthMeasure: exercise.strengthMeasure || 'reps',
       sessions: readings.length,
-      firstEstimatedOneRepMax: first,
-      latestEstimatedOneRepMax: latest,
+      firstValue: first,
+      latestValue: latest,
       change: readings.length < 2 ? null : latest - first,
     };
   });

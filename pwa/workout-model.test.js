@@ -10,7 +10,7 @@ test('validates plan exercises and optional outcome directions', () => {
     outcomeMetrics: [{ metricId: 'weight', direction: 'decrease' }],
   }), {
     name: 'Upper A',
-    exercises: [{ metricId: 'bench', targetSets: 3, targetReps: 8 }],
+    exercises: [{ metricId: 'bench', targetSets: 3, strengthMeasure: 'reps', targetReps: 8 }],
     outcomeMetrics: [{ metricId: 'weight', direction: 'decrease' }],
   });
   assert.throws(() => validateWorkoutPlan({ name: '', exercises: [] }), /plan name/);
@@ -96,4 +96,43 @@ test('requires a valid block and reports insufficient outcome readings', () => {
     () => summarizeWorkoutBlock({ ...input, startAt: 'bad-date' }),
     /valid workout block/
   );
+});
+
+test('validates duration targets and summarizes best hold across a workout block', () => {
+  const plan = validateWorkoutPlan({
+    name: 'Core',
+    exercises: [{
+      metricId: 'plank',
+      targetSets: 3,
+      strengthMeasure: 'duration',
+      targetDurationSeconds: '30',
+    }],
+  });
+  assert.deepEqual(plan.exercises[0], {
+    metricId: 'plank',
+    targetSets: 3,
+    strengthMeasure: 'duration',
+    targetDurationSeconds: 30,
+  });
+  assert.throws(() => validateWorkoutPlan({
+    name: 'Core',
+    exercises: [{ metricId: 'plank', targetSets: 3, strengthMeasure: 'duration', targetDurationSeconds: '0' }],
+  }), /duration/);
+
+  const summary = summarizeWorkoutBlock({
+    plan: { id: 'core', exercises: [{ metricId: 'plank', strengthMeasure: 'duration' }] },
+    sessions: [
+      { id: 'first', planId: 'core', recordedAt: '2026-01-02T12:00:00Z' },
+      { id: 'last', planId: 'core', recordedAt: '2026-01-03T12:00:00Z' },
+    ],
+    entries: [
+      { workoutSessionId: 'first', metricId: 'plank', sets: [{ durationSeconds: 25 }, { durationSeconds: 30 }] },
+      { workoutSessionId: 'last', metricId: 'plank', sets: [{ durationSeconds: 35 }] },
+    ],
+    metrics: [],
+    startAt: '2026-01-01T00:00:00Z',
+    endAt: '2026-01-31T23:59:59Z',
+  });
+  assert.equal(summary.exerciseProgress[0].change, 5);
+  assert.equal(summary.exerciseProgress[0].firstValue, 30);
 });

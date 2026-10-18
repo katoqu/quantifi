@@ -242,6 +242,9 @@ export async function createMetric(payload) {
     unitName: payload.unitName || null,
     unitType: payload.unitType || 'float',
     metricKind: payload.metricKind || 'quantitative',
+    ...(payload.metricKind === 'strength_session'
+      ? { strengthMeasure: payload.strengthMeasure === 'duration' ? 'duration' : 'reps' }
+      : {}),
     rangeStart: payload.rangeStart ?? null,
     rangeEnd: payload.rangeEnd ?? null,
     higherIsBetter: payload.higherIsBetter ?? true,
@@ -570,6 +573,7 @@ export async function importCsvText(csvText) {
           unitType,
           metricKind: String(row.Kind || '').trim().toLowerCase()
             || (unitType === 'integer_range' ? 'score' : unitType === 'integer' ? 'count' : 'quantitative'),
+          strengthMeasure: row.StrengthMeasure || 'reps',
           rangeStart: coerceNumber(row.Min),
           rangeEnd: coerceNumber(row.Max),
           higherIsBetter: row.HigherIsBetter === '' ? true : toBoolean(row.HigherIsBetter),
@@ -598,6 +602,7 @@ export async function importCsvText(csvText) {
           unitName: unitName || null,
           unitType,
           metricKind: metricKind || (unitType === 'integer_range' ? 'score' : unitType === 'integer' ? 'count' : 'quantitative'),
+          strengthMeasure: row.StrengthMeasure || 'reps',
           rangeStart: coerceNumber(row.Min),
           rangeEnd: coerceNumber(row.Max),
           higherIsBetter: row.HigherIsBetter === '' ? true : toBoolean(row.HigherIsBetter),
@@ -758,7 +763,7 @@ export async function exportDataAsCsv() {
   const metricMap = Object.fromEntries(metrics.map((metric) => [metric.id, metric]));
   const headers = [
     'RowType', 'Date', 'Category', 'Metric', 'Description', 'Archived', 'Value', 'Unit',
-    'Type', 'Kind', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadValue', 'Sets', 'Title',
+    'Type', 'Kind', 'StrengthMeasure', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadValue', 'Sets', 'Title',
     'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData',
   ];
   const toRow = (values) => headers.map((header) => values[header] ?? '');
@@ -773,6 +778,7 @@ export async function exportDataAsCsv() {
       Unit: metric.unitName || '',
       Type: metric.unitType || '',
       Kind: metric.metricKind || '',
+      StrengthMeasure: metric.strengthMeasure || 'reps',
       Min: metric.rangeStart ?? '',
       Max: metric.rangeEnd ?? '',
       HigherIsBetter: metric.higherIsBetter ?? true,
@@ -791,6 +797,7 @@ export async function exportDataAsCsv() {
         Unit: metric.unitName || '',
         Type: metric.unitType || '',
         Kind: metric.metricKind || '',
+        StrengthMeasure: metric.strengthMeasure || 'reps',
         Min: metric.rangeStart ?? '',
         Max: metric.rangeEnd ?? '',
         HigherIsBetter: metric.higherIsBetter ?? true,

@@ -23,6 +23,7 @@ import {
 } from './db.js';
 import {
   buildStrengthProgressRecommendation,
+  computeDurationValue,
   computeStrengthValue,
   formatStrengthSession,
   getLastStrengthSet,
@@ -35,7 +36,7 @@ import {
   sortMetricsByRecentEntry,
 } from './metric-filters.js';
 import { generateSvgChart, renderSparkline } from './chart.js';
-import { mountStrengthSetEditor } from './strength-set-editor.js';
+import { mountStrengthSetEditor, normalizeStrengthSet } from './strength-set-editor.js';
 import { renderMetricPicker, setMetricPickerOpen } from './metric-picker.js';
 import {
   archiveWorkoutPlan,
@@ -90,6 +91,8 @@ const ui = {
   metricUnit: document.querySelector('#metricUnit'),
   metricType: document.querySelector('#metricType'),
   metricKind: document.querySelector('#metricKind'),
+  strengthMeasureField: document.querySelector('#strengthMeasureField'),
+  strengthMeasure: document.querySelector('#strengthMeasure'),
   metricDescription: document.querySelector('#metricDescription'),
   metricList: document.querySelector('#metricList'),
   metricSearch: document.querySelector('#metricSearch'),
@@ -136,6 +139,7 @@ const ui = {
   strengthWorkoutFields: document.querySelector('#strengthWorkoutFields'),
   strengthLoadInput: document.querySelector('#strengthLoadInput'),
   strengthLoadLabel: document.querySelector('#strengthLoadLabel'),
+  strengthMeasureLabel: document.querySelector('#strengthMeasureLabel'),
   strengthRepsInput: document.querySelector('#strengthRepsInput'),
   strengthAddSetButton: document.querySelector('#strengthAddSetButton'),
   strengthSetList: document.querySelector('#strengthSetList'),
@@ -499,12 +503,19 @@ async function syncAddFormMode() {
 
   if (isStrength) {
     const loadUnit = metric.unitName || 'kg';
+    const strengthMeasure = metric.strengthMeasure || 'reps';
     ui.strengthLoadLabel.textContent = `Load (${loadUnit})`;
+    ui.strengthMeasureLabel.textContent = strengthMeasure === 'duration' ? 'Hold (seconds)' : 'Reps';
+    ui.strengthRepsInput.step = strengthMeasure === 'duration' ? 'any' : '1';
+    ui.strengthRepsInput.min = strengthMeasure === 'duration' ? '0.01' : '1';
+    if (!strengthInputsDirty) ui.strengthRepsInput.value = strengthMeasure === 'duration' ? '30' : '5';
+    ui.strengthLoadInput.required = strengthMeasure !== 'duration';
     strengthSetEditor.setLoadUnit(loadUnit);
+    strengthSetEditor.setMeasure(strengthMeasure, Number(ui.strengthRepsInput.value));
     const [entries] = await Promise.all([listEntries()]);
     const metricEntries = entries.filter((entry) => entry.metricId === metric.id);
     const lastEntry = metricEntries.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0];
-    if (suppressStrengthLoadPrefill) {
+    if (strengthMeasure === 'duration' || suppressStrengthLoadPrefill) {
       ui.strengthLoadInput.value = '';
     } else if (!strengthInputsDirty) {
       ui.strengthLoadInput.value = lastEntry?.loadValue ?? lastEntry?.loadKg ?? lastEntry?.value ?? 0;
@@ -512,7 +523,9 @@ async function syncAddFormMode() {
     
     if (lastEntry && Array.isArray(lastEntry.sets) && lastEntry.sets.length > 0) {
       const formattedSets = lastEntry.sets
-        .map((set, index) => `Set ${index + 1}: ${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0).toFixed(1)} ${loadUnit} × ${set.reps} reps`)
+        .map((set, index) => strengthMeasure === 'duration'
+          ? `Set ${index + 1}: ${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${loadUnit}`}`
+          : `Set ${index + 1}: ${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0).toFixed(1)} ${loadUnit} × ${set.reps} reps`)
         .join(' — ');
       const dateStr = new Date(lastEntry.recordedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
       ui.strengthBaseline.innerHTML = `<strong>📊 Previous Session (${dateStr}):</strong><br>${formattedSets}`;
@@ -593,12 +606,15 @@ function renderAddMetricSelect() {
 
 function hasEntryValues() {
   const activeTarget = ui.targetActionPills.querySelector('.pill.active');
+  const selectedMetric = addMetricCandidates.find((metric) => metric.id === addSelectedMetricId);
+  const strengthMeasure = selectedMetric?.strengthMeasure || 'reps';
+  const defaultMeasureValue = strengthMeasure === 'duration' ? '30' : '5';
   return Boolean(
     ui.entryValue.value.trim()
     || strengthSetEditor.getSets().length
     || (
       strengthInputsDirty
-      && (ui.strengthLoadInput.value.trim() || ui.strengthRepsInput.value !== '5')
+      && (ui.strengthLoadInput.value.trim() || ui.strengthRepsInput.value !== defaultMeasureValue)
     )
     || (activeTarget && activeTarget.dataset.target !== 'None')
   );
@@ -704,7 +720,11 @@ async function renderHome() {
     const categoryName = categoryMap[metric.categoryId] || 'General';
 
     const cleanValues = sortedEntries
-      .map(e => metric.metricKind === 'strength_session' ? computeStrengthValue(e, 'Total Volume') : e.value)
+      .map(e => metric.metricKind === 'strength_session'
+        ? (metric.strengthMeasure === 'duration'
+          ? computeDurationValue(e, 'Max Duration')
+          : computeStrengthValue(e, 'Total Volume'))
+        : e.value)
       .filter(v => v !== null && v !== undefined && !Number.isNaN(v));
     const sparkValues = cleanValues.slice(-12);
 
@@ -715,9 +735,11 @@ async function renderHome() {
     let suffix = '';
     if (latest) {
       if (metric.metricKind === 'strength_session') {
-        const aggValue = computeStrengthValue(latest, activeVizSettings.strengthAgg || 'Max Load');
+        const aggValue = metric.strengthMeasure === 'duration'
+          ? computeDurationValue(latest, 'Max Duration')
+          : computeStrengthValue(latest, activeVizSettings.strengthAgg || 'Max Load');
         latestLabel = aggValue !== null && aggValue !== undefined ? Number(aggValue).toFixed(1) : '—';
-        suffix = metric.unitName ? ` ${metric.unitName}` : '';
+        suffix = metric.strengthMeasure === 'duration' ? ' sec' : metric.unitName ? ` ${metric.unitName}` : '';
       } else {
         latestLabel = latest.value !== null && latest.value !== undefined ? latest.value : '—';
         suffix = metric.unitName ? ` ${metric.unitName}` : '';
@@ -1005,24 +1027,30 @@ async function openStrengthSessionDetails(metricId) {
   } else {
     const latest = metricEntries[0];
     const loadUnit = metric.unitName || 'kg';
-    const recommendation = buildStrengthProgressRecommendation(metricEntries, loadUnit);
+    const strengthMeasure = metric.strengthMeasure || 'reps';
+    const recommendation = strengthMeasure === 'duration'
+      ? null
+      : buildStrengthProgressRecommendation(metricEntries, loadUnit);
     const sets = Array.isArray(latest.sets) ? latest.sets : [];
     const setLines = sets.length
       ? sets.map((set, index) => {
+          if (strengthMeasure === 'duration') {
+            return `<li>Set ${index + 1}: ${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${loadUnit}`}</li>`;
+          }
           const load = Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0).toFixed(1);
           const reps = Number(set.reps ?? 0);
           return `<li>Set ${index + 1}: ${load} ${loadUnit} × ${reps} reps</li>`;
         }).join('')
       : `<li>${Number(latest.loadValue ?? latest.loadKg ?? latest.value ?? 0).toFixed(1)} ${loadUnit} × ${Number(latest.reps ?? 0)} reps</li>`;
-    const totalVolume = computeStrengthValue(latest, 'Total Volume');
-    const maxLoad = computeStrengthValue(latest, 'Max Load');
+    const totalVolume = strengthMeasure === 'duration' ? computeDurationValue(latest, 'Total Duration') : computeStrengthValue(latest, 'Total Volume');
+    const maxLoad = strengthMeasure === 'duration' ? computeDurationValue(latest, 'Max Duration') : computeStrengthValue(latest, 'Max Load');
 
     body.innerHTML = `
       <div class="session-detail">
         <p><strong>Last session:</strong> ${new Date(latest.recordedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
         <ul class="session-sets">${setLines}</ul>
-        <p><strong>Total volume:</strong> ${Number(totalVolume).toFixed(1)} ${loadUnit} × reps</p>
-        <p><strong>Max load:</strong> ${Number(maxLoad).toFixed(1)} ${loadUnit}</p>
+        <p><strong>${strengthMeasure === 'duration' ? 'Total hold time' : 'Total volume'}:</strong> ${Number(totalVolume).toFixed(1)} ${strengthMeasure === 'duration' ? 'sec' : `${loadUnit} × reps`}</p>
+        <p><strong>${strengthMeasure === 'duration' ? 'Best hold' : 'Max load'}:</strong> ${Number(maxLoad).toFixed(1)} ${strengthMeasure === 'duration' ? 'sec' : loadUnit}</p>
         <div class="recommendation">
           <strong>Recommendation</strong>
           <p>${recommendation ?? 'No progression recommendation for this session.'}</p>
@@ -1083,6 +1111,15 @@ async function renderStats() {
 
     const isStrength = selectedMetric.metricKind === 'strength_session';
     ui.statsStrengthControl.classList.toggle('hidden', !isStrength);
+    const strengthMeasure = selectedMetric.strengthMeasure || 'reps';
+    ui.statsStrengthSelect.innerHTML = (strengthMeasure === 'duration'
+      ? ['Max Duration', 'Total Duration']
+      : ['Total Volume', 'Max Load', 'Average Load', 'Max e1RM'])
+      .map((aggregate) => `<option value="${aggregate}">${aggregate}</option>`)
+      .join('');
+    if (!Array.from(ui.statsStrengthSelect.options).some((option) => option.value === activeVizSettings.strengthAgg)) {
+      activeVizSettings.strengthAgg = strengthMeasure === 'duration' ? 'Max Duration' : 'Max Load';
+    }
 
     activeVizSettings.metricId = selectedMetricId;
     
@@ -1110,7 +1147,9 @@ async function renderStats() {
       activeVizSettings.strengthAgg
     );
 
-    ui.statsChartContainer.innerHTML = generateSvgChart(processedData, selectedMetric);
+    ui.statsChartContainer.innerHTML = generateSvgChart(processedData, selectedMetric.strengthMeasure === 'duration'
+      ? { ...selectedMetric, unitName: 'sec' }
+      : selectedMetric);
   } else {
     ui.statsControls.classList.add('hidden');
     ui.statsChartContainer.classList.add('hidden');
@@ -1129,7 +1168,11 @@ async function renderStats() {
       let latestLabel = '—';
       if (latestEntry) {
         if (metric.metricKind === 'strength_session') {
-          latestLabel = formatStrengthSession(latestEntry, metric.unitName || 'kg');
+          latestLabel = formatStrengthSession(
+            latestEntry,
+            metric.unitName || 'kg',
+            metric.strengthMeasure || 'reps'
+          );
         } else {
           latestLabel = latestEntry.value !== null && latestEntry.value !== undefined ? latestEntry.value : '—';
           if (latestEntry.targetAction) {
@@ -1636,11 +1679,12 @@ ui.entryForm.addEventListener('submit', async (event) => {
           window.alert('Add at least one set before saving the workout.');
           return;
         }
-        const summaryLoad = strengthSets[0].loadValue;
+        const firstSet = strengthSets[0];
+        const value = metric.strengthMeasure === 'duration' ? firstSet.durationSeconds : firstSet.loadValue;
         await updateEntry(editingEntryId, {
           metricId,
-          value: summaryLoad,
-          loadValue: summaryLoad,
+          value,
+          loadValue: firstSet.loadValue ?? null,
           sets: strengthSets,
           targetAction,
           recordedAt,
@@ -1674,11 +1718,12 @@ ui.entryForm.addEventListener('submit', async (event) => {
         return;
       }
 
-      const summaryLoad = strengthSets[0].loadValue;
+      const firstSet = strengthSets[0];
+      const value = metric?.strengthMeasure === 'duration' ? firstSet.durationSeconds : firstSet.loadValue;
       await createEntry({
         metricId,
-        value: summaryLoad,
-        loadValue: summaryLoad,
+        value,
+        loadValue: firstSet.loadValue ?? null,
         sets: strengthSets,
         targetAction,
         recordedAt,
@@ -2121,12 +2166,17 @@ ui.cancelMetric.addEventListener('click', () => {
   isAddingMetric = false;
   ui.metricForm.style.display = 'none';
   ui.metricForm.reset();
+  ui.strengthMeasureField.classList.add('hidden');
   
   // Clear active button states
   ui.addMetricBtn.classList.remove('active');
   ui.editMetricBtn.classList.remove('active');
   
   renderAll();
+});
+
+ui.metricKind.addEventListener('change', () => {
+  ui.strengthMeasureField.classList.toggle('hidden', ui.metricKind.value !== 'strength_session');
 });
 
 ui.metricForm.addEventListener('submit', async (event) => {
@@ -2151,11 +2201,14 @@ ui.metricForm.addEventListener('submit', async (event) => {
     unitName: ui.metricUnit.value.trim() || null,
     unitType: ui.metricType.value,
     metricKind: ui.metricKind.value,
+    strengthMeasure: ui.metricKind.value === 'strength_session' ? ui.strengthMeasure.value : undefined,
     higherIsBetter: true,
     isArchived: false,
   });
+
   isAddingMetric = false;
   ui.metricForm.reset();
+  ui.strengthMeasureField.classList.add('hidden');
   ui.metricForm.style.display = 'none';
   setHomeCreateOpen(false);
   
@@ -2803,17 +2856,23 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
   if (metric.metricKind === 'strength_session') {
     const valueCell = trElement.querySelector('td:nth-child(2)');
     const sets = Array.isArray(entry.sets) ? entry.sets : [];
+    const strengthMeasure = metric.strengthMeasure || 'reps';
     const editor = document.createElement('div');
     editor.className = 'strength-edit-sets';
+    editor.dataset.strengthMeasure = strengthMeasure;
+    editor.dataset.loadUnit = metric.unitName || 'kg';
     const setHeader = document.createElement('div');
     setHeader.className = 'strength-edit-set-header';
-    setHeader.innerHTML = `<span>Load (${metric.unitName || 'kg'})</span><span>Reps</span><span aria-hidden="true"></span>`;
+    setHeader.innerHTML = strengthMeasure === 'duration'
+      ? `<span>Load (${metric.unitName || 'kg'}, optional)</span><span>Hold (seconds)</span><span aria-hidden="true"></span>`
+      : `<span>Load (${metric.unitName || 'kg'})</span><span>Reps</span><span aria-hidden="true"></span>`;
     editor.append(setHeader);
     sets.forEach((set) => addStrengthSetEditorRow(
       editor,
       set.loadValue ?? set.loadKg ?? set.load_kg,
-      set.reps,
-      metric.unitName || 'kg'
+      strengthMeasure === 'duration' ? set.durationSeconds : set.reps,
+      metric.unitName || 'kg',
+      strengthMeasure
     ));
 
     const addButton = document.createElement('button');
@@ -2856,7 +2915,7 @@ window.handleEditEntry = async function(entryId, metricId, trElement) {
   editingEntryId = null;
 }
 
-function addStrengthSetEditorRow(container, loadValue = '', reps = '', loadUnit = 'kg') {
+function addStrengthSetEditorRow(container, loadValue = '', measureValue = '', loadUnit = 'kg', strengthMeasure = 'reps') {
   const row = document.createElement('div');
   row.className = 'strength-edit-set';
   row.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px;';
@@ -2865,19 +2924,19 @@ function addStrengthSetEditorRow(container, loadValue = '', reps = '', loadUnit 
   loadInput.type = 'number';
   loadInput.step = '0.5';
   loadInput.min = '0';
-  loadInput.required = true;
+  loadInput.required = strengthMeasure !== 'duration';
   loadInput.placeholder = `Load (${loadUnit})`;
   loadInput.dataset.strengthLoad = '';
   loadInput.value = loadValue;
 
-  const repsInput = document.createElement('input');
-  repsInput.type = 'number';
-  repsInput.step = '1';
-  repsInput.min = '1';
-  repsInput.required = true;
-  repsInput.placeholder = 'Reps';
-  repsInput.dataset.strengthReps = '';
-  repsInput.value = reps;
+  const measureInput = document.createElement('input');
+  measureInput.type = 'number';
+  measureInput.step = strengthMeasure === 'duration' ? 'any' : '1';
+  measureInput.min = strengthMeasure === 'duration' ? '0.01' : '1';
+  measureInput.required = true;
+  measureInput.placeholder = strengthMeasure === 'duration' ? 'Hold (seconds)' : 'Reps';
+  measureInput.dataset.strengthMeasureValue = '';
+  measureInput.value = measureValue;
 
   const removeButton = document.createElement('button');
   removeButton.type = 'button';
@@ -2886,7 +2945,7 @@ function addStrengthSetEditorRow(container, loadValue = '', reps = '', loadUnit 
   removeButton.textContent = '×';
   removeButton.title = 'Remove set';
 
-  row.append(loadInput, repsInput, removeButton);
+  row.append(loadInput, measureInput, removeButton);
   container.insertBefore(row, container.querySelector('[data-add-strength-set]'));
 }
 
@@ -2898,24 +2957,26 @@ window.saveStrengthSessionEdit = async function(trElement) {
   }
 
   const sets = [];
+  const strengthMeasure = trElement.querySelector('.strength-edit-sets').dataset.strengthMeasure || 'reps';
   for (const row of rows) {
     const loadInput = row.querySelector('[data-strength-load]');
-    const repsInput = row.querySelector('[data-strength-reps]');
-    const loadValue = Number(loadInput.value);
-    const reps = Number(repsInput.value);
-    if (!loadInput.value.trim() || !Number.isFinite(loadValue) || loadValue < 0
-      || !repsInput.value.trim() || !Number.isInteger(reps) || reps < 1) {
-      window.alert('Enter a valid load and a whole-number rep count for every set.');
-      (loadInput.value.trim() ? repsInput : loadInput).focus();
+    const measureInput = row.querySelector('[data-strength-measure-value]');
+    try {
+      sets.push(normalizeStrengthSet(loadInput.value, measureInput.value, strengthMeasure));
+    } catch (error) {
+      window.alert(error.message);
+      (loadInput.value.trim() || strengthMeasure === 'duration' ? measureInput : loadInput).focus();
       return;
     }
-    sets.push({ loadValue, reps });
   }
 
+  const firstSetValue = strengthMeasure === 'duration'
+    ? sets[0].durationSeconds
+    : sets[0].loadValue;
   await updateEntry(trElement.dataset.entryId, {
     sets,
-    value: sets[0].loadValue,
-    loadValue: sets[0].loadValue,
+    value: firstSetValue,
+    loadValue: sets[0].loadValue ?? null,
   });
   const closeModal = window.confirm(
     'Entry updated. Close the edit window? Choose Cancel to edit another entry.'
@@ -3022,12 +3083,19 @@ async function renderEntriesTable(metricId, metric, actionId = null) {
       displayValue = computeStrengthValue(entry, 'Total Volume');
       const sets = Array.isArray(entry.sets) ? entry.sets : [];
       if (sets.length) {
+        const strengthMeasure = metric.strengthMeasure || 'reps';
         const setRows = sets.map((set, index) => {
+          if (strengthMeasure === 'duration') {
+            return `<li>Set ${index + 1}: ${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${metric.unitName || 'kg'}`}</li>`;
+          }
           const loadValue = Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0);
           const reps = Number(set.reps ?? 0);
           return `<li>Set ${index + 1}: ${loadValue.toFixed(1)} ${metric.unitName || 'kg'} × ${reps} reps</li>`;
         }).join('');
-        displayContent = `<strong>Total volume: ${displayValue}</strong><ul class="entry-strength-sets">${setRows}</ul>`;
+        displayValue = strengthMeasure === 'duration'
+          ? computeDurationValue(entry, 'Total Duration')
+          : computeStrengthValue(entry, 'Total Volume');
+        displayContent = `<strong>${strengthMeasure === 'duration' ? `Total hold time: ${displayValue} sec` : `Total volume: ${displayValue}`}</strong><ul class="entry-strength-sets">${setRows}</ul>`;
       }
     }
 
@@ -3051,8 +3119,14 @@ ui.entriesTableBody.addEventListener('click', async (event) => {
   const addButton = event.target.closest('[data-add-strength-set]');
   if (addButton) {
     const editor = addButton.closest('.strength-edit-sets');
-    addStrengthSetEditorRow(editor);
-    editor.querySelector('.strength-edit-set:last-of-type [data-strength-load]').focus();
+    addStrengthSetEditorRow(
+      editor,
+      '',
+      '',
+      editor.dataset.loadUnit || 'kg',
+      editor.dataset.strengthMeasure || 'reps'
+    );
+    editor.querySelector('.strength-edit-set:last-of-type [data-strength-measure-value]').focus();
     return;
   }
 

@@ -110,7 +110,11 @@ export function mountWorkoutsView(root, {
       const canStart = plan.exercises.every((exercise) => metricFor(exercise.metricId));
       const exerciseLabels = plan.exercises.map((exercise) => {
         const metric = metricFor(exercise.metricId);
-        return `<li>${escapeHtml(metric?.name || 'Archived exercise')} — ${exercise.targetSets} × ${exercise.targetReps}</li>`;
+        const strengthMeasure = exercise.strengthMeasure || metric?.strengthMeasure || 'reps';
+        const target = strengthMeasure === 'duration'
+          ? `${exercise.targetDurationSeconds ?? exercise.targetReps} sec`
+          : `${exercise.targetReps} reps`;
+        return `<li>${escapeHtml(metric?.name || 'Archived exercise')} — ${exercise.targetSets} × ${target}</li>`;
       }).join('');
       const outcomeLabels = (plan.outcomeMetrics || []).map((outcome) => {
         const metric = metricFor(outcome.metricId);
@@ -144,21 +148,26 @@ export function mountWorkoutsView(root, {
   }
 
   function renderExerciseRows() {
-    return exerciseRows.map((row, index) => `
-      <article class="panel workout-exercise-card" data-exercise-row="${index}">
-        <h3>Exercise ${index + 1}</h3>
-        ${pickerMarkup('exercise', index, row, 'Strength metric')}
-        <div class="strength-grid">
-          <label>Target sets<input type="number" min="1" step="1" data-target-sets="${index}" value="${escapeHtml(row.targetSets)}" required /></label>
-          <label>Target reps<input type="number" min="1" step="1" data-target-reps="${index}" value="${escapeHtml(row.targetReps)}" required /></label>
-        </div>
-        <div class="workout-exercise-actions">
-          <button type="button" class="secondary" data-exercise-move="up" data-row-index="${index}" ${index === 0 ? 'disabled' : ''}>Move up</button>
-          <button type="button" class="secondary" data-exercise-move="down" data-row-index="${index}" ${index === exerciseRows.length - 1 ? 'disabled' : ''}>Move down</button>
-          <button type="button" class="secondary" data-remove-exercise="${index}">Remove</button>
-        </div>
-      </article>
-    `).join('');
+    return exerciseRows.map((row, index) => {
+      const strengthMeasure = row.strengthMeasure || metricFor(row.metricId)?.strengthMeasure || 'reps';
+      const duration = strengthMeasure === 'duration';
+      const target = duration ? row.targetDurationSeconds ?? 30 : row.targetReps;
+      return `
+        <article class="panel workout-exercise-card" data-exercise-row="${index}">
+          <h3>Exercise ${index + 1}</h3>
+          ${pickerMarkup('exercise', index, row, 'Strength metric')}
+          <div class="strength-grid">
+            <label>Target sets<input type="number" min="1" step="1" data-target-sets="${index}" value="${escapeHtml(row.targetSets)}" required /></label>
+            <label>Target ${duration ? 'hold (seconds)' : 'reps'}<input type="number" min="${duration ? '0.01' : '1'}" step="${duration ? 'any' : '1'}" data-target-value="${index}" value="${escapeHtml(target)}" required /></label>
+          </div>
+          <div class="workout-exercise-actions">
+            <button type="button" class="secondary" data-exercise-move="up" data-row-index="${index}" ${index === 0 ? 'disabled' : ''}>Move up</button>
+            <button type="button" class="secondary" data-exercise-move="down" data-row-index="${index}" ${index === exerciseRows.length - 1 ? 'disabled' : ''}>Move down</button>
+            <button type="button" class="secondary" data-remove-exercise="${index}">Remove</button>
+          </div>
+        </article>
+      `;
+    }).join('');
   }
 
   function renderOutcomeRows() {
@@ -207,21 +216,30 @@ export function mountWorkoutsView(root, {
     const exerciseCards = selectedPlan.exercises.map((exercise, index) => {
       const metric = metricFor(exercise.metricId);
       const loadUnit = metric?.unitName || 'kg';
+      const strengthMeasure = exercise.strengthMeasure || metric?.strengthMeasure || 'reps';
+      const duration = strengthMeasure === 'duration';
       const previous = entries
         .filter((entry) => entry.metricId === exercise.metricId)
         .sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0];
       const previousSets = previous?.sets || [];
       const previousHtml = previousSets.length
-        ? `<p class="muted-text">Previous: ${previousSets.map((set) => `${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0)} ${escapeHtml(loadUnit)} × ${escapeHtml(set.reps)} reps`).join(' · ')}</p>`
+        ? `<p class="muted-text">Previous: ${previousSets.map((set) => duration
+          ? `${escapeHtml(set.durationSeconds)} sec${set.loadValue === undefined ? '' : ` · ${escapeHtml(set.loadValue)} ${escapeHtml(loadUnit)}`}`
+          : `${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0)} ${escapeHtml(loadUnit)} × ${escapeHtml(set.reps)} reps`).join(' · ')}</p>`
         : '';
+      const targetValue = duration
+        ? exercise.targetDurationSeconds ?? 30
+        : exercise.targetReps;
+      const previousLoad = previous?.loadValue ?? previous?.loadKg
+        ?? (duration ? '' : previous?.value ?? '');
       return `
         <article class="panel workout-exercise-card" data-session-exercise="${index}">
           <h3>${escapeHtml(metric?.name || 'Archived exercise')}</h3>
-          <p class="muted-text">Target: ${exercise.targetSets} sets × ${exercise.targetReps} reps</p>
+          <p class="muted-text">Target: ${exercise.targetSets} sets × ${targetValue} ${duration ? 'sec hold' : 'reps'}</p>
           ${previousHtml}
           <div class="strength-grid">
-            <label>Load (${escapeHtml(loadUnit)})<input type="number" class="workout-load" min="0" step="0.5" value="${escapeHtml(previous?.loadValue ?? previous?.loadKg ?? previous?.value ?? '')}" /></label>
-            <label>Reps<input type="number" class="workout-reps" min="1" step="1" value="${exercise.targetReps}" /></label>
+            <label>Load (${escapeHtml(loadUnit)})${duration ? ' (optional)' : ''}<input type="number" class="workout-load" min="0" step="0.5" value="${escapeHtml(previousLoad)}" ${duration ? '' : 'required'} /></label>
+            <label>${duration ? 'Hold (seconds)' : 'Reps'}<input type="number" class="workout-reps" min="${duration ? '0.01' : '1'}" step="${duration ? 'any' : '1'}" value="${targetValue}" required /></label>
           </div>
           <button type="button" class="secondary workout-add-set">Add set</button>
           <div class="list workout-set-list"></div>
@@ -256,8 +274,11 @@ export function mountWorkoutsView(root, {
             ${session.exercises.map((exercise) => {
               const entry = entryMap.get(exercise.entryId);
               const sets = entry?.sets || [];
+              const strengthMeasure = exercise.strengthMeasure || metricFor(exercise.metricId)?.strengthMeasure || 'reps';
               const detail = sets.length
-                ? sets.map((set) => `${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0)} ${metricFor(exercise.metricId)?.unitName || 'kg'} × ${set.reps}`).join(' · ')
+                ? sets.map((set) => strengthMeasure === 'duration'
+                  ? `${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${metricFor(exercise.metricId)?.unitName || 'kg'}`}`
+                  : `${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0)} ${metricFor(exercise.metricId)?.unitName || 'kg'} × ${set.reps}`).join(' · ')
                 : 'Entry no longer available';
               return `<li><strong>${escapeHtml(exercise.metricName)}</strong>: ${escapeHtml(detail)}</li>`;
             }).join('')}
@@ -287,7 +308,11 @@ export function mountWorkoutsView(root, {
           let detail = 'Not enough sessions to compare.';
           if (progress.change !== null) {
             const sign = progress.change > 0 ? '+' : '';
-            detail = `Estimated 1RM: ${progress.firstEstimatedOneRepMax.toFixed(1)} ${loadUnit} → ${progress.latestEstimatedOneRepMax.toFixed(1)} ${loadUnit} (${sign}${progress.change.toFixed(1)} ${loadUnit} across ${progress.sessions} sessions).`;
+            if (progress.strengthMeasure === 'duration') {
+              detail = `Best hold: ${progress.firstValue} sec → ${progress.latestValue} sec (${sign}${progress.change} sec across ${progress.sessions} sessions).`;
+            } else {
+              detail = `Estimated 1RM: ${progress.firstValue.toFixed(1)} ${loadUnit} → ${progress.latestValue.toFixed(1)} ${loadUnit} (${sign}${progress.change.toFixed(1)} ${loadUnit} across ${progress.sessions} sessions).`;
+            }
           }
           return `<p><strong>${escapeHtml(metric?.name || 'Archived exercise')}:</strong> ${escapeHtml(detail)}</p>`;
         }).join('')}
@@ -332,7 +357,14 @@ export function mountWorkoutsView(root, {
     planName = form.elements.planName.value;
     exerciseRows.forEach((row, index) => {
       row.targetSets = form.querySelector(`[data-target-sets="${index}"]`)?.value ?? row.targetSets;
-      row.targetReps = form.querySelector(`[data-target-reps="${index}"]`)?.value ?? row.targetReps;
+      const value = form.querySelector(`[data-target-value="${index}"]`)?.value;
+      if (value !== undefined) {
+        if ((row.strengthMeasure || metricFor(row.metricId)?.strengthMeasure || 'reps') === 'duration') {
+          row.targetDurationSeconds = value;
+        } else {
+          row.targetReps = value;
+        }
+      }
     });
     outcomeRows.forEach((row, index) => {
       row.direction = form.querySelector(`[data-outcome-direction="${index}"]`)?.value ?? row.direction;
@@ -367,7 +399,7 @@ export function mountWorkoutsView(root, {
     editingPlanId = null;
     isEditingPlan = true;
     planName = '';
-    exerciseRows = [{ metricId: '', targetSets: 3, targetReps: 8, searchTerm: '', isOpen: false }];
+    exerciseRows = [{ metricId: '', targetSets: 3, targetReps: 8, strengthMeasure: 'reps', searchTerm: '', isOpen: false }];
     outcomeRows = [];
     render();
     root.querySelector('[name="planName"]')?.focus();
@@ -493,15 +525,20 @@ export function mountWorkoutsView(root, {
       const exercise = sessionPlan.exercises[index];
       const loadInput = card.querySelector('.workout-load');
       const repsInput = card.querySelector('.workout-reps');
+      const strengthMeasure = exercise.strengthMeasure || metricFor(exercise.metricId)?.strengthMeasure || 'reps';
       const editor = mountStrengthSetEditor({
         container: card.querySelector('.workout-set-list'),
         loadInput,
         repsInput,
         addButton: card.querySelector('.workout-add-set'),
-        defaultReps: exercise.targetReps,
+        defaultReps: exercise.targetReps || 5,
         loadUnit: metricFor(exercise.metricId)?.unitName || 'kg',
+        strengthMeasure,
         onChange: (sets) => { sessionSets[index] = sets; },
       });
+      editor.setMeasure(strengthMeasure, strengthMeasure === 'duration'
+        ? exercise.targetDurationSeconds
+        : exercise.targetReps);
       editor.replace(sessionSets[index] || []);
       return editor;
     });
@@ -633,6 +670,15 @@ export function mountWorkoutsView(root, {
         : outcomeRows[Number(picker.dataset.pickerIndex)];
       capturePlanFormValues();
       row.metricId = metricButton.dataset.metricId;
+      if (picker.dataset.pickerType === 'exercise') {
+        const selectedMetric = metricFor(row.metricId);
+        const nextMeasure = selectedMetric?.strengthMeasure || 'reps';
+        if ((row.strengthMeasure || 'reps') !== nextMeasure) {
+          row.targetReps = nextMeasure === 'reps' ? 8 : undefined;
+          row.targetDurationSeconds = nextMeasure === 'duration' ? 30 : undefined;
+        }
+        row.strengthMeasure = nextMeasure;
+      }
       row.searchTerm = '';
       row.isOpen = false;
       render();
