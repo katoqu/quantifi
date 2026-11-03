@@ -58,8 +58,6 @@ const ui = {
   neverShowQuickStart: document.querySelector('#neverShowQuickStart'),
   showQuickStart: document.querySelector('#showQuickStart'),
   homeCreateDetails: document.querySelector('#homeCreateDetails'),
-  homeCreateToggle: document.querySelector('#homeCreateToggle'),
-  homeCreateExpand: document.querySelector('#homeCreateExpand'),
   homeCreateContent: document.querySelector('#homeCreateContent'),
   homeSettingsLink: document.querySelector('#homeSettingsLink'),
   manageAttributesDetails: document.querySelector('#manageAttributesDetails'),
@@ -213,7 +211,6 @@ let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Rece
 let homeSearchTerm = '';
 let homeSearchOptions = [];
 let homeSearchSuggestionsOpen = false;
-let homeCreatePanelInitialized = false;
 let openManageAttributesOnSettings = false;
 let addMetricSearchTerm = '';
 let statsMetricSearchTerm = '';
@@ -698,10 +695,6 @@ async function renderHome() {
 
   const visibleMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
   const hasActiveMetrics = metrics.some((metric) => !metric.isArchived);
-  if (!homeCreatePanelInitialized) {
-    setHomeCreateOpen(!hasActiveMetrics);
-    homeCreatePanelInitialized = true;
-  }
   setHomeSearchOptions(categories, visibleMetrics);
   let filteredMetrics = filterMetricsByView(activeFilters.home, visibleMetrics, entries, categories);
   const currentSearchTerm = ui.homeSearch ? ui.homeSearch.value.trim().toLowerCase() : homeSearchTerm;
@@ -1199,6 +1192,7 @@ let selectedCategoryForEdit = null;
 let categorySearchTerm = '';
 let isAddingMetric = false;
 let isEditingMetric = false;
+let homeCreateMode = null;
 let selectedMetricForEdit = null;
 let metricSearchTerm = '';
 let currentMetricId = null;
@@ -1206,12 +1200,14 @@ let suppressDetailsReset = false;
 let settingsMode = 'categories';
 let entriesModalActionId = 0;
 
-function setHomeCreateOpen(open) {
+function setHomeCreateOpen(open, mode = null) {
   ui.homeCreateContent.classList.toggle('hidden', !open);
-  ui.homeCreateToggle.setAttribute('aria-expanded', String(open));
-  ui.homeCreateExpand.setAttribute('aria-expanded', String(open));
-  ui.homeCreateExpand.setAttribute('aria-label', open ? 'Collapse create options' : 'Expand create options');
+  ui.addMetricBtn.setAttribute('aria-expanded', String(open && mode === 'metric'));
+  ui.addCategoryBtn.setAttribute('aria-expanded', String(open && mode === 'category'));
+  ui.addMetricBtn.classList.toggle('active', open && mode === 'metric');
+  ui.addCategoryBtn.classList.toggle('active', open && mode === 'category');
   ui.homeCreateDetails.classList.toggle('is-open', open);
+  homeCreateMode = open ? mode : null;
 }
 
 function updateSettingsSectionAvailability() {
@@ -1368,14 +1364,6 @@ ui.showQuickStart.addEventListener('click', () => {
 
 ui.createFirstMetric.addEventListener('click', () => ui.addMetricBtn.click());
 
-ui.homeCreateToggle.addEventListener('click', () => {
-  setHomeCreateOpen(ui.homeCreateContent.classList.contains('hidden'));
-});
-
-ui.homeCreateExpand.addEventListener('click', () => {
-  setHomeCreateOpen(ui.homeCreateContent.classList.contains('hidden'));
-});
-
 ui.homeSettingsLink.addEventListener('click', (event) => {
   event.preventDefault();
   openManageAttributesOnSettings = true;
@@ -1417,9 +1405,6 @@ ui.tabs.forEach((tab) => {
       d.removeAttribute('open');
     });
     suppressDetailsReset = false;
-    if (tab.dataset.view === 'home' && (await listMetrics(false)).length === 0) {
-      setHomeCreateOpen(true);
-    }
     if (tab.dataset.view === 'settings') updateSettingsSectionAvailability();
     if (tab.dataset.view === 'settings' && openManageAttributesOnSettings) {
       ui.manageAttributesDetails.open = true;
@@ -1773,6 +1758,7 @@ ui.categoryForm.addEventListener('submit', async (event) => {
   isAddingCategory = false;
   ui.categoryForm.reset();
   ui.categoryForm.style.display = 'none';
+  setHomeCreateOpen(false);
   
   // Clear active button states
   ui.addCategoryBtn.classList.remove('active');
@@ -1783,7 +1769,11 @@ ui.categoryForm.addEventListener('submit', async (event) => {
 
 // Add category button
 ui.addCategoryBtn.addEventListener('click', () => {
-  setHomeCreateOpen(true);
+  if (homeCreateMode === 'category') {
+    setHomeCreateOpen(false);
+    return;
+  }
+  setHomeCreateOpen(true, 'category');
   isAddingCategory = true;
   isEditingCategory = false;
   isAddingMetric = false;
@@ -1939,6 +1929,7 @@ ui.cancelCategory.addEventListener('click', () => {
   isAddingCategory = false;
   ui.categoryForm.style.display = 'none';
   ui.categoryForm.reset();
+  setHomeCreateOpen(false);
   
   // Clear active button states
   ui.addCategoryBtn.classList.remove('active');
@@ -1949,7 +1940,11 @@ ui.cancelCategory.addEventListener('click', () => {
 
 // Add metric button
 ui.addMetricBtn.addEventListener('click', () => {
-  setHomeCreateOpen(true);
+  if (homeCreateMode === 'metric') {
+    setHomeCreateOpen(false);
+    return;
+  }
+  setHomeCreateOpen(true, 'metric');
   isAddingMetric = true;
   isEditingMetric = false;
   isAddingCategory = false;
@@ -2166,6 +2161,7 @@ ui.cancelMetric.addEventListener('click', () => {
   ui.metricForm.style.display = 'none';
   ui.metricForm.reset();
   ui.strengthMeasureField.classList.add('hidden');
+  setHomeCreateOpen(false);
   
   // Clear active button states
   ui.addMetricBtn.classList.remove('active');

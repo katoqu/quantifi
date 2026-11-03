@@ -61,21 +61,15 @@
 
           <div id="homeCreateDetails" class="panel home-create-panel">
             <div class="home-create-toolbar">
-              <button id="homeCreateToggle" class="home-create-toggle" type="button" aria-expanded="false" aria-controls="homeCreateContent">
-                <span>Create new</span>
-              </button>
+              <div class="home-create-actions">
+                <button id="addMetricBtn" class="selected-metric-chip home-create-chip" type="button" aria-label="Create a new metric" aria-expanded="false" aria-controls="homeCreateContent">New Metric</button>
+                <button id="addCategoryBtn" class="selected-metric-chip home-create-chip" type="button" aria-label="Create a new category" aria-expanded="false" aria-controls="homeCreateContent">New Category</button>
+              </div>
               <span class="home-create-settings-hint">
                 <span class="home-create-settings-full">Edit metrics or categories in</span>
                 <span class="home-create-settings-compact">Edit in</span>
                 <a href="#settings" id="homeSettingsLink">Settings</a>
               </span>
-              <div class="home-create-actions">
-                <button id="addMetricBtn" class="primary" type="button">Metric</button>
-                <button id="addCategoryBtn" class="secondary" type="button">Category</button>
-              </div>
-              <button id="homeCreateExpand" class="home-create-expand" type="button" aria-label="Expand create options" aria-expanded="false" aria-controls="homeCreateContent">
-                <span class="collapse-indicator" aria-hidden="true">▶</span>
-              </button>
             </div>
             <div id="homeCreateContent" class="home-create-content hidden">
               <form id="metricForm" class="stacked-form home-create-form" style="display: none;">
