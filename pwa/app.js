@@ -70,13 +70,11 @@ const ui = {
   addMetricPicker: document.querySelector('#addMetricPicker'),
   addSelectedMetric: document.querySelector('#addSelectedMetric'),
   metricSelectSearch: document.querySelector('#metricSelectSearch'),
-  addMetricExpand: document.querySelector('#addMetricExpand'),
   addMetricClear: document.querySelector('#addMetricClear'),
   addMetricSuggestions: document.querySelector('#addMetricSuggestions'),
   statsMetricPicker: document.querySelector('#statsMetricPicker'),
   statsSelectedMetric: document.querySelector('#statsSelectedMetric'),
   statsMetricSearch: document.querySelector('#statsMetricSearch'),
-  statsMetricExpand: document.querySelector('#statsMetricExpand'),
   statsMetricClear: document.querySelector('#statsMetricClear'),
   statsMetricSuggestions: document.querySelector('#statsMetricSuggestions'),
   entryFields: document.querySelector('#entryFields'),
@@ -593,10 +591,10 @@ function renderAddMetricSelect() {
   const selectedMetric = addMetricCandidates.find((metric) => metric.id === selectedMetricId);
   renderMetricPicker({
     selectedContainer: ui.addSelectedMetric,
+    pickerContainer: ui.addMetricPicker,
     suggestionsContainer: ui.addMetricSuggestions,
     searchInput: ui.metricSelectSearch,
     clearButton: ui.addMetricClear,
-    expandButton: ui.addMetricExpand,
     metrics: addMetricCandidates,
     categories: addMetricCategories,
     selectedMetric,
@@ -1095,10 +1093,10 @@ async function renderStats() {
   const selectedMetric = metricCandidates.find((m) => m.id === selectedMetricId);
   renderMetricPicker({
     selectedContainer: ui.statsSelectedMetric,
+    pickerContainer: ui.statsMetricPicker,
     suggestionsContainer: ui.statsMetricSuggestions,
     searchInput: ui.statsMetricSearch,
     clearButton: ui.statsMetricClear,
-    expandButton: ui.statsMetricExpand,
     metrics: statsMetricCandidates,
     categories,
     selectedMetric,
@@ -1492,7 +1490,7 @@ ui.metricSelect.addEventListener('change', async () => {
 
 ui.metricSelectSearch.addEventListener('input', () => {
   addMetricSearchTerm = ui.metricSelectSearch.value.trim();
-  addMetricPickerOpen = Boolean(addMetricSearchTerm);
+  addMetricPickerOpen = true;
   renderAddMetricSelect();
 });
 
@@ -1500,11 +1498,11 @@ ui.metricSelectSearch.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') event.preventDefault();
   if (event.key === 'Escape' && addMetricPickerOpen) {
     addMetricPickerOpen = false;
-    setMetricPickerOpen(false, ui.addMetricSuggestions, ui.metricSelectSearch, ui.addMetricExpand);
+    setMetricPickerOpen(false, ui.addMetricSuggestions, ui.metricSelectSearch, null, ui.addMetricPicker, ui.addSelectedMetric);
   }
 });
 
-ui.addMetricExpand.addEventListener('click', () => {
+ui.addSelectedMetric.addEventListener('click', () => {
   addMetricPickerOpen = !addMetricPickerOpen;
   renderAddMetricSelect();
   if (addMetricPickerOpen) ui.metricSelectSearch.focus();
@@ -1513,7 +1511,7 @@ ui.addMetricExpand.addEventListener('click', () => {
 ui.addMetricClear.addEventListener('click', () => {
   addMetricSearchTerm = '';
   ui.metricSelectSearch.value = '';
-  addMetricPickerOpen = false;
+  addMetricPickerOpen = true;
   renderAddMetricSelect();
   ui.metricSelectSearch.focus();
 });
@@ -1552,7 +1550,7 @@ ui.strengthRepsInput.addEventListener('input', () => { strengthInputsDirty = tru
 
 ui.statsMetricSearch.addEventListener('input', () => {
   statsMetricSearchTerm = ui.statsMetricSearch.value.trim();
-  statsMetricPickerOpen = Boolean(statsMetricSearchTerm);
+  statsMetricPickerOpen = true;
   renderStats();
 });
 
@@ -1560,11 +1558,11 @@ ui.statsMetricSearch.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') event.preventDefault();
   if (event.key === 'Escape' && statsMetricPickerOpen) {
     statsMetricPickerOpen = false;
-    setMetricPickerOpen(false, ui.statsMetricSuggestions, ui.statsMetricSearch, ui.statsMetricExpand);
+    setMetricPickerOpen(false, ui.statsMetricSuggestions, ui.statsMetricSearch, null, ui.statsMetricPicker, ui.statsSelectedMetric);
   }
 });
 
-ui.statsMetricExpand.addEventListener('click', () => {
+ui.statsSelectedMetric.addEventListener('click', () => {
   statsMetricPickerOpen = !statsMetricPickerOpen;
   renderStats();
   if (statsMetricPickerOpen) ui.statsMetricSearch.focus();
@@ -1573,7 +1571,7 @@ ui.statsMetricExpand.addEventListener('click', () => {
 ui.statsMetricClear.addEventListener('click', () => {
   statsMetricSearchTerm = '';
   ui.statsMetricSearch.value = '';
-  statsMetricPickerOpen = false;
+  statsMetricPickerOpen = true;
   renderStats();
   ui.statsMetricSearch.focus();
 });
@@ -1623,13 +1621,14 @@ ui.homeSearchClear?.addEventListener('click', () => {
 });
 
 document.addEventListener('click', (event) => {
-  if (addMetricPickerOpen && !event.target.closest('#addMetricPicker')) {
+  const eventPath = event.composedPath();
+  if (addMetricPickerOpen && !eventPath.includes(ui.addMetricPicker)) {
     addMetricPickerOpen = false;
-    setMetricPickerOpen(false, ui.addMetricSuggestions, ui.metricSelectSearch, ui.addMetricExpand);
+    setMetricPickerOpen(false, ui.addMetricSuggestions, ui.metricSelectSearch, null, ui.addMetricPicker, ui.addSelectedMetric);
   }
-  if (statsMetricPickerOpen && !event.target.closest('#statsMetricPicker')) {
+  if (statsMetricPickerOpen && !eventPath.includes(ui.statsMetricPicker)) {
     statsMetricPickerOpen = false;
-    setMetricPickerOpen(false, ui.statsMetricSuggestions, ui.statsMetricSearch, ui.statsMetricExpand);
+    setMetricPickerOpen(false, ui.statsMetricSuggestions, ui.statsMetricSearch, null, ui.statsMetricPicker, ui.statsSelectedMetric);
   }
   if (
     homeSearchSuggestionsOpen
