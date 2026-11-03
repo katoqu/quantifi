@@ -544,11 +544,85 @@ textarea {
 
 #entryFields {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+#entryDateField,
+#strengthWorkoutFields,
+#targetActionField {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.entry-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+#entryDatePills,
+#targetActionPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 4px 0;
+}
+
+.target-action-details {
+  grid-column: 1 / -1;
+}
+
+.target-action-details > summary {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.target-action-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.target-action-details > summary::after {
+  content: "⌄";
+  color: var(--muted);
+}
+
+.target-action-details[open] > summary::after {
+  content: "⌃";
+}
+
+#numericValueField {
+  grid-column: 1;
+}
+
+#saveEntryButton {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: end;
+}
+
+#entryFields.strength-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#entryFields.strength-mode #strengthWorkoutFields,
+#entryFields.strength-mode #targetActionField,
+#entryFields.strength-mode > button[type="submit"] {
+  grid-column: 1;
+}
+
+#entryFields.strength-mode #saveEntryButton {
+  grid-row: auto;
 }
 
 #entryFields:disabled {
@@ -887,13 +961,16 @@ input[type="checkbox"] {
   gap: 10px;
 }
 
+.strength-mode .strength-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 @media (max-width: 700px) {
   .strength-grid {
     grid-template-columns: 1fr;
   }
 }
-
-
 
 main {
   padding-bottom: 18px;

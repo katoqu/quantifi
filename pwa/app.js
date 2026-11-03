@@ -495,6 +495,7 @@ async function syncAddFormMode() {
 
   const isScore = metric?.metricKind === 'score' || metric?.unitType === 'integer_range';
   ui.targetActionField.classList.toggle('hidden', isScore);
+  ui.entryFields.classList.toggle('strength-mode', isStrength);
 
   if (isStrength) {
     const loadUnit = metric.unitName || 'kg';
@@ -555,8 +556,8 @@ async function renderMetricDropdown() {
 
   // Render target action pills
   if (ui.targetActionPills && !ui.targetActionPills.children.length) {
-    ui.targetActionPills.innerHTML = ['None', 'Reduce', 'Stay', 'Increase', 'Pause']
-      .map((opt) => `<button type="button" class="pill ${opt === 'None' ? 'active' : ''}" data-target="${opt}">${opt}</button>`)
+    ui.targetActionPills.innerHTML = ['Reduce', 'Stay', 'Increase']
+      .map((opt) => `<button type="button" class="pill" data-target="${opt}">${opt}</button>`)
       .join('');
   }
 
@@ -600,7 +601,6 @@ function renderAddMetricSelect() {
 }
 
 function hasEntryValues() {
-  const activeTarget = ui.targetActionPills.querySelector('.pill.active');
   const selectedMetric = addMetricCandidates.find((metric) => metric.id === addSelectedMetricId);
   const strengthMeasure = selectedMetric?.strengthMeasure || 'reps';
   const defaultMeasureValue = strengthMeasure === 'duration' ? '30' : '5';
@@ -611,7 +611,7 @@ function hasEntryValues() {
       strengthInputsDirty
       && (ui.strengthLoadInput.value.trim() || ui.strengthRepsInput.value !== defaultMeasureValue)
     )
-    || (activeTarget && activeTarget.dataset.target !== 'None')
+    || ui.targetActionPills.querySelector('.pill.active')
   );
 }
 
@@ -622,7 +622,7 @@ function clearEntryValues() {
   strengthSetEditor.clear();
   strengthInputsDirty = false;
   ui.targetActionPills.querySelectorAll('.pill').forEach((pill) => {
-    pill.classList.toggle('active', pill.dataset.target === 'None');
+    pill.classList.remove('active');
   });
 }
 
@@ -1651,7 +1651,7 @@ ui.entryForm.addEventListener('submit', async (event) => {
 
   // Get target action from active pill
   const activeTargetPill = ui.targetActionPills?.querySelector('.pill.active');
-  const targetAction = activeTargetPill ? (activeTargetPill.dataset.target === 'None' ? null : activeTargetPill.dataset.target) : null;
+  const targetAction = activeTargetPill?.dataset.target ?? null;
 
   if (editingEntryId) {
     // Update existing entry
@@ -1731,9 +1731,7 @@ ui.entryForm.addEventListener('submit', async (event) => {
   strengthSetEditor.clear();
   strengthInputsDirty = false;
   suppressStrengthLoadPrefill = false;
-  ui.targetActionPills.querySelectorAll('.pill').forEach((pill) => {
-    pill.classList.toggle('active', pill.dataset.target === 'None');
-  });
+  ui.targetActionPills.querySelectorAll('.pill').forEach((pill) => pill.classList.remove('active'));
   ui.entryForm.reset();
   resetEntryFormDateTime();
   incrementUnsavedCount();
@@ -2675,13 +2673,10 @@ if (ui.targetActionPills) {
   ui.targetActionPills.addEventListener('click', (event) => {
     const pill = event.target.closest('.pill');
     if (!pill) return;
-    
-    // Update active state
-    ui.targetActionPills.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
-    pill.classList.add('active');
-    
-    // Store selected target in dataset or hidden input
-    // We'll read this value when form is submitted
+
+    const wasActive = pill.classList.contains('active');
+    ui.targetActionPills.querySelectorAll('.pill').forEach((option) => option.classList.remove('active'));
+    if (!wasActive) pill.classList.add('active');
   });
 }
 
