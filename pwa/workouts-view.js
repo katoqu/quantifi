@@ -33,6 +33,7 @@ export function mountWorkoutsView(root, {
   let entries = [];
   let plans = [];
   let sessions = [];
+  let planSection = 'select';
   let editingPlanId = null;
   let isEditingPlan = false;
   let planName = '';
@@ -107,6 +108,12 @@ export function mountWorkoutsView(root, {
   }
 
   function renderPlans() {
+    const sectionNav = `
+      <nav class="workflow-subsection-switch" aria-label="Workout plan actions">
+        <button type="button" class="${planSection === 'select' ? 'active' : ''}" data-plan-section="select" aria-pressed="${planSection === 'select'}">Select Workout</button>
+        <button type="button" class="${planSection === 'create' ? 'active' : ''}" data-plan-section="create" aria-pressed="${planSection === 'create'}">Create Plan</button>
+      </nav>
+    `;
     const planCards = plans.filter((plan) => !plan.isArchived).map((plan) => {
       const canStart = plan.exercises.every((exercise) => metricFor(exercise.metricId));
       const exerciseLabels = plan.exercises.map((exercise) => {
@@ -135,16 +142,18 @@ export function mountWorkoutsView(root, {
         </article>
       `;
     }).join('');
+    if (planSection === 'create') {
+      return `${sectionNav}${renderPlanEditor()}`;
+    }
     return `
+      ${sectionNav}
       <div class="panel">
-        <h2 class="workflow-card-heading">Workout plans</h2>
-        <p class="muted-text">Build a reusable exercise sequence, then record the sets you complete.</p>
-        <button type="button" class="primary" data-new-workout-plan>Create plan</button>
+        <h2 class="workflow-card-heading">Select Workout</h2>
+        <p class="muted-text">Choose a saved plan to start your workout.</p>
+        <div id="workoutPlanList" class="list">
+          ${planCards || '<p class="muted-text">No workout plans yet. Choose Create Plan to build your first one.</p>'}
+        </div>
       </div>
-      <div id="workoutPlanList" class="list">
-        ${planCards || '<p class="panel">No plans yet. Create one to get started.</p>'}
-      </div>
-      ${isEditingPlan ? renderPlanEditor() : ''}
     `;
   }
 
@@ -397,6 +406,7 @@ export function mountWorkoutsView(root, {
   }
 
   function beginNewPlan() {
+    planSection = 'create';
     editingPlanId = null;
     isEditingPlan = true;
     planName = '';
@@ -407,6 +417,7 @@ export function mountWorkoutsView(root, {
   }
 
   function beginEditPlan(plan) {
+    planSection = 'create';
     editingPlanId = plan.id;
     isEditingPlan = true;
     planName = plan.name;
@@ -464,6 +475,7 @@ export function mountWorkoutsView(root, {
       planName = '';
       exerciseRows = [];
       outcomeRows = [];
+      planSection = 'select';
       await onDataChanged();
     } catch (error) {
       window.alert(error.message);
@@ -638,6 +650,17 @@ export function mountWorkoutsView(root, {
       beginNewPlan();
       return;
     }
+    const planSectionButton = event.target.closest('[data-plan-section]');
+    if (planSectionButton) {
+      capturePlanFormValues();
+      if (planSectionButton.dataset.planSection === 'create' && !isEditingPlan) {
+        beginNewPlan();
+      } else {
+        planSection = planSectionButton.dataset.planSection;
+        render();
+      }
+      return;
+    }
     if (event.target.closest('[data-add-exercise]')) {
       capturePlanFormValues();
       exerciseRows.push({ metricId: '', targetSets: 3, targetReps: 8, searchTerm: '', isOpen: false });
@@ -742,6 +765,7 @@ export function mountWorkoutsView(root, {
       exerciseRows = [];
       outcomeRows = [];
       planName = '';
+      planSection = 'select';
       render();
       return;
     }
@@ -751,6 +775,7 @@ export function mountWorkoutsView(root, {
       sessionPlan = null;
       sessionSets = [];
       mode = 'plans';
+      planSection = 'select';
       render();
       return;
     }
