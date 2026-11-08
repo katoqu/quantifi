@@ -42,6 +42,7 @@ export function mountWorkoutsView(root, {
   let sessionSets = [];
   let reviewResult = null;
   let reviewRange = null;
+  let reviewPlanId = null;
   let setEditors = [];
 
   const strengthMetrics = () => metrics.filter((metric) => metric.metricKind === 'strength_session');
@@ -497,7 +498,8 @@ export function mountWorkoutsView(root, {
   function saveReview(event) {
     event.preventDefault();
     const form = event.target;
-    const plan = plans.find((item) => item.id === form.elements.reviewPlan.value);
+    reviewPlanId = form.elements.reviewPlan.value;
+    const plan = plans.find((item) => item.id === reviewPlanId);
     if (!plan) {
       window.alert('Choose a workout plan to review.');
       return;
@@ -558,11 +560,18 @@ export function mountWorkoutsView(root, {
         : renderReview();
     root.innerHTML = `${renderModes()}${content}`;
     if (mode === 'plans' && isEditingPlan) renderPlanPickers();
-    if (mode === 'review' && reviewRange) {
+    if (mode === 'review') {
       const form = root.querySelector('#workoutReviewForm');
       if (form) {
-        form.elements.reviewStart.value = dateInputValue(reviewRange.startAt);
-        form.elements.reviewEnd.value = dateInputValue(reviewRange.endAt);
+        if (plans.some((plan) => plan.id === reviewPlanId)) {
+          form.elements.reviewPlan.value = reviewPlanId;
+        } else {
+          reviewPlanId = form.elements.reviewPlan.value;
+        }
+        if (reviewRange) {
+          form.elements.reviewStart.value = dateInputValue(reviewRange.startAt);
+          form.elements.reviewEnd.value = dateInputValue(reviewRange.endAt);
+        }
       }
     }
   }
@@ -584,6 +593,12 @@ export function mountWorkoutsView(root, {
         picker.dataset.pickerType === 'exercise' ? 'Strength metric' : 'Outcome metric'
       );
       picker.querySelector('.search-field').focus();
+    }
+  });
+
+  root.addEventListener('change', (event) => {
+    if (event.target.matches('#workoutReviewForm [name="reviewPlan"]')) {
+      reviewPlanId = event.target.value;
     }
   });
 

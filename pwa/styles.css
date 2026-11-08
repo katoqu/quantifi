@@ -13,6 +13,7 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   font-family: Inter, system-ui, sans-serif;
   background: linear-gradient(180deg, #eff6ff 0%, var(--bg) 100%);
   color: var(--text);
@@ -29,7 +30,7 @@ body {
 
 .topbar {
   position: sticky;
-  top: 0;
+  top: env(safe-area-inset-top);
   z-index: 20;
   display: flex;
   align-items: center;

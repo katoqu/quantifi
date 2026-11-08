@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./styles.css" />
@@ -137,9 +137,8 @@
 
           <div class="panel">
             <div class="search-label">
-              <label for="homeSearch">Search</label>
               <div class="search-dropdown-control">
-                <input type="search" id="homeSearch" class="search-field" placeholder="Search metrics or categories..." autocomplete="off" aria-controls="homeSearchSuggestions" aria-expanded="false" />
+                <input type="search" id="homeSearch" class="search-field" placeholder="Search metrics or categories..." aria-label="Search metrics or categories" autocomplete="off" aria-controls="homeSearchSuggestions" aria-expanded="false" />
                 <button id="homeSearchClear" class="search-dropdown-clear hidden" type="button" aria-label="Clear search">×</button>
                 <button id="homeSearchExpand" class="search-dropdown-expand" type="button" aria-label="Show matching metrics and categories" aria-controls="homeSearchSuggestions" aria-expanded="false">
                   <span aria-hidden="true">⌄</span>
