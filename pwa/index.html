@@ -264,6 +264,57 @@
           </div>
 
           <div class="panel collapsible-container">
+            <details id="nutritionTargetsDetails" class="collapsible">
+              <summary><h2>Nutrition targets</h2><span class="collapse-indicator">▶</span></summary>
+              <p class="muted-text">Targets have an effective date. Changing one keeps the previous target in history.</p>
+              <div id="nutritionCurrentTargets" class="nutrition-record-list"></div>
+              <form id="nutritionTargetForm" class="nutrition-target-form">
+                <h3 id="nutritionTargetFormHeading">Add or change a target</h3>
+                <label>
+                  Nutrition value
+                  <select id="nutritionTargetNutrient"></select>
+                </label>
+                <label>
+                  Target type
+                  <select id="nutritionTargetType">
+                    <option value="minimum">At least</option>
+                    <option value="maximum">At most</option>
+                    <option value="range">Between</option>
+                  </select>
+                </label>
+                <div id="nutritionTargetSingleValueField">
+                  <label id="nutritionTargetSingleValueLabel" for="nutritionTargetValue">Target</label>
+                  <input id="nutritionTargetValue" type="number" min="0" step="any" />
+                </div>
+                <div id="nutritionTargetRangeFields" class="nutrition-value-fields hidden">
+                  <label>
+                    Minimum
+                    <input id="nutritionTargetMinValue" type="number" min="0" step="any" />
+                  </label>
+                  <label>
+                    Maximum
+                    <input id="nutritionTargetMaxValue" type="number" min="0" step="any" />
+                  </label>
+                </div>
+                <label>
+                  Effective from
+                  <input id="nutritionTargetEffectiveFrom" type="date" required />
+                </label>
+                <label>
+                  Reason (optional)
+                  <input id="nutritionTargetNote" type="text" maxlength="240" />
+                </label>
+                <div class="nutrition-actions">
+                  <button type="submit" class="primary">Save target</button>
+                  <button id="nutritionTargetClearButton" type="button" class="secondary">Clear</button>
+                </div>
+              </form>
+              <h3>Target history</h3>
+              <div id="nutritionTargetHistory" class="nutrition-record-list"></div>
+            </details>
+          </div>
+
+          <div class="panel collapsible-container">
             <details id="nutritionVisibilityDetails" class="collapsible">
               <summary><h2>Visible nutrients</h2><span class="collapse-indicator">▶</span></summary>
               <p class="muted-text">Choose which nutrient metric cards appear on Home and in Nutrition. Hidden nutrients remain tracked.</p>

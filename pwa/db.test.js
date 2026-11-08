@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const stores = new Map();
-for (const storeName of ['categories', 'metrics', 'entries', 'changeEvents', 'nutritionDays']) {
+for (const storeName of ['categories', 'metrics', 'entries', 'changeEvents', 'nutritionDays', 'nutritionTargets']) {
   stores.set(storeName, new Map());
 }
 
@@ -315,4 +315,41 @@ test('imports and re-imports a full month of daily nutrition values', async () =
   assert.equal((await listEntries()).length, 180);
   const updatedDay = (await listNutritionDays()).find((day) => day.date === days[14].date);
   assert.equal(updatedDay.values.calories, 2500);
+});
+
+test('stores dated nutrition target revisions and includes them in CSV backup round-trips', async () => {
+  for (const records of stores.values()) records.clear();
+  const { exportDataAsCsv, importCsvText, listNutritionTargets, saveNutritionTarget } = await import('./db.js');
+  await saveNutritionTarget({
+    nutrientId: 'protein',
+    type: 'minimum',
+    value: 120,
+    effectiveFrom: '2026-11-01',
+    note: 'Training block',
+  });
+  await saveNutritionTarget({
+    nutrientId: 'protein',
+    type: 'minimum',
+    value: 140,
+    effectiveFrom: '2026-11-08',
+    note: 'Updated goal',
+  });
+  await saveNutritionTarget({
+    nutrientId: 'calories',
+    type: 'range',
+    minValue: 2000,
+    maxValue: 2300,
+    effectiveFrom: '2026-11-08',
+  });
+  assert.equal((await listNutritionTargets()).length, 3);
+
+  const csv = await exportDataAsCsv();
+  assert.match(csv, /nutrition_target/);
+  for (const records of stores.values()) records.clear();
+  const imported = await importCsvText(csv);
+  assert.equal(imported.nutritionTargets, 3);
+  const restored = await listNutritionTargets();
+  assert.equal(restored.length, 3);
+  assert.equal(restored.find((target) => target.id === 'protein-2026-11-08').value, 140);
+  assert.equal(restored.find((target) => target.nutrientId === 'calories').maxValue, 2300);
 });

@@ -19,6 +19,48 @@ export const RESERVED_NUTRITION_METRIC_NAMES = new Set(
 
 export const NUTRITION_PREVIEW_LIMIT = 30;
 
+export const NUTRITION_TARGET_TYPES = [
+  { id: 'minimum', label: 'At least' },
+  { id: 'maximum', label: 'At most' },
+  { id: 'range', label: 'Between' },
+];
+
+export function normalizeNutritionTarget(target) {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) {
+    throw new Error('A nutrition target must be an object.');
+  }
+  const nutrient = NUTRIENTS.find((item) => item.id === target.nutrientId);
+  if (!nutrient) throw new Error('Choose a supported nutrition value for the target.');
+  const effectiveFrom = String(target.effectiveFrom || '');
+  if (!isValidDate(effectiveFrom)) {
+    throw new Error(`Invalid target start date: "${effectiveFrom}". Use YYYY-MM-DD.`);
+  }
+  const type = String(target.type || '');
+  if (!NUTRITION_TARGET_TYPES.some((item) => item.id === type)) {
+    throw new Error('Choose whether the target is a minimum, maximum, or range.');
+  }
+
+  const value = target.value === '' || target.value === undefined ? null : target.value;
+  const minValue = target.minValue === '' || target.minValue === undefined ? null : target.minValue;
+  const maxValue = target.maxValue === '' || target.maxValue === undefined ? null : target.maxValue;
+  const isValidValue = (number) => typeof number === 'number' && Number.isFinite(number) && number >= 0;
+  if (type === 'minimum' && !isValidValue(value)) throw new Error('Enter a non-negative minimum target.');
+  if (type === 'maximum' && !isValidValue(value)) throw new Error('Enter a non-negative maximum target.');
+  if (type === 'range' && (!isValidValue(minValue) || !isValidValue(maxValue) || minValue > maxValue)) {
+    throw new Error('Enter a valid range with the minimum no greater than the maximum.');
+  }
+  return {
+    id: `${nutrient.id}-${effectiveFrom}`,
+    nutrientId: nutrient.id,
+    type,
+    value: type === 'range' ? null : value,
+    minValue: type === 'range' ? minValue : null,
+    maxValue: type === 'range' ? maxValue : null,
+    effectiveFrom,
+    note: String(target.note || '').trim(),
+  };
+}
+
 function isValidDate(date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const parsed = new Date(`${date}T00:00:00.000Z`);
@@ -96,4 +138,11 @@ export function getNutritionPreviewRecords(records, limit = NUTRITION_PREVIEW_LI
 export function formatNutrientValue(value, nutrient) {
   if (value === null || value === undefined) return '—';
   return `${Number(value).toFixed(nutrient.decimals)} ${nutrient.unit}`;
+}
+
+export function formatNutritionTarget(target, nutrient) {
+  if (!target) return 'No target set';
+  if (target.type === 'minimum') return `At least ${formatNutrientValue(target.value, nutrient)}`;
+  if (target.type === 'maximum') return `At most ${formatNutrientValue(target.value, nutrient)}`;
+  return `${formatNutrientValue(target.minValue, nutrient)} – ${formatNutrientValue(target.maxValue, nutrient)}`;
 }

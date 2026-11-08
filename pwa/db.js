@@ -2,11 +2,12 @@ import { validateWorkoutPlan } from './workout-model.js';
 import {
   NUTRIENTS,
   normalizeNutritionDay,
+  normalizeNutritionTarget,
   RESERVED_NUTRITION_METRIC_NAMES,
 } from './nutrition.js';
 
 const DB_NAME = 'quantifi-pwa';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export const STORE_NAMES = {
   categories: 'categories',
@@ -16,6 +17,7 @@ export const STORE_NAMES = {
   workoutPlans: 'workoutPlans',
   workoutSessions: 'workoutSessions',
   nutritionDays: 'nutritionDays',
+  nutritionTargets: 'nutritionTargets',
 };
 
 let dbPromise;
@@ -269,6 +271,26 @@ export async function saveNutritionDay(payload) {
     }
   }
   return { id: `nutrition-${date}`, date, values };
+}
+
+export async function listNutritionTargets() {
+  const targets = await getAll(STORE_NAMES.nutritionTargets);
+  return targets.sort((a, b) => (
+    a.effectiveFrom.localeCompare(b.effectiveFrom)
+    || a.nutrientId.localeCompare(b.nutrientId)
+  ));
+}
+
+export async function saveNutritionTarget(payload) {
+  const normalized = normalizeNutritionTarget(payload);
+  const existing = await getRecord(STORE_NAMES.nutritionTargets, normalized.id);
+  const record = {
+    ...normalized,
+    createdAt: existing?.createdAt || nowIso(),
+    updatedAt: nowIso(),
+  };
+  await putRecord(STORE_NAMES.nutritionTargets, record);
+  return record;
 }
 
 function localDateString(date) {
@@ -655,6 +677,7 @@ export async function importCsvText(csvText) {
     workoutPlans: 0,
     workoutSessions: 0,
     nutritionDays: 0,
+    nutritionTargets: 0,
   };
 
   const existingEntries = await listEntries();
@@ -848,6 +871,13 @@ export async function importCsvText(csvText) {
       imported.nutritionDays += 1;
     }
 
+    if (rowType === 'nutrition_target') {
+      const source = parseWorkoutDataField(row.TargetData, 'nutrition target');
+      const target = normalizeNutritionTarget(source);
+      if (!await getRecord(STORE_NAMES.nutritionTargets, target.id)) imported.nutritionTargets += 1;
+      await saveNutritionTarget(target);
+    }
+
     if (rowType === 'workout_plan') {
       const source = parseWorkoutDataField(row.WorkoutData, 'workout plan');
       const sourceId = String(row.RecordId || source.id || '').trim();
@@ -912,13 +942,14 @@ export async function getOrCreateCategory(name) {
 }
 
 export async function exportDataAsCsv() {
-  const [categories, metrics, entries, changeEvents, workoutPlans, workoutSessions] = await Promise.all([
+  const [categories, metrics, entries, changeEvents, workoutPlans, workoutSessions, nutritionTargets] = await Promise.all([
     listCategories(),
     listMetrics(true),
     listEntries(),
     listChangeEvents(),
     getAll(STORE_NAMES.workoutPlans),
     getAll(STORE_NAMES.workoutSessions),
+    listNutritionTargets(),
   ]);
 
   const categoryMap = Object.fromEntries(categories.map((category) => [category.id, category.name]));
@@ -926,7 +957,7 @@ export async function exportDataAsCsv() {
   const headers = [
     'RowType', 'Date', 'Category', 'Metric', 'Description', 'Archived', 'Value', 'Unit',
     'Type', 'Kind', 'StrengthMeasure', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadValue', 'Sets', 'Title',
-    'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData', 'NutritionData', 'NutritionId',
+    'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData', 'NutritionData', 'NutritionId', 'TargetData',
   ];
   const toRow = (values) => headers.map((header) => values[header] ?? '');
   const rows = [
@@ -1003,6 +1034,12 @@ export async function exportDataAsCsv() {
       RowType: 'workout_session',
       RecordId: session.id,
       WorkoutData: JSON.stringify(session),
+    })),
+    ...nutritionTargets.map((target) => toRow({
+      RowType: 'nutrition_target',
+      Date: target.effectiveFrom,
+      RecordId: target.id,
+      TargetData: JSON.stringify(target),
     })),
   ];
 

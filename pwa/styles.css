@@ -791,6 +791,30 @@ input[type="checkbox"] {
   position: relative;
 }
 
+.overview-card--nutrition {
+  border-left: 3px solid #0f766e;
+}
+
+.nutrition-card-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.1);
+  letter-spacing: 0.04em;
+}
+
+.overview-cat.nutrition-card-badge::after {
+  content: none;
+}
+
+.nutrition-card-target {
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .overview-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
@@ -984,6 +1008,34 @@ label[for="nutritionJsonInput"] {
   padding: 5px 10px;
 }
 
+.nutrition-target-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(110px, auto) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.nutrition-target-row:last-child {
+  border-bottom: 0;
+}
+
+.nutrition-target-row .nutrition-record-heading {
+  margin: 0;
+}
+
+.nutrition-target-row .nutrition-record-heading button {
+  min-height: 30px;
+  padding: 3px 8px;
+}
+
+.nutrition-target-value,
+.nutrition-target-date {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
 .nutrition-values,
 .nutrition-visibility-settings {
   display: flex;
@@ -1001,6 +1053,30 @@ label[for="nutritionJsonInput"] {
 .nutrition-day-form {
   display: grid;
   gap: 12px;
+}
+
+.nutrition-target-form {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.nutrition-target-form h3 {
+  margin: 0;
+}
+
+@media (max-width: 520px) {
+  .nutrition-target-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .nutrition-target-date {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 .nutrition-value-fields {

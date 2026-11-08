@@ -4,6 +4,7 @@ import {
   getNutritionPreviewRecords,
   normalizeNutritionDay,
   NUTRITION_PREVIEW_LIMIT,
+  normalizeNutritionTarget,
   parseNutritionImportJson,
 } from './nutrition.js';
 
@@ -40,6 +41,32 @@ test('limits preview to 30 days while retaining the full import count', () => {
   assert.equal(preview.totalCount, 42);
   assert.equal(preview.records[0], records[0]);
   assert.equal(preview.records.at(-1), records[29]);
+});
+
+test('normalizes nutrition targets and rejects invalid range values', () => {
+  const target = normalizeNutritionTarget({
+    nutrientId: 'calories',
+    type: 'range',
+    minValue: 1800,
+    maxValue: 2200,
+    effectiveFrom: '2026-11-08',
+    note: '  Training day  ',
+  });
+  assert.equal(target.id, 'calories-2026-11-08');
+  assert.equal(target.note, 'Training day');
+  assert.throws(() => normalizeNutritionTarget({
+    nutrientId: 'protein',
+    type: 'range',
+    minValue: 150,
+    maxValue: 100,
+    effectiveFrom: '2026-11-08',
+  }), /minimum no greater than the maximum/);
+  assert.throws(() => normalizeNutritionTarget({
+    nutrientId: 'unknown',
+    type: 'minimum',
+    value: 1,
+    effectiveFrom: '2026-11-08',
+  }), /supported nutrition value/);
 });
 
 test('rejects invalid dates, negative values, duplicate days, and empty records', () => {

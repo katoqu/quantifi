@@ -15,9 +15,11 @@ import {
   listMetrics,
   listNutritionMetrics,
   listNutritionDays,
+  listNutritionTargets,
   migrateLegacyNutritionDays,
   seedBaseData,
   saveNutritionDay,
+  saveNutritionTarget,
   updateCategory,
   updateEntry,
   updateMetric,
@@ -56,6 +58,8 @@ import {
   NUTRIENTS,
   parseNutritionImportJson,
   RESERVED_NUTRITION_METRIC_NAMES,
+  formatNutritionTarget,
+  NUTRITION_TARGET_TYPES,
 } from './nutrition.js';
 
 const ui = {
@@ -146,6 +150,22 @@ const ui = {
   nutritionValueFields: document.querySelector('#nutritionValueFields'),
   nutritionNewDayButton: document.querySelector('#nutritionNewDayButton'),
   nutritionEditorHeading: document.querySelector('#nutritionEditorHeading'),
+  nutritionTargetsDetails: document.querySelector('#nutritionTargetsDetails'),
+  nutritionCurrentTargets: document.querySelector('#nutritionCurrentTargets'),
+  nutritionTargetHistory: document.querySelector('#nutritionTargetHistory'),
+  nutritionTargetForm: document.querySelector('#nutritionTargetForm'),
+  nutritionTargetFormHeading: document.querySelector('#nutritionTargetFormHeading'),
+  nutritionTargetNutrient: document.querySelector('#nutritionTargetNutrient'),
+  nutritionTargetType: document.querySelector('#nutritionTargetType'),
+  nutritionTargetSingleValueField: document.querySelector('#nutritionTargetSingleValueField'),
+  nutritionTargetSingleValueLabel: document.querySelector('#nutritionTargetSingleValueLabel'),
+  nutritionTargetValue: document.querySelector('#nutritionTargetValue'),
+  nutritionTargetRangeFields: document.querySelector('#nutritionTargetRangeFields'),
+  nutritionTargetMinValue: document.querySelector('#nutritionTargetMinValue'),
+  nutritionTargetMaxValue: document.querySelector('#nutritionTargetMaxValue'),
+  nutritionTargetEffectiveFrom: document.querySelector('#nutritionTargetEffectiveFrom'),
+  nutritionTargetNote: document.querySelector('#nutritionTargetNote'),
+  nutritionTargetClearButton: document.querySelector('#nutritionTargetClearButton'),
   nutritionVisibilitySettings: document.querySelector('#nutritionVisibilitySettings'),
   nutritionHistory: document.querySelector('#nutritionHistory'),
   statsSummary: document.querySelector('#statsSummary'),
@@ -531,8 +551,135 @@ function appendNutritionValues(container, values, nutrientIds = null) {
   });
 }
 
+function initializeNutritionTargetForm() {
+  ui.nutritionTargetNutrient.innerHTML = NUTRIENTS
+    .map((nutrient) => `<option value="${nutrient.id}">${nutrient.label} (${nutrient.unit})</option>`)
+    .join('');
+  ui.nutritionTargetEffectiveFrom.value = localDateString();
+  updateNutritionTargetFields();
+}
+
+function updateNutritionTargetFields() {
+  const type = ui.nutritionTargetType.value;
+  const nutrient = NUTRIENTS.find((item) => item.id === ui.nutritionTargetNutrient.value);
+  const range = type === 'range';
+  ui.nutritionTargetRangeFields.classList.toggle('hidden', !range);
+  ui.nutritionTargetSingleValueField.classList.toggle('hidden', range);
+  ui.nutritionTargetValue.required = !range;
+  ui.nutritionTargetMinValue.required = range;
+  ui.nutritionTargetMaxValue.required = range;
+  const typeLabel = NUTRITION_TARGET_TYPES.find((item) => item.id === type)?.label || 'Target';
+  ui.nutritionTargetSingleValueLabel.textContent = `${typeLabel} (${nutrient?.unit || ''})`;
+  ui.nutritionTargetMinValue.parentElement.firstChild.textContent = `Minimum (${nutrient?.unit || ''})`;
+  ui.nutritionTargetMaxValue.parentElement.firstChild.textContent = `Maximum (${nutrient?.unit || ''})`;
+}
+
+function editNutritionTarget(target) {
+  ui.nutritionTargetNutrient.value = target.nutrientId;
+  ui.nutritionTargetType.value = target.type;
+  ui.nutritionTargetValue.value = target.value ?? '';
+  ui.nutritionTargetMinValue.value = target.minValue ?? '';
+  ui.nutritionTargetMaxValue.value = target.maxValue ?? '';
+  ui.nutritionTargetEffectiveFrom.value = target.effectiveFrom;
+  ui.nutritionTargetNote.value = target.note || '';
+  ui.nutritionTargetFormHeading.textContent = `Change ${NUTRIENTS.find((item) => item.id === target.nutrientId)?.label || 'nutrition'} target`;
+  updateNutritionTargetFields();
+  ui.nutritionTargetsDetails.open = true;
+  ui.nutritionTargetForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function resetNutritionTargetForm() {
+  ui.nutritionTargetForm.reset();
+  ui.nutritionTargetEffectiveFrom.value = localDateString();
+  ui.nutritionTargetFormHeading.textContent = 'Add or change a target';
+  updateNutritionTargetFields();
+}
+
+function getEffectiveNutritionTargets(targets, date = localDateString()) {
+  const effectiveTargets = new Map();
+  targets
+    .filter((target) => target.effectiveFrom <= date)
+    .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))
+    .forEach((target) => effectiveTargets.set(target.nutrientId, target));
+  return effectiveTargets;
+}
+
+async function renderNutritionTargets() {
+  const targets = await listNutritionTargets();
+  const today = localDateString();
+  const effectiveTargets = getEffectiveNutritionTargets(targets, today);
+  ui.nutritionCurrentTargets.replaceChildren();
+  ui.nutritionTargetHistory.replaceChildren();
+
+  NUTRIENTS.forEach((nutrient) => {
+    const applicable = effectiveTargets.get(nutrient.id);
+    const card = document.createElement('article');
+    card.className = 'nutrition-target-row';
+    const heading = document.createElement('div');
+    heading.className = 'nutrition-record-heading';
+    const title = document.createElement('h4');
+    title.textContent = nutrient.label;
+    heading.append(title);
+    if (applicable) {
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'secondary';
+      edit.dataset.editNutritionTarget = applicable.id;
+      edit.textContent = 'Edit';
+      heading.append(edit);
+    }
+    const value = document.createElement('p');
+    value.className = applicable ? 'nutrition-target-value' : 'nutrition-target-value muted-text';
+    value.textContent = applicable ? formatNutritionTarget(applicable, nutrient) : 'No target set';
+    const date = document.createElement('span');
+    date.className = 'nutrition-target-date muted-text';
+    date.textContent = applicable ? `Since ${formatNutritionDate(applicable.effectiveFrom)}` : '';
+    card.append(heading, value);
+    if (applicable) card.append(date);
+    ui.nutritionCurrentTargets.append(card);
+  });
+
+  if (!targets.length) {
+    const empty = document.createElement('p');
+    empty.className = 'muted-text';
+    empty.textContent = 'No target history yet.';
+    ui.nutritionTargetHistory.append(empty);
+    return;
+  }
+
+  targets.slice().sort((a, b) => (
+    b.effectiveFrom.localeCompare(a.effectiveFrom)
+    || a.nutrientId.localeCompare(b.nutrientId)
+  )).forEach((target) => {
+    const nutrient = NUTRIENTS.find((item) => item.id === target.nutrientId);
+    const card = document.createElement('article');
+    card.className = 'nutrition-record';
+    const heading = document.createElement('div');
+    heading.className = 'nutrition-record-heading';
+    const title = document.createElement('h4');
+    title.textContent = `${nutrient.label} · ${formatNutritionDate(target.effectiveFrom)}`;
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'secondary';
+    edit.dataset.editNutritionTarget = target.id;
+    edit.textContent = 'Edit';
+    heading.append(title, edit);
+    const value = document.createElement('p');
+    value.className = 'muted-text';
+    value.textContent = formatNutritionTarget(target, nutrient);
+    card.append(heading, value);
+    if (target.note) {
+      const note = document.createElement('p');
+      note.textContent = target.note;
+      card.append(note);
+    }
+    ui.nutritionTargetHistory.append(card);
+  });
+}
+
 async function renderNutrition() {
   const days = await listNutritionDays();
+  await renderNutritionTargets();
   ui.nutritionHistory.replaceChildren();
   ui.nutritionVisibilitySettings.replaceChildren();
 
@@ -670,6 +817,7 @@ async function initializeDatabase() {
   try {
     await migrateLegacyNutritionDays();
     await listNutritionMetrics();
+    initializeNutritionTargetForm();
   } catch (error) {
     console.error('Nutrition setup error:', error);
     window.alert(`Nutrition setup failed: ${error.message}`);
@@ -893,11 +1041,13 @@ async function changeAddMetric(metricId) {
 
 async function renderHome() {
   console.log('renderHome called');
-  const [metrics, entries, categories] = await Promise.all([
+  const [metrics, entries, categories, nutritionTargets] = await Promise.all([
     listMetrics(true),
     listEntries(),
     listCategories(),
+    listNutritionTargets(),
   ]);
+  const effectiveNutritionTargets = getEffectiveNutritionTargets(nutritionTargets);
   console.log('Metrics:', metrics.length, 'Active:', metrics.filter(m => !m.isArchived).length);
 
   const visibleMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
@@ -931,6 +1081,13 @@ async function renderHome() {
 
     const safeCatName = categoryName.toUpperCase();
     const safeMName = metric.name.charAt(0).toUpperCase() + metric.name.slice(1);
+    const nutritionTarget = metric.nutritionId
+      ? effectiveNutritionTargets.get(metric.nutritionId)
+      : null;
+    const nutrient = NUTRIENTS.find((item) => item.id === metric.nutritionId);
+    const nutritionTargetHtml = nutritionTarget && nutrient
+      ? `<div class="nutrition-card-target">Target: ${formatNutritionTarget(nutritionTarget, nutrient)}</div>`
+      : '';
     
     let latestLabel = '—';
     let suffix = '';
@@ -970,10 +1127,10 @@ async function renderHome() {
     });
 
     return `
-      <div class="overview-card" data-metric-id="${metric.id}">
+      <div class="overview-card${metric.nutritionId ? ' overview-card--nutrition' : ''}" data-metric-id="${metric.id}">
         <div class="overview-title-row">
           <div class="title-left">
-            <span class="overview-cat">${safeCatName}</span>
+            <span class="overview-cat${metric.nutritionId ? ' nutrition-card-badge' : ''}">${metric.nutritionId ? 'Nutrition' : safeCatName}</span>
             <span class="overview-name" title="${safeMName}">${metric.isArchived ? '# ' : ''}${safeMName}</span>
             ${metric.isArchived ? '<span class="archived-metric-badge">Archived</span>' : ''}
           </div>
@@ -982,6 +1139,7 @@ async function renderHome() {
             ${lastDateStr ? `<span class="metric-date">${lastDateStr}</span>` : ''}
           </div>
         </div>
+        ${nutritionTargetHtml}
         <div class="overview-spark-wrap">
           ${targetHtml}
           ${sparkSvg}
@@ -2852,6 +3010,53 @@ ui.nutritionHistory.addEventListener('click', async (event) => {
   if (day) editNutritionDay(day);
 });
 
+ui.nutritionTargetType.addEventListener('change', updateNutritionTargetFields);
+ui.nutritionTargetNutrient.addEventListener('change', updateNutritionTargetFields);
+
+ui.nutritionTargetHistory.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-edit-nutrition-target]');
+  if (!button) return;
+  const target = (await listNutritionTargets()).find((item) => item.id === button.dataset.editNutritionTarget);
+  if (target) editNutritionTarget(target);
+});
+
+ui.nutritionCurrentTargets.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-edit-nutrition-target]');
+  if (!button) return;
+  const target = (await listNutritionTargets()).find((item) => item.id === button.dataset.editNutritionTarget);
+  if (target) editNutritionTarget(target);
+});
+
+ui.nutritionTargetClearButton.addEventListener('click', resetNutritionTargetForm);
+
+ui.nutritionTargetForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const type = ui.nutritionTargetType.value;
+  const payload = {
+    nutrientId: ui.nutritionTargetNutrient.value,
+    type,
+    value: type === 'range' || !ui.nutritionTargetValue.value.trim()
+      ? null
+      : Number(ui.nutritionTargetValue.value),
+    minValue: type !== 'range' || !ui.nutritionTargetMinValue.value.trim()
+      ? null
+      : Number(ui.nutritionTargetMinValue.value),
+    maxValue: type !== 'range' || !ui.nutritionTargetMaxValue.value.trim()
+      ? null
+      : Number(ui.nutritionTargetMaxValue.value),
+    effectiveFrom: ui.nutritionTargetEffectiveFrom.value,
+    note: ui.nutritionTargetNote.value,
+  };
+  try {
+    await saveNutritionTarget(payload);
+    incrementUnsavedCount();
+    resetNutritionTargetForm();
+    await renderAll();
+  } catch (error) {
+    window.alert(`Could not save nutrition target: ${error.message}`);
+  }
+});
+
 ui.nutritionNewDayButton.addEventListener('click', () => {
   ui.nutritionDayForm.reset();
   ui.nutritionDate.value = localDateString();
@@ -2884,7 +3089,7 @@ ui.importFile.addEventListener('change', async (event) => {
   const summary = await importCsvText(text);
   resetUnsavedCount();
   await renderAll();
-  alert(`Import complete. ${summary.entries} entries, ${summary.changes} changes, ${summary.workoutPlans} workout plans, and ${summary.workoutSessions} workout sessions imported; ${summary.metrics} new metrics created. Matching metrics were reused where possible.`);
+  alert(`Import complete. ${summary.entries} entries, ${summary.changes} changes, ${summary.workoutPlans} workout plans, ${summary.workoutSessions} workout sessions, and ${summary.nutritionTargets} nutrition targets imported; ${summary.metrics} new metrics created. Matching metrics were reused where possible.`);
 
   const statsTab = document.querySelector('.tab[data-view="stats"]');
   if (statsTab) {
