@@ -19,16 +19,6 @@ export const RESERVED_NUTRITION_METRIC_NAMES = new Set(
 
 export const NUTRITION_PREVIEW_LIMIT = 30;
 
-export const SAMPLE_NUTRITION_JSON = JSON.stringify([
-  { date: '2026-11-02', calories: 2050, protein_g: 132, carbs_g: 218, fat_g: 71, saturated_fat_g: 20, fiber_g: 27 },
-  { date: '2026-11-03', calories: 2240, protein_g: 148, carbs_g: 241, fat_g: 76, saturated_fat_g: 22, fiber_g: 31 },
-  { date: '2026-11-04', calories: 1925, protein_g: 121, carbs_g: 205, fat_g: 68, saturated_fat_g: 18, fiber_g: 25 },
-  { date: '2026-11-05', calories: 2160, protein_g: 139, carbs_g: 229, fat_g: 74, saturated_fat_g: 21, fiber_g: 29 },
-  { date: '2026-11-06', calories: 2310, protein_g: 154, carbs_g: 248, fat_g: 79, saturated_fat_g: 23, fiber_g: 32 },
-  { date: '2026-11-07', calories: 1870, protein_g: 126, carbs_g: 192, fat_g: 66, saturated_fat_g: 17, fiber_g: 24 },
-  { date: '2026-11-08', calories: 2115, protein_g: 143, carbs_g: 222, fat_g: 73, saturated_fat_g: 20, fiber_g: 30 },
-], null, 2);
-
 function isValidDate(date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const parsed = new Date(`${date}T00:00:00.000Z`);

@@ -56,7 +56,6 @@ import {
   NUTRIENTS,
   parseNutritionImportJson,
   RESERVED_NUTRITION_METRIC_NAMES,
-  SAMPLE_NUTRITION_JSON,
 } from './nutrition.js';
 
 const ui = {
@@ -130,9 +129,11 @@ const ui = {
   cancelCategory: document.querySelector('#cancelCategory'),
   changeList: document.querySelector('#changeList'),
   workoutApp: document.querySelector('#workoutApp'),
+  nutritionJsonInput: document.querySelector('#nutritionJsonInput'),
+  nutritionReviewJsonButton: document.querySelector('#nutritionReviewJsonButton'),
   nutritionImportButton: document.querySelector('#nutritionImportButton'),
-  nutritionSampleButton: document.querySelector('#nutritionSampleButton'),
   nutritionImportFile: document.querySelector('#nutritionImportFile'),
+  nutritionImportDetails: document.querySelector('#nutritionImportDetails'),
   nutritionImportPreview: document.querySelector('#nutritionImportPreview'),
   nutritionImportSummary: document.querySelector('#nutritionImportSummary'),
   nutritionImportWarning: document.querySelector('#nutritionImportWarning'),
@@ -140,6 +141,7 @@ const ui = {
   nutritionConfirmImport: document.querySelector('#nutritionConfirmImport'),
   nutritionCancelImport: document.querySelector('#nutritionCancelImport'),
   nutritionDayForm: document.querySelector('#nutritionDayForm'),
+  nutritionEditorDetails: document.querySelector('#nutritionEditorDetails'),
   nutritionDate: document.querySelector('#nutritionDate'),
   nutritionValueFields: document.querySelector('#nutritionValueFields'),
   nutritionNewDayButton: document.querySelector('#nutritionNewDayButton'),
@@ -618,6 +620,7 @@ async function showNutritionImportPreview(parsed) {
     ui.nutritionImportWarning.textContent = '';
   }
   ui.nutritionImportPreview.classList.remove('hidden');
+  ui.nutritionImportDetails.open = true;
 }
 
 function resetNutritionImportPreview() {
@@ -634,6 +637,7 @@ function editNutritionDay(day) {
     input.value = day.values[nutrient.id] ?? '';
   });
   ui.nutritionEditorHeading.textContent = `Edit nutrition for ${formatNutritionDate(day.date)}`;
+  ui.nutritionEditorDetails.open = true;
   ui.nutritionDayForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -2791,6 +2795,15 @@ ui.nutritionImportButton.addEventListener('click', () => {
   ui.nutritionImportFile.click();
 });
 
+ui.nutritionReviewJsonButton.addEventListener('click', async () => {
+  try {
+    const parsed = parseNutritionImportJson(ui.nutritionJsonInput.value);
+    await showNutritionImportPreview(parsed);
+  } catch (error) {
+    window.alert(error.message);
+  }
+});
+
 ui.nutritionImportFile.addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -2803,15 +2816,6 @@ ui.nutritionImportFile.addEventListener('change', async (event) => {
   }
 });
 
-ui.nutritionSampleButton.addEventListener('click', async () => {
-  try {
-    await showNutritionImportPreview(parseNutritionImportJson(SAMPLE_NUTRITION_JSON));
-    ui.nutritionImportSummary.textContent = `Sample data only: ${pendingNutritionImport.records.length} mock days. Importing will add or replace these dates.`;
-  } catch (error) {
-    window.alert(`Could not prepare sample nutrition data: ${error.message}`);
-  }
-});
-
 ui.nutritionConfirmImport.addEventListener('click', async () => {
   if (!pendingNutritionImport) return;
   try {
@@ -2820,6 +2824,7 @@ ui.nutritionConfirmImport.addEventListener('click', async () => {
     }
     const count = pendingNutritionImport.records.length;
     resetNutritionImportPreview();
+    ui.nutritionJsonInput.value = '';
     incrementUnsavedCount(count);
     await renderAll();
     window.alert(`Imported or updated ${count} nutrition day${count === 1 ? '' : 's'}.`);

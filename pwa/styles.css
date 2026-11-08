@@ -946,6 +946,10 @@ input[type="checkbox"] {
   flex-wrap: wrap;
 }
 
+label[for="nutritionJsonInput"] {
+  margin-bottom: 12px;
+}
+
 .nutrition-import-preview {
   margin-top: 14px;
   padding-top: 12px;
