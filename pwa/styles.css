@@ -652,8 +652,8 @@ input[type="checkbox"] {
 /* High Fidelity Action Card styles based on Landing Page design */
 .metric-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 10px;
 }
 
 .quick-start-heading {
@@ -938,6 +938,83 @@ input[type="checkbox"] {
   gap: 10px;
 }
 
+.nutrition-actions,
+.nutrition-record-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nutrition-import-preview {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.nutrition-import-preview h3,
+.nutrition-record h4 {
+  margin: 0;
+}
+
+.nutrition-record-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.nutrition-record {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.nutrition-record-heading {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.nutrition-record-heading button {
+  min-height: 34px;
+  padding: 5px 10px;
+}
+
+.nutrition-values,
+.nutrition-visibility-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.nutrition-value {
+  border-radius: 8px;
+  background: #f1f5f9;
+  padding: 6px 9px;
+  font-size: 0.88rem;
+}
+
+.nutrition-day-form {
+  display: grid;
+  gap: 12px;
+}
+
+.nutrition-value-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 10px;
+}
+
+.nutrition-visibility-settings {
+  gap: 8px 16px;
+}
+
+.nutrition-visibility-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .backup-actions {
   display: flex;
   gap: 8px;
@@ -997,7 +1074,7 @@ main {
   }
 
   .metric-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   }
 
   .topbar {

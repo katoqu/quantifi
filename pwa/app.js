@@ -13,7 +13,11 @@ import {
   listChangeEvents,
   listEntries,
   listMetrics,
+  listNutritionMetrics,
+  listNutritionDays,
+  migrateLegacyNutritionDays,
   seedBaseData,
+  saveNutritionDay,
   updateCategory,
   updateEntry,
   updateMetric,
@@ -46,6 +50,14 @@ import {
   saveWorkoutSession,
 } from './workout-data.js';
 import { mountWorkoutsView } from './workouts-view.js';
+import {
+  formatNutrientValue,
+  getNutritionPreviewRecords,
+  NUTRIENTS,
+  parseNutritionImportJson,
+  RESERVED_NUTRITION_METRIC_NAMES,
+  SAMPLE_NUTRITION_JSON,
+} from './nutrition.js';
 
 const ui = {
   tabs: Array.from(document.querySelectorAll('.tab')),
@@ -118,6 +130,22 @@ const ui = {
   cancelCategory: document.querySelector('#cancelCategory'),
   changeList: document.querySelector('#changeList'),
   workoutApp: document.querySelector('#workoutApp'),
+  nutritionImportButton: document.querySelector('#nutritionImportButton'),
+  nutritionSampleButton: document.querySelector('#nutritionSampleButton'),
+  nutritionImportFile: document.querySelector('#nutritionImportFile'),
+  nutritionImportPreview: document.querySelector('#nutritionImportPreview'),
+  nutritionImportSummary: document.querySelector('#nutritionImportSummary'),
+  nutritionImportWarning: document.querySelector('#nutritionImportWarning'),
+  nutritionImportRecords: document.querySelector('#nutritionImportRecords'),
+  nutritionConfirmImport: document.querySelector('#nutritionConfirmImport'),
+  nutritionCancelImport: document.querySelector('#nutritionCancelImport'),
+  nutritionDayForm: document.querySelector('#nutritionDayForm'),
+  nutritionDate: document.querySelector('#nutritionDate'),
+  nutritionValueFields: document.querySelector('#nutritionValueFields'),
+  nutritionNewDayButton: document.querySelector('#nutritionNewDayButton'),
+  nutritionEditorHeading: document.querySelector('#nutritionEditorHeading'),
+  nutritionVisibilitySettings: document.querySelector('#nutritionVisibilitySettings'),
+  nutritionHistory: document.querySelector('#nutritionHistory'),
   statsSummary: document.querySelector('#statsSummary'),
   entryForm: document.querySelector('#entryForm'),
   changeForm: document.querySelector('#changeForm'),
@@ -202,6 +230,9 @@ let editingEventId = null;
 let endingEventId = null;
 let revivingEventId = null;
 let editingEntryId = null;
+let pendingNutritionImport = null;
+const NUTRITION_VISIBILITY_KEY = 'quantifi-nutrition-visible-nutrients';
+let visibleNutritionNutrients = loadVisibleNutritionNutrients();
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
 let homeSearchTerm = '';
@@ -418,10 +449,10 @@ function updateBackupBanner() {
   ui.backupReminderBanner.classList.remove('hidden');
 }
 
-function incrementUnsavedCount() {
+function incrementUnsavedCount(amount = 1) {
   const storedCount = Number(localStorage.getItem('quantifi-unsaved-count') || 0);
   const previousCount = Number.isFinite(storedCount) ? Math.max(0, storedCount) : 0;
-  const count = previousCount + 1;
+  const count = previousCount + amount;
   if (previousCount <= 0) localStorage.setItem('quantifi-unsaved-since', String(Date.now()));
   localStorage.setItem('quantifi-unsaved-count', String(count));
   updateBackupBanner();
@@ -438,6 +469,172 @@ function resetUnsavedCount({ exported = false } = {}) {
 function snoozeBackupReminder() {
   localStorage.setItem('quantifi-backup-snoozed-until', String(Date.now() + BACKUP_SNOOZE_MS));
   updateBackupBanner();
+}
+
+function loadVisibleNutritionNutrients() {
+  const saved = localStorage.getItem(NUTRITION_VISIBILITY_KEY);
+  if (!saved) return new Set(NUTRIENTS.map((nutrient) => nutrient.id));
+  try {
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) throw new Error('Stored nutrient visibility must be an array.');
+    return new Set(parsed.filter((id) => NUTRIENTS.some((nutrient) => nutrient.id === id)));
+  } catch (error) {
+    console.warn('Could not read nutrition visibility settings:', error);
+    return new Set(NUTRIENTS.map((nutrient) => nutrient.id));
+  }
+}
+
+function localDateString(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function initializeNutritionForm() {
+  ui.nutritionValueFields.replaceChildren();
+  NUTRIENTS.forEach((nutrient) => {
+    const label = document.createElement('label');
+    label.textContent = `${nutrient.label} (${nutrient.unit})`;
+    const input = document.createElement('input');
+    input.id = `nutrition-${nutrient.id}`;
+    input.type = 'number';
+    input.min = '0';
+    input.step = nutrient.decimals ? 'any' : '1';
+    input.inputMode = 'decimal';
+    input.placeholder = 'Unknown';
+    input.autocomplete = 'off';
+    label.append(input);
+    ui.nutritionValueFields.append(label);
+  });
+}
+
+function formatNutritionDate(date) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function appendNutritionValues(container, values, nutrientIds = null) {
+  const nutrients = NUTRIENTS.filter((nutrient) => !nutrientIds || nutrientIds.has(nutrient.id));
+  nutrients.forEach((nutrient) => {
+    const value = values[nutrient.id];
+    if (value === null || value === undefined) return;
+    const item = document.createElement('span');
+    item.className = 'nutrition-value';
+    item.textContent = `${nutrient.label}: ${formatNutrientValue(value, nutrient)}`;
+    container.append(item);
+  });
+}
+
+async function renderNutrition() {
+  const days = await listNutritionDays();
+  ui.nutritionHistory.replaceChildren();
+  ui.nutritionVisibilitySettings.replaceChildren();
+
+  NUTRIENTS.forEach((nutrient) => {
+    const label = document.createElement('label');
+    label.className = 'checkbox-label nutrition-visibility-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = visibleNutritionNutrients.has(nutrient.id);
+    checkbox.dataset.nutrientId = nutrient.id;
+    label.append(checkbox, document.createTextNode(nutrient.label));
+    ui.nutritionVisibilitySettings.append(label);
+  });
+
+  if (!days.length) {
+    const empty = document.createElement('p');
+    empty.className = 'muted-text';
+    empty.textContent = 'No nutrition days yet. Import your Gemini JSON or enter a day above.';
+    ui.nutritionHistory.append(empty);
+    return;
+  }
+
+  days.forEach((day) => {
+    const card = document.createElement('article');
+    card.className = 'nutrition-record';
+    const heading = document.createElement('div');
+    heading.className = 'nutrition-record-heading';
+    const title = document.createElement('h4');
+    title.textContent = formatNutritionDate(day.date);
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'secondary';
+    edit.dataset.editNutritionDate = day.date;
+    edit.textContent = 'Edit';
+    heading.append(title, edit);
+    const values = document.createElement('div');
+    values.className = 'nutrition-values';
+    appendNutritionValues(values, day.values, visibleNutritionNutrients);
+    if (!values.childElementCount) {
+      const empty = document.createElement('span');
+      empty.className = 'muted-text';
+      empty.textContent = 'No visible nutrient values for this day.';
+      values.append(empty);
+    }
+    card.append(heading, values);
+    ui.nutritionHistory.append(card);
+  });
+}
+
+async function showNutritionImportPreview(parsed) {
+  pendingNutritionImport = parsed;
+  ui.nutritionImportRecords.replaceChildren();
+  const preview = getNutritionPreviewRecords(parsed.records);
+  let days;
+  try {
+    days = await listNutritionDays();
+  } catch (error) {
+    pendingNutritionImport = null;
+    ui.nutritionImportPreview.classList.add('hidden');
+    window.alert(`Could not load existing nutrition days: ${error.message}`);
+    return;
+  }
+  const existingDates = new Set(days.map((day) => day.date));
+  preview.records.forEach((record) => {
+    const card = document.createElement('article');
+    card.className = 'nutrition-record';
+    const heading = document.createElement('h4');
+    heading.textContent = `${formatNutritionDate(record.date)}${existingDates.has(record.date) ? ' — will replace existing day' : ''}`;
+    const values = document.createElement('div');
+    values.className = 'nutrition-values';
+    appendNutritionValues(values, record.values);
+    card.append(heading, values);
+    ui.nutritionImportRecords.append(card);
+  });
+
+  const omittedSummary = preview.omittedCount
+    ? ` Showing ${preview.records.length}; ${preview.omittedCount} additional day${preview.omittedCount === 1 ? '' : 's'} omitted from preview.`
+    : '';
+  ui.nutritionImportSummary.textContent = `${preview.totalCount} day${preview.totalCount === 1 ? '' : 's'} ready to import.${omittedSummary} Existing dates will be replaced; other dates are unchanged.`;
+  if (parsed.unknownFields.length) {
+    ui.nutritionImportWarning.textContent = `Unrecognized fields will be ignored: ${parsed.unknownFields.join(', ')}.`;
+    ui.nutritionImportWarning.classList.remove('hidden');
+  } else {
+    ui.nutritionImportWarning.classList.add('hidden');
+    ui.nutritionImportWarning.textContent = '';
+  }
+  ui.nutritionImportPreview.classList.remove('hidden');
+}
+
+function resetNutritionImportPreview() {
+  pendingNutritionImport = null;
+  ui.nutritionImportFile.value = '';
+  ui.nutritionImportPreview.classList.add('hidden');
+  ui.nutritionImportRecords.replaceChildren();
+}
+
+function editNutritionDay(day) {
+  ui.nutritionDate.value = day.date;
+  NUTRIENTS.forEach((nutrient) => {
+    const input = ui.nutritionValueFields.querySelector(`#nutrition-${nutrient.id}`);
+    input.value = day.values[nutrient.id] ?? '';
+  });
+  ui.nutritionEditorHeading.textContent = `Edit nutrition for ${formatNutritionDate(day.date)}`;
+  ui.nutritionDayForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function resetEntryFormDateTime() {
@@ -466,6 +663,15 @@ async function initializeDatabase() {
   ui.quickStartCard.classList.toggle('hidden', quickStartDismissed || quickStartNeverShow);
   ui.showQuickStart.classList.toggle('hidden', !quickStartDismissed || quickStartNeverShow);
   await seedBaseData();
+  try {
+    await migrateLegacyNutritionDays();
+    await listNutritionMetrics();
+  } catch (error) {
+    console.error('Nutrition setup error:', error);
+    window.alert(`Nutrition setup failed: ${error.message}`);
+  }
+  initializeNutritionForm();
+  ui.nutritionDate.value = localDateString();
   resetEntryFormDateTime();
   resetChangeFormDateTime();
   updateBackupBanner();
@@ -479,6 +685,7 @@ async function renderAll() {
   await renderStats();
   await renderSettings();
   await workoutsView.render();
+  await renderNutrition();
 }
 
 async function syncAddFormMode() {
@@ -533,7 +740,7 @@ async function syncAddFormMode() {
 
 async function renderMetricDropdown() {
   const [metrics, entries, categories] = await Promise.all([
-    listMetrics(false),
+    listMetrics(false).then((rows) => rows.filter((metric) => !metric.nutritionId)),
     listEntries(),
     listCategories(),
   ]);
@@ -699,6 +906,9 @@ async function renderHome() {
   filteredMetrics = filterMetricsBySearch(filteredMetrics, categories, currentSearchTerm);
 
   const categoryMap = Object.fromEntries(categories.map((category) => [category.id, category.name]));
+  filteredMetrics = filteredMetrics.filter((metric) => (
+    !metric.nutritionId || visibleNutritionNutrients.has(metric.nutritionId)
+  ));
 
   ui.metricGrid.innerHTML = filteredMetrics.map((metric) => {
     const metricEntries = entries.filter((entry) => entry.metricId === metric.id);
@@ -773,11 +983,11 @@ async function renderHome() {
           ${sparkSvg}
         </div>
         <div class="card-pills">
-          ${metric.isArchived ? '' : `<button class="card-pill" data-action="add" data-id="${metric.id}" title="Add Entry">➕</button>`}
+          ${metric.isArchived ? '' : `<button class="card-pill" data-action="${metric.nutritionId ? 'nutrition' : 'add'}" data-id="${metric.id}" title="${metric.nutritionId ? 'Add daily nutrition' : 'Add Entry'}">➕</button>`}
           ${metric.metricKind === 'strength_session' ? `<button class="card-pill" data-action="last-session" data-id="${metric.id}" title="Last session">💡</button>` : ''}
           <button class="card-pill" data-action="stats" data-id="${metric.id}" title="View Stats">📊</button>
-          <button class="card-pill" data-action="settings" data-id="${metric.id}" title="Edit Metric">⚙️</button>
-          <button class="card-pill" data-action="edit-entries" data-id="${metric.id}" title="Edit Entries">📋</button>
+          ${metric.nutritionId ? '' : `<button class="card-pill" data-action="settings" data-id="${metric.id}" title="Edit Metric">⚙️</button>
+          <button class="card-pill" data-action="edit-entries" data-id="${metric.id}" title="Edit Entries">📋</button>`}
         </div>
       </div>
     `;
@@ -1313,6 +1523,12 @@ async function renderSettings() {
 
   if (isEditingMetric && selectedMetricForEdit) {
     const selectedMetric = metrics.find(m => m.id === selectedMetricForEdit);
+    if (selectedMetric?.nutritionId) {
+      ui.metricForm.style.display = 'none';
+      ui.metricEditForm.style.display = 'none';
+      ui.metricList.innerHTML = '<p class="muted-text">Nutrition metrics are managed in the Nutrition view. Their names and units are fixed so imports remain consistent.</p>';
+      return;
+    }
     ui.deleteMetricEdit.hidden = !selectedMetric?.isArchived;
     ui.archiveMetricEdit.classList.toggle('hidden', !selectedMetric);
     if (selectedMetric) {
@@ -1417,7 +1633,6 @@ ui.homeSettingsLink.addEventListener('click', (event) => {
 
 ui.homeAddMetricBtn.addEventListener('click', () => openSettingsManagement('metrics', true));
 ui.homeAddCategoryBtn.addEventListener('click', () => openSettingsManagement('categories', true));
-
 ui.tabs.forEach((tab) => {
   tab.addEventListener('click', async () => {
     const activeTab = ui.tabs.find((item) => item.classList.contains('active'));
@@ -1478,6 +1693,9 @@ ui.tabs.forEach((tab) => {
     }
     if (tab.dataset.view === 'workouts') {
       await workoutsView.render();
+    }
+    if (tab.dataset.view === 'nutrition') {
+      await renderNutrition();
     }
     // Render Home when switching to Home tab
     if (tab.dataset.view === 'home') {
@@ -2142,6 +2360,11 @@ ui.metricForm.addEventListener('submit', async (event) => {
   const categoryId = ui.metricCategory.value;
   const name = ui.metricName.value.trim();
   if (!name) return;
+  const normalizedName = name.toLowerCase();
+  if (RESERVED_NUTRITION_METRIC_NAMES.has(normalizedName)) {
+    window.alert(`"${name}" is reserved for a nutrition metric. Choose a different metric name.`);
+    return;
+  }
   
   const metrics = await listMetrics(true);
   const duplicate = metrics.some((metric) => (
@@ -2161,16 +2384,22 @@ ui.metricForm.addEventListener('submit', async (event) => {
     metricKind: ui.metricKind.value,
     strengthMeasure: ui.metricKind.value === 'strength_session' ? ui.strengthMeasure.value : null,
   };
-  if (metricId) {
-    const metric = metrics.find((item) => item.id === metricId);
-    if (!metric) {
-      window.alert('Metric not found.');
-      return;
+  try {
+    if (metricId) {
+      const metric = metrics.find((item) => item.id === metricId);
+      if (!metric) {
+        window.alert('Metric not found.');
+        return;
+      }
+      await updateMetric(metricId, changes);
+    } else {
+      await createMetric({ ...changes, higherIsBetter: true, isArchived: false });
+      window.alert('Metric created!');
     }
-    await updateMetric(metricId, changes);
-  } else {
-    await createMetric({ ...changes, higherIsBetter: true, isArchived: false });
-    window.alert('Metric created!');
+  } catch (error) {
+    console.error('Metric save error:', error);
+    window.alert(`Unable to save metric: ${error.message}`);
+    return;
   }
 
   isAddingMetric = false;
@@ -2558,6 +2787,91 @@ ui.importButton.addEventListener('click', () => {
   ui.importFile.click();
 });
 
+ui.nutritionImportButton.addEventListener('click', () => {
+  ui.nutritionImportFile.click();
+});
+
+ui.nutritionImportFile.addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const parsed = parseNutritionImportJson(await file.text());
+    await showNutritionImportPreview(parsed);
+  } catch (error) {
+    ui.nutritionImportFile.value = '';
+    window.alert(error.message);
+  }
+});
+
+ui.nutritionSampleButton.addEventListener('click', async () => {
+  try {
+    await showNutritionImportPreview(parseNutritionImportJson(SAMPLE_NUTRITION_JSON));
+    ui.nutritionImportSummary.textContent = `Sample data only: ${pendingNutritionImport.records.length} mock days. Importing will add or replace these dates.`;
+  } catch (error) {
+    window.alert(`Could not prepare sample nutrition data: ${error.message}`);
+  }
+});
+
+ui.nutritionConfirmImport.addEventListener('click', async () => {
+  if (!pendingNutritionImport) return;
+  try {
+    for (const record of pendingNutritionImport.records) {
+      await saveNutritionDay(record);
+    }
+    const count = pendingNutritionImport.records.length;
+    resetNutritionImportPreview();
+    incrementUnsavedCount(count);
+    await renderAll();
+    window.alert(`Imported or updated ${count} nutrition day${count === 1 ? '' : 's'}.`);
+  } catch (error) {
+    window.alert(`Nutrition import failed: ${error.message}`);
+  }
+});
+
+ui.nutritionCancelImport.addEventListener('click', resetNutritionImportPreview);
+
+ui.nutritionVisibilitySettings.addEventListener('change', (event) => {
+  const checkbox = event.target.closest('input[data-nutrient-id]');
+  if (!checkbox) return;
+  if (checkbox.checked) visibleNutritionNutrients.add(checkbox.dataset.nutrientId);
+  else visibleNutritionNutrients.delete(checkbox.dataset.nutrientId);
+  localStorage.setItem(NUTRITION_VISIBILITY_KEY, JSON.stringify([...visibleNutritionNutrients]));
+  renderNutrition();
+  renderHome();
+});
+
+ui.nutritionHistory.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-edit-nutrition-date]');
+  if (!button) return;
+  const day = (await listNutritionDays()).find((item) => item.date === button.dataset.editNutritionDate);
+  if (day) editNutritionDay(day);
+});
+
+ui.nutritionNewDayButton.addEventListener('click', () => {
+  ui.nutritionDayForm.reset();
+  ui.nutritionDate.value = localDateString();
+  ui.nutritionEditorHeading.textContent = 'Add or edit a day';
+});
+
+ui.nutritionDayForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const values = {};
+  NUTRIENTS.forEach((nutrient) => {
+    const input = ui.nutritionValueFields.querySelector(`#nutrition-${nutrient.id}`);
+    values[nutrient.id] = input.value.trim() ? Number(input.value) : null;
+  });
+  try {
+    await saveNutritionDay({ date: ui.nutritionDate.value, values });
+    incrementUnsavedCount();
+    await renderAll();
+    ui.nutritionDayForm.reset();
+    ui.nutritionDate.value = localDateString();
+    ui.nutritionEditorHeading.textContent = 'Add or edit a day';
+  } catch (error) {
+    window.alert(`Could not save nutrition day: ${error.message}`);
+  }
+});
+
 ui.importFile.addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -2672,6 +2986,9 @@ ui.metricGrid.addEventListener('click', async (event) => {
       await syncAddFormMode();
       const addTab = document.querySelector('.tab[data-view="add"]');
       if (addTab) addTab.click();
+    } else if (action === 'nutrition') {
+      const nutritionTab = document.querySelector('.tab[data-view="nutrition"]');
+      if (nutritionTab) nutritionTab.click();
     } else if (action === 'stats') {
       activeFilters.stats = 'Recent';
       selectMetric(metricId);

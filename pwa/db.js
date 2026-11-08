@@ -1,7 +1,12 @@
 import { validateWorkoutPlan } from './workout-model.js';
+import {
+  NUTRIENTS,
+  normalizeNutritionDay,
+  RESERVED_NUTRITION_METRIC_NAMES,
+} from './nutrition.js';
 
 const DB_NAME = 'quantifi-pwa';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const STORE_NAMES = {
   categories: 'categories',
@@ -10,6 +15,7 @@ export const STORE_NAMES = {
   changeEvents: 'changeEvents',
   workoutPlans: 'workoutPlans',
   workoutSessions: 'workoutSessions',
+  nutritionDays: 'nutritionDays',
 };
 
 let dbPromise;
@@ -209,6 +215,124 @@ export async function listEntriesForMetric(metricId) {
   return entries.filter((entry) => entry.metricId === metricId);
 }
 
+export async function listNutritionDays() {
+  const nutritionMetrics = await ensureNutritionMetrics();
+  const entries = await listEntries();
+  const metricById = new Map(nutritionMetrics.map((metric) => [metric.id, metric.nutritionId]));
+  const days = new Map();
+  entries.forEach((entry) => {
+    const nutrientId = metricById.get(entry.metricId);
+    if (!nutrientId || !entry.recordedAt) return;
+    const date = localDateString(new Date(entry.recordedAt));
+    if (!days.has(date)) {
+      days.set(date, {
+        id: `nutrition-${date}`,
+        date,
+        values: Object.fromEntries(NUTRIENTS.map((nutrient) => [nutrient.id, null])),
+      });
+    }
+    const current = days.get(date);
+    const currentEntry = current.entries?.[nutrientId];
+    if (!currentEntry || new Date(entry.recordedAt) > new Date(currentEntry.recordedAt)) {
+      current.values[nutrientId] = entry.value;
+      current.entries ||= {};
+      current.entries[nutrientId] = entry;
+    }
+  });
+  return [...days.values()]
+    .map(({ entries: _entries, ...day }) => day)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function saveNutritionDay(payload) {
+  const { date, values } = normalizeNutritionDay(payload);
+  const metrics = await ensureNutritionMetrics();
+  const entries = await listEntries();
+  const localNoon = new Date(`${date}T12:00:00`);
+  const recordedAt = localNoon.toISOString();
+
+  for (const nutrient of NUTRIENTS) {
+    const metric = metrics.find((item) => item.nutritionId === nutrient.id);
+    const sameDayEntries = entries.filter((entry) => (
+      entry.metricId === metric.id
+      && localDateString(new Date(entry.recordedAt)) === date
+    ));
+    sameDayEntries.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));
+    const value = values[nutrient.id];
+    if (value === null) {
+      for (const entry of sameDayEntries) await deleteEntry(entry.id);
+    } else if (sameDayEntries.length) {
+      await updateEntry(sameDayEntries[0].id, { value, recordedAt });
+      for (const entry of sameDayEntries.slice(1)) await deleteEntry(entry.id);
+    } else {
+      await createEntry({ metricId: metric.id, value, recordedAt });
+    }
+  }
+  return { id: `nutrition-${date}`, date, values };
+}
+
+function localDateString(date) {
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export async function listNutritionMetrics() {
+  return ensureNutritionMetrics();
+}
+
+export async function ensureNutritionMetrics() {
+  const category = await getOrCreateCategory('Nutrition');
+  const metrics = await listMetrics(true);
+  const nutritionMetrics = [];
+  for (const nutrient of NUTRIENTS) {
+    const managedMatches = metrics.filter((item) => item.nutritionId === nutrient.id);
+    if (managedMatches.length > 1) {
+      throw new Error(`The ${nutrient.label} nutrition metric is configured more than once.`);
+    }
+    let metric = managedMatches[0];
+    if (!metric) {
+      const reservedNames = new Set([nutrient.name, ...(nutrient.aliases || [])]);
+      metric = metrics.find((item) => reservedNames.has(String(item.name || '').trim().toLowerCase()));
+      if (metric) {
+        metric = await updateRecord(STORE_NAMES.metrics, metric.id, {
+          name: nutrient.name,
+          unitName: nutrient.unit,
+          unitType: 'float',
+          metricKind: 'quantitative',
+          categoryId: category.id,
+          nutritionId: nutrient.id,
+          isArchived: false,
+        });
+      } else {
+        metric = await createMetric({
+          name: nutrient.name,
+          unitName: nutrient.unit,
+          unitType: 'float',
+          metricKind: 'quantitative',
+          categoryId: category.id,
+          nutritionId: nutrient.id,
+        });
+      }
+      metrics.push(metric);
+    }
+    nutritionMetrics.push(metric);
+  }
+  return nutritionMetrics;
+}
+
+export async function migrateLegacyNutritionDays() {
+  const legacyDays = await getAll(STORE_NAMES.nutritionDays);
+  if (!legacyDays.length) return 0;
+  for (const day of legacyDays) {
+    await saveNutritionDay(day);
+    await deleteRecord(STORE_NAMES.nutritionDays, day.id);
+  }
+  return legacyDays.length;
+}
+
 export async function listChangeEvents() {
   return getAll(STORE_NAMES.changeEvents);
 }
@@ -235,9 +359,20 @@ export async function deleteCategory(categoryId) {
 }
 
 export async function createMetric(payload) {
+  const name = String(payload.name || '').trim().toLowerCase();
+  const nutrient = payload.nutritionId
+    ? NUTRIENTS.find((item) => item.id === payload.nutritionId)
+    : null;
+  if (payload.nutritionId && !nutrient) throw new Error('Unknown nutrition metric.');
+  if (!nutrient && RESERVED_NUTRITION_METRIC_NAMES.has(name)) {
+    throw new Error(`"${name}" is reserved for a nutrition metric. Choose a different metric name.`);
+  }
+  if (nutrient && (name !== nutrient.name || payload.unitName !== nutrient.unit)) {
+    throw new Error('Nutrition metrics must use their predefined name and unit.');
+  }
   const record = {
     id: uid(),
-    name: String(payload.name || '').trim().toLowerCase(),
+    name,
     description: payload.description || null,
     unitName: payload.unitName || null,
     unitType: payload.unitType || 'float',
@@ -250,6 +385,7 @@ export async function createMetric(payload) {
     higherIsBetter: payload.higherIsBetter ?? true,
     isArchived: Boolean(payload.isArchived),
     categoryId: payload.categoryId || null,
+    ...(nutrient ? { nutritionId: nutrient.id } : {}),
     createdAt: nowIso(),
   };
   await putRecord(STORE_NAMES.metrics, record);
@@ -257,10 +393,19 @@ export async function createMetric(payload) {
 }
 
 export async function updateMetric(metricId, changes) {
+  const metric = await getRecord(STORE_NAMES.metrics, metricId);
+  if (!metric) return null;
+  if (metric.nutritionId) throw new Error('Nutrition metrics are managed in the Nutrition view.');
+  const name = changes.name === undefined ? metric.name : String(changes.name).trim().toLowerCase();
+  if (RESERVED_NUTRITION_METRIC_NAMES.has(name)) {
+    throw new Error(`"${name}" is reserved for a nutrition metric. Choose a different metric name.`);
+  }
   return updateRecord(STORE_NAMES.metrics, metricId, changes);
 }
 
 export async function archiveMetric(metricId) {
+  const metric = await getRecord(STORE_NAMES.metrics, metricId);
+  if (metric?.nutritionId) throw new Error('Nutrition metrics cannot be archived.');
   return updateRecord(STORE_NAMES.metrics, metricId, { isArchived: true });
 }
 
@@ -269,6 +414,7 @@ export async function deleteMetric(metricId) {
   if (!metric) {
     throw new Error('Metric not found.');
   }
+  if (metric.nutritionId) throw new Error('Nutrition metrics cannot be deleted.');
   if (!metric.isArchived) {
     throw new Error('Only archived metrics can be deleted.');
   }
@@ -508,6 +654,7 @@ export async function importCsvText(csvText) {
     changes: 0,
     workoutPlans: 0,
     workoutSessions: 0,
+    nutritionDays: 0,
   };
 
   const existingEntries = await listEntries();
@@ -563,7 +710,10 @@ export async function importCsvText(csvText) {
     if (rowType === 'metric') {
       const categoryName = String(row.Category || '').trim().toLowerCase();
       const targetCategory = categoryName ? await getOrCreateCategory(categoryName) : null;
-      let metric = await getMetricByName(String(row.Metric || '').trim().toLowerCase());
+      const nutritionId = String(row.NutritionId || '').trim();
+      let metric = nutritionId
+        ? (await listMetrics(true)).find((item) => item.nutritionId === nutritionId)
+        : await getMetricByName(String(row.Metric || '').trim().toLowerCase());
       if (!metric) {
         const unitType = String(row.Type || 'float').trim().toLowerCase();
         metric = await createMetric({
@@ -579,6 +729,7 @@ export async function importCsvText(csvText) {
           higherIsBetter: row.HigherIsBetter === '' ? true : toBoolean(row.HigherIsBetter),
           isArchived: toBoolean(row.Archived),
           categoryId: targetCategory?.id || null,
+          ...(nutritionId ? { nutritionId } : {}),
         });
         imported.metrics += 1;
       }
@@ -589,11 +740,14 @@ export async function importCsvText(csvText) {
     if (rowType === 'entry') {
       const categoryName = String(row.Category || '').trim().toLowerCase();
       const metricName = String(row.Metric || '').trim().toLowerCase();
+      const nutritionId = String(row.NutritionId || '').trim();
       const unitName = String(row.Unit || '').trim().toLowerCase();
       const unitType = String(row.Type || 'float').trim().toLowerCase();
       const metricKind = String(row.Kind || '').trim().toLowerCase();
       const targetCategory = categoryName ? await getOrCreateCategory(categoryName) : null;
-      let metric = await getMetricByName(metricName);
+      let metric = nutritionId
+        ? (await listMetrics(true)).find((item) => item.nutritionId === nutritionId)
+        : await getMetricByName(metricName);
 
       if (!metric) {
         metric = await createMetric({
@@ -608,6 +762,7 @@ export async function importCsvText(csvText) {
           higherIsBetter: row.HigherIsBetter === '' ? true : toBoolean(row.HigherIsBetter),
           isArchived: toBoolean(row.Archived),
           categoryId: targetCategory?.id || null,
+          ...(nutritionId ? { nutritionId } : {}),
         });
         imported.metrics += 1;
       }
@@ -684,6 +839,13 @@ export async function importCsvText(csvText) {
         }
         imported.changes += 1;
       }
+    }
+
+    if (rowType === 'nutrition_day') {
+      const source = parseWorkoutDataField(row.NutritionData, 'nutrition');
+      const nutritionDay = normalizeNutritionDay(source);
+      await saveNutritionDay(nutritionDay);
+      imported.nutritionDays += 1;
     }
 
     if (rowType === 'workout_plan') {
@@ -764,7 +926,7 @@ export async function exportDataAsCsv() {
   const headers = [
     'RowType', 'Date', 'Category', 'Metric', 'Description', 'Archived', 'Value', 'Unit',
     'Type', 'Kind', 'StrengthMeasure', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadValue', 'Sets', 'Title',
-    'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData',
+    'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData', 'NutritionData', 'NutritionId',
   ];
   const toRow = (values) => headers.map((header) => values[header] ?? '');
   const rows = [
@@ -779,6 +941,7 @@ export async function exportDataAsCsv() {
       Type: metric.unitType || '',
       Kind: metric.metricKind || '',
       StrengthMeasure: metric.strengthMeasure || 'reps',
+      NutritionId: metric.nutritionId || '',
       Min: metric.rangeStart ?? '',
       Max: metric.rangeEnd ?? '',
       HigherIsBetter: metric.higherIsBetter ?? true,
@@ -798,6 +961,7 @@ export async function exportDataAsCsv() {
         Type: metric.unitType || '',
         Kind: metric.metricKind || '',
         StrengthMeasure: metric.strengthMeasure || 'reps',
+        NutritionId: metric.nutritionId || '',
         Min: metric.rangeStart ?? '',
         Max: metric.rangeEnd ?? '',
         HigherIsBetter: metric.higherIsBetter ?? true,

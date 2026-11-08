@@ -26,6 +26,7 @@
         <button class="tab" data-view="add">Add</button>
         <button class="tab" data-view="stats">Stats</button>
         <button class="tab" data-view="workouts">Workouts</button>
+        <button class="tab" data-view="nutrition">Nutrition</button>
         <button class="tab" data-view="log">Changes</button>
         <button class="tab" data-view="settings">Settings</button>
       </nav>
@@ -206,6 +207,55 @@
         <section id="view-workouts" class="view">
           <button class="back-button secondary">← Back</button>
           <div id="workoutApp"></div>
+        </section>
+
+        <section id="view-nutrition" class="view">
+          <button class="back-button secondary">← Back</button>
+          <div class="panel">
+            <h2>Daily nutrition</h2>
+            <p class="muted-text">Track one daily estimate. Import Gemini JSON or enter a day manually.</p>
+            <div class="nutrition-actions">
+              <button id="nutritionImportButton" type="button" class="primary">Import JSON</button>
+              <button id="nutritionSampleButton" type="button" class="secondary">Preview sample data</button>
+              <input id="nutritionImportFile" type="file" accept=".json,application/json" hidden />
+            </div>
+            <div id="nutritionImportPreview" class="nutrition-import-preview hidden" aria-live="polite">
+              <h3>Review import</h3>
+              <p id="nutritionImportSummary"></p>
+              <p id="nutritionImportWarning" class="info-banner warning hidden"></p>
+              <div id="nutritionImportRecords" class="nutrition-record-list"></div>
+              <div class="nutrition-actions">
+                <button id="nutritionConfirmImport" type="button" class="primary">Import and update days</button>
+                <button id="nutritionCancelImport" type="button" class="secondary">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3 id="nutritionEditorHeading">Add or edit a day</h3>
+            <form id="nutritionDayForm" class="nutrition-day-form">
+              <label>
+                Date
+                <input id="nutritionDate" type="date" required />
+              </label>
+              <div id="nutritionValueFields" class="nutrition-value-fields"></div>
+              <div class="nutrition-actions">
+                <button type="submit" class="primary">Save daily nutrition</button>
+                <button id="nutritionNewDayButton" type="button" class="secondary">Clear form</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="panel">
+            <h3>Visible nutrients</h3>
+            <p class="muted-text">Choose which nutrient metric cards appear on Home and in Nutrition. Hidden nutrients remain tracked.</p>
+            <div id="nutritionVisibilitySettings" class="nutrition-visibility-settings"></div>
+          </div>
+
+          <div class="panel">
+            <h3>History</h3>
+            <div id="nutritionHistory" class="nutrition-record-list"></div>
+          </div>
         </section>
 
         <section id="view-log" class="view">
