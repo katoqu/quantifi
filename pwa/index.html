@@ -211,9 +211,21 @@
 
         <section id="view-nutrition" class="view">
           <button class="back-button secondary">← Back</button>
-          <div class="panel collapsible-container">
-            <details id="nutritionImportDetails" class="collapsible">
-              <summary><h2>Import Nutrition Data</h2><span class="collapse-indicator">▶</span></summary>
+          <nav id="nutritionSectionNav" class="workflow-section-switch" aria-label="Nutrition sections">
+            <button type="button" class="active" data-nutrition-section-button="add" aria-pressed="true" aria-controls="nutritionAddSection">Add</button>
+            <button type="button" data-nutrition-section-button="targets" aria-pressed="false" aria-controls="nutritionTargetsSection">Targets</button>
+            <button type="button" data-nutrition-section-button="history" aria-pressed="false" aria-controls="nutritionHistorySection">History</button>
+            <button type="button" data-nutrition-section-button="display" aria-pressed="false" aria-controls="nutritionDisplaySection">Display</button>
+          </nav>
+
+          <div id="nutritionAddSection" class="panel nutrition-section" data-nutrition-section="add">
+            <nav id="nutritionAddModeNav" class="workflow-subsection-switch" aria-label="Nutrition entry method">
+              <button type="button" class="active" data-nutrition-add-mode-button="import" aria-pressed="true" aria-controls="nutritionImportSection">Import</button>
+              <button type="button" data-nutrition-add-mode-button="manual" aria-pressed="false" aria-controls="nutritionManualSection">Manual entry</button>
+            </nav>
+
+            <div id="nutritionImportSection" data-nutrition-add-mode="import">
+              <h2 class="workflow-card-heading">Import Nutrition Data</h2>
               <label for="nutritionJsonInput">
                 Paste daily nutrition JSON
                 <textarea id="nutritionJsonInput" rows="8" spellcheck="false" placeholder='[
@@ -243,12 +255,10 @@
                   <button id="nutritionCancelImport" type="button" class="secondary">Cancel</button>
                 </div>
               </div>
-            </details>
-          </div>
+            </div>
 
-          <div class="panel collapsible-container">
-            <details id="nutritionEditorDetails" class="collapsible">
-              <summary><h2 id="nutritionEditorHeading">Add or edit a day</h2><span class="collapse-indicator">▶</span></summary>
+            <div id="nutritionManualSection" class="hidden" data-nutrition-add-mode="manual">
+              <h2 class="workflow-card-heading" id="nutritionEditorHeading">Add or edit a day</h2>
               <form id="nutritionDayForm" class="nutrition-day-form">
                 <label>
                   Date
@@ -260,88 +270,82 @@
                   <button id="nutritionNewDayButton" type="button" class="secondary">Clear form</button>
                 </div>
               </form>
-            </details>
+            </div>
           </div>
 
-          <div class="panel collapsible-container">
-            <details id="nutritionTargetsDetails" class="collapsible">
-              <summary><h2>Nutrition targets</h2><span class="collapse-indicator">▶</span></summary>
-              <p class="muted-text">Targets have an effective date. Changing one keeps the previous target in history.</p>
-              <div id="nutritionCurrentTargets" class="nutrition-record-list"></div>
-              <form id="nutritionTargetForm" class="nutrition-target-form">
-                <h3 id="nutritionTargetFormHeading">Add or change a target</h3>
+          <div id="nutritionTargetsSection" class="panel nutrition-section hidden" data-nutrition-section="targets">
+            <h2 class="workflow-card-heading">Nutrition targets</h2>
+            <p class="muted-text">Targets have an effective date. Changing one keeps the previous target in history.</p>
+            <div id="nutritionCurrentTargets" class="nutrition-record-list"></div>
+            <form id="nutritionTargetForm" class="nutrition-target-form">
+              <h3 id="nutritionTargetFormHeading">Add or change a target</h3>
+              <label>
+                Nutrition value
+                <select id="nutritionTargetNutrient"></select>
+              </label>
+              <label>
+                Target type
+                <select id="nutritionTargetType">
+                  <option value="minimum">At least</option>
+                  <option value="maximum">At most</option>
+                  <option value="range">Between</option>
+                </select>
+              </label>
+              <div id="nutritionTargetSingleValueField">
+                <label id="nutritionTargetSingleValueLabel" for="nutritionTargetValue">Target</label>
+                <input id="nutritionTargetValue" type="number" min="0" step="any" />
+              </div>
+              <div id="nutritionTargetRangeFields" class="nutrition-value-fields hidden">
                 <label>
-                  Nutrition value
-                  <select id="nutritionTargetNutrient"></select>
+                  Minimum
+                  <input id="nutritionTargetMinValue" type="number" min="0" step="any" />
                 </label>
                 <label>
-                  Target type
-                  <select id="nutritionTargetType">
-                    <option value="minimum">At least</option>
-                    <option value="maximum">At most</option>
-                    <option value="range">Between</option>
-                  </select>
+                  Maximum
+                  <input id="nutritionTargetMaxValue" type="number" min="0" step="any" />
                 </label>
-                <div id="nutritionTargetSingleValueField">
-                  <label id="nutritionTargetSingleValueLabel" for="nutritionTargetValue">Target</label>
-                  <input id="nutritionTargetValue" type="number" min="0" step="any" />
-                </div>
-                <div id="nutritionTargetRangeFields" class="nutrition-value-fields hidden">
-                  <label>
-                    Minimum
-                    <input id="nutritionTargetMinValue" type="number" min="0" step="any" />
-                  </label>
-                  <label>
-                    Maximum
-                    <input id="nutritionTargetMaxValue" type="number" min="0" step="any" />
-                  </label>
-                </div>
-                <label>
-                  Effective from
-                  <input id="nutritionTargetEffectiveFrom" type="date" required />
-                </label>
-                <label>
-                  Reason (optional)
-                  <input id="nutritionTargetNote" type="text" maxlength="240" />
-                </label>
-                <div class="nutrition-actions">
-                  <button type="submit" class="primary">Save target</button>
-                  <button id="nutritionTargetClearButton" type="button" class="secondary">Clear</button>
-                </div>
-              </form>
-              <h3>Target history</h3>
+              </div>
+              <label>
+                Effective from
+                <input id="nutritionTargetEffectiveFrom" type="date" required />
+              </label>
+              <label>
+                Reason (optional)
+                <input id="nutritionTargetNote" type="text" maxlength="240" />
+              </label>
+              <div class="nutrition-actions">
+                <button type="submit" class="primary">Save target</button>
+                <button id="nutritionTargetClearButton" type="button" class="secondary">Clear</button>
+              </div>
+            </form>
+            <details id="nutritionTargetHistoryDetails" class="nutrition-target-history">
+              <summary>Target history</summary>
               <div id="nutritionTargetHistory" class="nutrition-record-list"></div>
             </details>
           </div>
 
-          <div class="panel collapsible-container">
-            <details id="nutritionVisibilityDetails" class="collapsible">
-              <summary><h2>Visible nutrients</h2><span class="collapse-indicator">▶</span></summary>
-              <p class="muted-text">Choose which nutrient metric cards appear on Home and in Nutrition. Hidden nutrients remain tracked.</p>
-              <div id="nutritionVisibilitySettings" class="nutrition-visibility-settings"></div>
-            </details>
+          <div id="nutritionHistorySection" class="panel nutrition-section hidden" data-nutrition-section="history">
+            <h2 class="workflow-card-heading">Nutrition history</h2>
+            <div id="nutritionHistory" class="nutrition-record-list"></div>
           </div>
 
-          <div class="panel collapsible-container">
-            <details id="nutritionHistoryDetails" class="collapsible">
-              <summary><h2>History</h2><span class="collapse-indicator">▶</span></summary>
-              <div id="nutritionHistory" class="nutrition-record-list"></div>
-            </details>
+          <div id="nutritionDisplaySection" class="panel nutrition-section hidden" data-nutrition-section="display">
+            <h2 class="workflow-card-heading">Visible nutrients</h2>
+            <p class="muted-text">Choose which nutrient metric cards appear on Home and in Nutrition. Hidden nutrients remain tracked.</p>
+            <div id="nutritionVisibilitySettings" class="nutrition-visibility-settings"></div>
           </div>
         </section>
 
         <section id="view-log" class="view">
           <button class="back-button secondary">← Back</button>
-          <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 6px;">
-            <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap;">
-              <input type="checkbox" id="logShowArchived" /> Archived
-            </label>
-          </div>
+          <nav id="changeSectionNav" class="workflow-section-switch" aria-label="Change sections">
+            <button type="button" class="active" data-change-section-button="add" aria-pressed="true" aria-controls="changeAddSection">Add change</button>
+            <button type="button" data-change-section-button="history" aria-pressed="false" aria-controls="changeHistorySection">History</button>
+          </nav>
 
-          <div class="panel collapsible-container">
-            <details class="collapsible new-change-details">
-              <summary><h2>New change</h2><span class="collapse-indicator">▼</span></summary>
-              <form id="changeForm" class="stacked-form">
+          <div id="changeAddSection" class="panel change-section" data-change-section="add">
+            <h2 class="workflow-card-heading">Add a change</h2>
+            <form id="changeForm" class="stacked-form">
                 <label>
                   Category
                   <select id="changeCategory"></select>
@@ -365,15 +369,17 @@
                   </label>
                 </div>
                 <button type="submit" class="primary">Add Change</button>
-              </form>
-            </details>
+            </form>
           </div>
 
-          <div class="panel collapsible-container">
-            <details class="collapsible">
-              <summary><h2>Changes</h2><span class="collapse-indicator">▼</span></summary>
-              <div id="changeList" class="list"></div>
-            </details>
+          <div id="changeHistorySection" class="panel change-section hidden" data-change-section="history">
+            <div class="section-title-row">
+              <h2 class="workflow-card-heading">Changes</h2>
+              <label class="checkbox-label change-archived-toggle">
+                <input type="checkbox" id="logShowArchived" /> Archived
+              </label>
+            </div>
+            <div id="changeList" class="list"></div>
           </div>
         </section>
 

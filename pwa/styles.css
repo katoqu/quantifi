@@ -155,22 +155,70 @@ button:hover { filter: brightness(0.98); }
   font-size: 1rem;
 }
 
-.workout-mode-switch {
+.workout-mode-switch,
+.workflow-section-switch {
   display: flex;
   gap: 6px;
   margin-bottom: 10px;
   overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.workout-mode-switch button {
+.workout-mode-switch::-webkit-scrollbar,
+.workflow-section-switch::-webkit-scrollbar {
+  display: none;
+}
+
+.workout-mode-switch button,
+.workflow-section-switch button {
   flex: 1;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.workout-mode-switch button.active {
+.workout-mode-switch button.active,
+.workflow-section-switch button.active {
   background: var(--primary);
   color: white;
   border-color: var(--primary);
+}
+
+.workflow-subsection-switch {
+  display: flex;
+  gap: 4px;
+  margin: -2px 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workflow-subsection-switch button {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.workflow-subsection-switch button.active {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-title-row .workflow-card-heading {
+  margin-bottom: 0;
+}
+
+.change-archived-toggle {
+  white-space: nowrap;
 }
 
 .workout-exercise-card {
@@ -1028,6 +1076,17 @@ label[for="nutritionJsonInput"] {
 .nutrition-target-row .nutrition-record-heading button {
   min-height: 30px;
   padding: 3px 8px;
+}
+
+.nutrition-target-history {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.nutrition-target-history > summary {
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .nutrition-target-value,

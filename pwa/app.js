@@ -137,7 +137,6 @@ const ui = {
   nutritionReviewJsonButton: document.querySelector('#nutritionReviewJsonButton'),
   nutritionImportButton: document.querySelector('#nutritionImportButton'),
   nutritionImportFile: document.querySelector('#nutritionImportFile'),
-  nutritionImportDetails: document.querySelector('#nutritionImportDetails'),
   nutritionImportPreview: document.querySelector('#nutritionImportPreview'),
   nutritionImportSummary: document.querySelector('#nutritionImportSummary'),
   nutritionImportWarning: document.querySelector('#nutritionImportWarning'),
@@ -145,12 +144,10 @@ const ui = {
   nutritionConfirmImport: document.querySelector('#nutritionConfirmImport'),
   nutritionCancelImport: document.querySelector('#nutritionCancelImport'),
   nutritionDayForm: document.querySelector('#nutritionDayForm'),
-  nutritionEditorDetails: document.querySelector('#nutritionEditorDetails'),
   nutritionDate: document.querySelector('#nutritionDate'),
   nutritionValueFields: document.querySelector('#nutritionValueFields'),
   nutritionNewDayButton: document.querySelector('#nutritionNewDayButton'),
   nutritionEditorHeading: document.querySelector('#nutritionEditorHeading'),
-  nutritionTargetsDetails: document.querySelector('#nutritionTargetsDetails'),
   nutritionCurrentTargets: document.querySelector('#nutritionCurrentTargets'),
   nutritionTargetHistory: document.querySelector('#nutritionTargetHistory'),
   nutritionTargetForm: document.querySelector('#nutritionTargetForm'),
@@ -575,6 +572,7 @@ function updateNutritionTargetFields() {
 }
 
 function editNutritionTarget(target) {
+  setWorkflowSection('nutrition', 'data-nutrition-section', 'data-nutrition-section-button', 'targets');
   ui.nutritionTargetNutrient.value = target.nutrientId;
   ui.nutritionTargetType.value = target.type;
   ui.nutritionTargetValue.value = target.value ?? '';
@@ -584,7 +582,6 @@ function editNutritionTarget(target) {
   ui.nutritionTargetNote.value = target.note || '';
   ui.nutritionTargetFormHeading.textContent = `Change ${NUTRIENTS.find((item) => item.id === target.nutrientId)?.label || 'nutrition'} target`;
   updateNutritionTargetFields();
-  ui.nutritionTargetsDetails.open = true;
   ui.nutritionTargetForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -697,7 +694,7 @@ async function renderNutrition() {
   if (!days.length) {
     const empty = document.createElement('p');
     empty.className = 'muted-text';
-    empty.textContent = 'No nutrition days yet. Import your Gemini JSON or enter a day above.';
+    empty.textContent = 'No nutrition days yet. Import your Gemini JSON or add a day from Add > Manual entry.';
     ui.nutritionHistory.append(empty);
     return;
   }
@@ -731,6 +728,8 @@ async function renderNutrition() {
 
 async function showNutritionImportPreview(parsed) {
   pendingNutritionImport = parsed;
+  setWorkflowSection('nutrition', 'data-nutrition-section', 'data-nutrition-section-button', 'add');
+  setNutritionAddMode('import');
   ui.nutritionImportRecords.replaceChildren();
   const preview = getNutritionPreviewRecords(parsed.records);
   let days;
@@ -767,7 +766,6 @@ async function showNutritionImportPreview(parsed) {
     ui.nutritionImportWarning.textContent = '';
   }
   ui.nutritionImportPreview.classList.remove('hidden');
-  ui.nutritionImportDetails.open = true;
 }
 
 function resetNutritionImportPreview() {
@@ -778,14 +776,37 @@ function resetNutritionImportPreview() {
 }
 
 function editNutritionDay(day) {
+  setWorkflowSection('nutrition', 'data-nutrition-section', 'data-nutrition-section-button', 'add');
+  setNutritionAddMode('manual');
   ui.nutritionDate.value = day.date;
   NUTRIENTS.forEach((nutrient) => {
     const input = ui.nutritionValueFields.querySelector(`#nutrition-${nutrient.id}`);
     input.value = day.values[nutrient.id] ?? '';
   });
   ui.nutritionEditorHeading.textContent = `Edit nutrition for ${formatNutritionDate(day.date)}`;
-  ui.nutritionEditorDetails.open = true;
   ui.nutritionDayForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function setWorkflowSection(viewName, sectionAttribute, buttonAttribute, selectedSection, scope = null) {
+  const root = scope || document.querySelector(`#view-${viewName}`);
+  root.querySelectorAll(`[${buttonAttribute}]`).forEach((button) => {
+    const isActive = button.getAttribute(buttonAttribute) === selectedSection;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+  root.querySelectorAll(`[${sectionAttribute}]`).forEach((section) => {
+    section.classList.toggle('hidden', section.getAttribute(sectionAttribute) !== selectedSection);
+  });
+}
+
+function setNutritionAddMode(mode) {
+  setWorkflowSection(
+    'nutrition',
+    'data-nutrition-add-mode',
+    'data-nutrition-add-mode-button',
+    mode,
+    document.querySelector('#nutritionAddSection'),
+  );
 }
 
 function resetEntryFormDateTime() {
@@ -1857,6 +1878,8 @@ ui.tabs.forEach((tab) => {
       await workoutsView.render();
     }
     if (tab.dataset.view === 'nutrition') {
+      setWorkflowSection('nutrition', 'data-nutrition-section', 'data-nutrition-section-button', 'add');
+      setNutritionAddMode('import');
       await renderNutrition();
     }
     // Render Home when switching to Home tab
@@ -2953,6 +2976,38 @@ ui.nutritionImportButton.addEventListener('click', () => {
   ui.nutritionImportFile.click();
 });
 
+document.querySelector('#nutritionSectionNav').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-nutrition-section-button]');
+  if (button) {
+    setWorkflowSection(
+      'nutrition',
+      'data-nutrition-section',
+      'data-nutrition-section-button',
+      button.dataset.nutritionSectionButton,
+    );
+    if (button.dataset.nutritionSectionButton === 'add') setNutritionAddMode('import');
+  }
+});
+
+document.querySelector('#nutritionAddModeNav').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-nutrition-add-mode-button]');
+  if (button) {
+    setNutritionAddMode(button.dataset.nutritionAddModeButton);
+  }
+});
+
+document.querySelector('#changeSectionNav').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-change-section-button]');
+  if (button) {
+    setWorkflowSection(
+      'log',
+      'data-change-section',
+      'data-change-section-button',
+      button.dataset.changeSectionButton,
+    );
+  }
+});
+
 ui.nutritionReviewJsonButton.addEventListener('click', async () => {
   try {
     const parsed = parseNutritionImportJson(ui.nutritionJsonInput.value);
@@ -3198,7 +3253,11 @@ ui.metricGrid.addEventListener('click', async (event) => {
       if (addTab) addTab.click();
     } else if (action === 'nutrition') {
       const nutritionTab = document.querySelector('.tab[data-view="nutrition"]');
-      if (nutritionTab) nutritionTab.click();
+      if (nutritionTab) {
+        nutritionTab.click();
+        setWorkflowSection('nutrition', 'data-nutrition-section', 'data-nutrition-section-button', 'add');
+        setNutritionAddMode('manual');
+      }
     } else if (action === 'stats') {
       activeFilters.stats = 'Recent';
       selectMetric(metricId);
