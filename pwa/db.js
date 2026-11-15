@@ -382,6 +382,13 @@ export async function deleteCategory(categoryId) {
 
 export async function createMetric(payload) {
   const name = String(payload.name || '').trim().toLowerCase();
+  if (payload.aliases !== undefined && !Array.isArray(payload.aliases)) {
+    throw new Error('Metric aliases must be a list of names.');
+  }
+  const aliases = [...new Set((payload.aliases || []).map((alias) => {
+    if (typeof alias !== 'string') throw new Error('Metric aliases must be names.');
+    return alias.trim();
+  }).filter(Boolean))];
   const nutrient = payload.nutritionId
     ? NUTRIENTS.find((item) => item.id === payload.nutritionId)
     : null;
@@ -402,6 +409,7 @@ export async function createMetric(payload) {
     ...(payload.metricKind === 'strength_session'
       ? { strengthMeasure: payload.strengthMeasure === 'duration' ? 'duration' : 'reps' }
       : {}),
+    ...(aliases.length ? { aliases } : {}),
     rangeStart: payload.rangeStart ?? null,
     rangeEnd: payload.rangeEnd ?? null,
     higherIsBetter: payload.higherIsBetter ?? true,
@@ -566,6 +574,18 @@ function parseSetsField(value) {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function parseAliasesField(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed) || parsed.some((alias) => typeof alias !== 'string')) throw new Error();
+    return parsed;
+  } catch {
+    throw new Error('The CSV contains invalid metric aliases.');
   }
 }
 
@@ -747,6 +767,7 @@ export async function importCsvText(csvText) {
           metricKind: String(row.Kind || '').trim().toLowerCase()
             || (unitType === 'integer_range' ? 'score' : unitType === 'integer' ? 'count' : 'quantitative'),
           strengthMeasure: row.StrengthMeasure || 'reps',
+          aliases: parseAliasesField(row.Aliases),
           rangeStart: coerceNumber(row.Min),
           rangeEnd: coerceNumber(row.Max),
           higherIsBetter: row.HigherIsBetter === '' ? true : toBoolean(row.HigherIsBetter),
@@ -780,6 +801,7 @@ export async function importCsvText(csvText) {
           unitType,
           metricKind: metricKind || (unitType === 'integer_range' ? 'score' : unitType === 'integer' ? 'count' : 'quantitative'),
           strengthMeasure: row.StrengthMeasure || 'reps',
+          aliases: parseAliasesField(row.Aliases),
           rangeStart: coerceNumber(row.Min),
           rangeEnd: coerceNumber(row.Max),
           higherIsBetter: row.HigherIsBetter === '' ? true : toBoolean(row.HigherIsBetter),
@@ -957,7 +979,7 @@ export async function exportDataAsCsv() {
   const headers = [
     'RowType', 'Date', 'Category', 'Metric', 'Description', 'Archived', 'Value', 'Unit',
     'Type', 'Kind', 'StrengthMeasure', 'Min', 'Max', 'HigherIsBetter', 'Target', 'LoadValue', 'Sets', 'Title',
-    'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData', 'NutritionData', 'NutritionId', 'TargetData',
+    'Notes', 'EndDate', 'RecordId', 'MetricId', 'WorkoutSessionId', 'WorkoutPlanId', 'WorkoutData', 'NutritionData', 'NutritionId', 'TargetData', 'Aliases',
   ];
   const toRow = (values) => headers.map((header) => values[header] ?? '');
   const rows = [
@@ -972,6 +994,7 @@ export async function exportDataAsCsv() {
       Type: metric.unitType || '',
       Kind: metric.metricKind || '',
       StrengthMeasure: metric.strengthMeasure || 'reps',
+      Aliases: JSON.stringify(metric.aliases || []),
       NutritionId: metric.nutritionId || '',
       Min: metric.rangeStart ?? '',
       Max: metric.rangeEnd ?? '',

@@ -234,6 +234,67 @@ test('saves duration sets with optional added load and exports their metric meas
   assert.match(csv, /duration/);
 });
 
+test('imports workout metrics and their plan together while reusing selected metrics', async () => {
+  for (const records of stores.values()) records.clear();
+  const { createMetric, exportDataAsCsv, importCsvText, listMetrics } = await import('./db.js');
+  const { listWorkoutPlans, saveWorkoutPlanImport } = await import('./workout-data.js');
+  const bench = await createMetric({
+    name: 'barbell bench press',
+    metricKind: 'strength_session',
+    strengthMeasure: 'reps',
+  });
+  const result = await saveWorkoutPlanImport({
+    plan: {
+      name: 'Imported upper',
+      exercises: [
+        { metricKey: 'bench', targetSets: 3, strengthMeasure: 'reps', targetReps: 8 },
+        { metricKey: 'plank', targetSets: 2, strengthMeasure: 'duration', targetDurationSeconds: 30 },
+      ],
+      outcomeMetrics: [{ metricKey: 'weight', direction: 'decrease' }],
+    },
+    metricDecisions: [
+      {
+        key: 'bench',
+        metricId: bench.id,
+        definition: { name: 'Barbell bench press', role: 'exercise', metricKind: 'strength_session', strengthMeasure: 'reps' },
+      },
+      {
+        key: 'plank',
+        definition: {
+          name: 'Plank',
+          role: 'exercise',
+          metricKind: 'strength_session',
+          strengthMeasure: 'duration',
+          aliases: ['front plank'],
+        },
+      },
+      {
+        key: 'weight',
+        definition: {
+          name: 'body weight',
+          role: 'outcome',
+          metricKind: 'quantitative',
+          unitType: 'float',
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.createdMetrics.length, 2);
+  assert.deepEqual(result.createdMetrics[0].aliases, ['front plank']);
+  const [savedPlan] = await listWorkoutPlans();
+  assert.equal(savedPlan.exercises[0].metricId, bench.id);
+  assert.equal(savedPlan.exercises[1].metricId, result.createdMetrics[0].id);
+  assert.equal(savedPlan.outcomeMetrics[0].metricId, result.createdMetrics[1].id);
+  assert.equal((await listMetrics()).length, 3);
+
+  const csv = await exportDataAsCsv();
+  for (const records of stores.values()) records.clear();
+  await importCsvText(csv);
+  const restoredMetrics = await listMetrics();
+  assert.deepEqual(restoredMetrics.find((metric) => metric.name === 'plank').aliases, ['front plank']);
+});
+
 test('stores nutrition as managed metrics and includes it in CSV backup round-trips', async () => {
   for (const records of stores.values()) records.clear();
   const { exportDataAsCsv, importCsvText, listEntries, listMetrics, listNutritionDays, saveNutritionDay } = await import('./db.js');

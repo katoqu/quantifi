@@ -49,6 +49,7 @@ import {
   listWorkoutPlans,
   listWorkoutSessions,
   saveWorkoutPlan,
+  saveWorkoutPlanImport,
   saveWorkoutSession,
 } from './workout-data.js';
 import { mountWorkoutsView } from './workouts-view.js';
@@ -237,6 +238,7 @@ const workoutsView = mountWorkoutsView(ui.workoutApp, {
   listWorkoutPlans,
   listWorkoutSessions,
   saveWorkoutPlan,
+  saveWorkoutPlanImport,
   archiveWorkoutPlan,
   saveWorkoutSession,
   onDataChanged: async () => {

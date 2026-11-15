@@ -1,6 +1,14 @@
 import { nowIso, openDb, uid } from './db.js';
 import { validateWorkoutPlan } from './workout-model.js';
 import { normalizeStrengthSet } from './strength-set-editor.js';
+import { RESERVED_NUTRITION_METRIC_NAMES } from './nutrition.js';
+
+function getMetricKind(metric) {
+  if (metric.metricKind) return metric.metricKind;
+  if (metric.unitType === 'integer_range') return 'score';
+  if (metric.unitType === 'integer') return 'count';
+  return 'quantitative';
+}
 
 export async function listWorkoutPlans({ includeArchived = false } = {}) {
   const database = await openDb();
@@ -31,6 +39,124 @@ export async function saveWorkoutPlan(payload) {
     transaction.oncomplete = () => resolve(record);
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error || new Error('Could not save workout plan.'));
+  });
+}
+
+export async function saveWorkoutPlanImport({ plan, metricDecisions }) {
+  if (!Array.isArray(metricDecisions) || !metricDecisions.length) {
+    throw new Error('Resolve the workout metrics before importing.');
+  }
+  const database = await openDb();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['metrics', 'workoutPlans'], 'readwrite');
+    const metricsStore = transaction.objectStore('metrics');
+    const plansStore = transaction.objectStore('workoutPlans');
+    let result;
+    let failure;
+
+    const request = metricsStore.getAll();
+    request.onsuccess = () => {
+      try {
+        const existingMetrics = new Map((request.result || []).map((metric) => [metric.id, metric]));
+        const metricIds = new Map();
+        const metricsToCreate = [];
+        const createdNames = new Set();
+        for (const decision of metricDecisions) {
+          if (!decision?.key || metricIds.has(decision.key)) {
+            throw new Error('The workout file contains unresolved or duplicate metric keys.');
+          }
+          if (decision.metricId) {
+            const existing = existingMetrics.get(decision.metricId);
+            if (!existing || existing.isArchived) {
+              throw new Error('A selected metric is no longer available. Review the metric matches and try again.');
+            }
+            const definition = decision.definition;
+            if (getMetricKind(existing) !== definition.metricKind
+              || (definition.role === 'exercise'
+                && (existing.strengthMeasure || 'reps') !== definition.strengthMeasure)) {
+              throw new Error(`"${existing.name}" is not compatible with the imported metric "${definition.name}".`);
+            }
+            metricIds.set(decision.key, existing.id);
+            continue;
+          }
+
+          const definition = decision.definition;
+          const name = String(definition?.name || '').trim().toLowerCase();
+          if (!name) throw new Error('Imported metric names cannot be empty.');
+          if (RESERVED_NUTRITION_METRIC_NAMES.has(name)) {
+            throw new Error(`"${name}" is reserved for a nutrition metric and cannot be imported as a workout metric.`);
+          }
+          if (createdNames.has(name)) {
+            throw new Error(`The import would create more than one metric named "${name}". Choose an existing metric for one of them.`);
+          }
+          createdNames.add(name);
+          const id = uid();
+          const record = {
+            id,
+            name,
+            description: null,
+            unitName: definition.unitName || null,
+            unitType: definition.unitType || 'float',
+            metricKind: definition.metricKind,
+            ...(definition.role === 'exercise'
+              ? { strengthMeasure: definition.strengthMeasure === 'duration' ? 'duration' : 'reps' }
+              : {}),
+            rangeStart: null,
+            rangeEnd: null,
+            higherIsBetter: true,
+            isArchived: false,
+            categoryId: null,
+            aliases: definition.aliases || [],
+            createdAt: nowIso(),
+          };
+          metricIds.set(decision.key, id);
+          metricsToCreate.push(record);
+        }
+
+        const exercises = plan.exercises.map(({ metricKey, ...exercise }) => {
+          const metricId = metricIds.get(metricKey);
+          if (!metricId) throw new Error(`Resolve the imported exercise metric "${metricKey}".`);
+          return { ...exercise, metricId };
+        });
+        const outcomeMetrics = plan.outcomeMetrics.map(({ metricKey, ...outcome }) => {
+          const metricId = metricIds.get(metricKey);
+          if (!metricId) throw new Error(`Resolve the imported outcome metric "${metricKey}".`);
+          return { ...outcome, metricId };
+        });
+        const validated = validateWorkoutPlan({ ...plan, exercises, outcomeMetrics });
+        const timestamp = nowIso();
+        const savedPlan = {
+          ...validated,
+          id: uid(),
+          isArchived: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        for (const metric of metricsToCreate) metricsStore.put(metric);
+        plansStore.put(savedPlan);
+        result = { plan: savedPlan, createdMetrics: metricsToCreate };
+      } catch (error) {
+        failure = error;
+        try {
+          transaction.abort();
+        } catch {
+          reject(error);
+        }
+      }
+    };
+    request.onerror = () => {
+      failure = request.error || new Error('Could not read workout metrics.');
+      try {
+        transaction.abort();
+      } catch {
+        reject(failure);
+      }
+    };
+    transaction.oncomplete = () => resolve(result);
+    transaction.onerror = () => {
+      failure ||= transaction.error || new Error('Could not import workout plan.');
+    };
+    transaction.onabort = () => reject(failure || transaction.error || new Error('Could not import workout plan.'));
   });
 }
 

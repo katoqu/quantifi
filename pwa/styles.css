@@ -189,6 +189,12 @@ button:hover { filter: brightness(0.98); }
   margin: -2px 0 14px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.workflow-subsection-switch::-webkit-scrollbar {
+  display: none;
 }
 
 .workflow-subsection-switch button {
@@ -197,13 +203,14 @@ button:hover { filter: brightness(0.98); }
   border-color: transparent;
   background: transparent;
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .workflow-subsection-switch button.active {
   border-color: var(--border);
   background: var(--surface);
   color: var(--text);
+  font-weight: 700;
 }
 
 .section-title-row {
@@ -234,6 +241,38 @@ button:hover { filter: brightness(0.98); }
 
 .workout-exercise-actions button {
   flex: 1;
+}
+
+.workout-import-json-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.workout-import-json-header label {
+  display: block;
+}
+
+.workout-prompt-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.workout-prompt-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.workout-prompt-dialog-content {
+  display: grid;
+  gap: 10px;
 }
 
 .workout-review-result {

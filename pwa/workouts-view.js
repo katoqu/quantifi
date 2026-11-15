@@ -1,6 +1,38 @@
 import { renderMetricPicker, setMetricPickerOpen } from './metric-picker.js';
 import { mountStrengthSetEditor } from './strength-set-editor.js';
 import { summarizeWorkoutBlock, validateWorkoutPlan } from './workout-model.js';
+import { findWorkoutMetricMatches, parseWorkoutImportJson } from './workout-import.js';
+
+const CREATE_IMPORTED_METRIC = '__create_new__';
+
+const WORKOUT_CHATBOT_PROMPT = `Help me create a workout plan for Quantifi. First ask me about my goals, experience, available equipment, schedule, and any relevant limitations. Once you have enough information, create a practical plan and return only valid JSON using this exact structure:
+{
+  "format": "quantifi-workout",
+  "version": 1,
+  "plan": {
+    "name": "Plan name",
+    "exercises": [
+      {
+        "key": "exercise-1",
+        "metric": {
+          "name": "Exercise name",
+          "strengthMeasure": "reps",
+          "unitName": "kg",
+          "aliases": []
+        },
+        "targetSets": 3,
+        "targetReps": 8
+      }
+    ],
+    "outcomeMetrics": []
+  }
+}
+
+For each exercise, use a unique stable key, a clear metric name, and optional alternate names in aliases. Use strengthMeasure "reps" with a whole-number targetReps, or "duration" with a positive targetDurationSeconds instead; include exactly one of those target fields. Include targetSets as a positive whole number. Include unitName only when relevant. Do not include workout logs, personal data, IDs, or target loads.
+
+If I request outcome metrics, include no more than two in outcomeMetrics, each shaped like {"key":"outcome-1","metric":{"name":"Metric name","unitName":"unit","unitType":"float","aliases":[]},"direction":"increase"}. Use "increase" or "decrease" for direction. Otherwise leave outcomeMetrics empty.
+
+Do not repeat the same exercise metric in a plan. Return JSON only, without Markdown fences or commentary.`;
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
@@ -23,6 +55,7 @@ export function mountWorkoutsView(root, {
   listWorkoutPlans,
   listWorkoutSessions,
   saveWorkoutPlan,
+  saveWorkoutPlanImport,
   archiveWorkoutPlan,
   saveWorkoutSession,
   onDataChanged,
@@ -33,6 +66,12 @@ export function mountWorkoutsView(root, {
   let entries = [];
   let plans = [];
   let sessions = [];
+  let showWorkoutImport = false;
+  let pendingWorkoutImport = null;
+  let workoutImportSelections = {};
+  let workoutImportFileName = '';
+  let workoutImportError = '';
+  let workoutImportJson = '';
   let planSection = 'select';
   let editingPlanId = null;
   let isEditingPlan = false;
@@ -107,13 +146,157 @@ export function mountWorkoutsView(root, {
     `;
   }
 
+  function getWorkoutImportReview() {
+    if (!pendingWorkoutImport) {
+      return {
+        summary: '',
+        warning: workoutImportError,
+        invalid: Boolean(workoutImportError),
+      };
+    }
+
+    const definitions = pendingWorkoutImport.metrics;
+    const duplicateAssignments = [];
+    for (const role of ['exercise', 'outcome']) {
+      const selectedIds = new Set();
+      for (const definition of definitions.filter((item) => item.role === role)) {
+        const selectedId = workoutImportSelections[definition.key];
+        if (selectedId === CREATE_IMPORTED_METRIC) continue;
+        if (selectedIds.has(selectedId)) duplicateAssignments.push(definition.name);
+        selectedIds.add(selectedId);
+      }
+    }
+    const duplicateNewNames = new Set();
+    const newNames = new Set();
+    for (const definition of definitions) {
+      if (workoutImportSelections[definition.key] !== CREATE_IMPORTED_METRIC) continue;
+      const name = definition.name.toLowerCase();
+      if (newNames.has(name)) duplicateNewNames.add(name);
+      newNames.add(name);
+    }
+    const invalid = duplicateAssignments.length > 0 || duplicateNewNames.size > 0;
+    let warning = '';
+    if (duplicateAssignments.length) {
+      warning = 'The same existing metric cannot be used for multiple exercises or outcomes of the same type.';
+    } else if (duplicateNewNames.size) {
+      warning = 'Choose an existing metric for one of the repeated names, or use distinct names for the new metrics.';
+    } else if (plans.some((item) => item.name.trim().toLowerCase() === pendingWorkoutImport.plan.name.toLowerCase())) {
+      warning = `A plan named "${pendingWorkoutImport.plan.name}" already exists. Import will create a separate plan and leave the existing one unchanged.`;
+    }
+    const createdCount = definitions.filter(
+      (definition) => workoutImportSelections[definition.key] === CREATE_IMPORTED_METRIC
+    ).length;
+    return {
+      summary: `${pendingWorkoutImport.plan.exercises.length} exercise${pendingWorkoutImport.plan.exercises.length === 1 ? '' : 's'} ready; ${createdCount} metric${createdCount === 1 ? '' : 's'} to create and ${definitions.length - createdCount} to reuse.`,
+      warning,
+      invalid,
+    };
+  }
+
+  function renderWorkoutImportMetric(definition) {
+    const selectedId = workoutImportSelections[definition.key] || CREATE_IMPORTED_METRIC;
+    const matches = findWorkoutMetricMatches(definition, metrics);
+    const options = matches.map((match) => {
+      const details = [];
+      details.push(match.exact ? 'name or alias match' : 'similar name');
+      if (match.measureMismatch) details.push(`measure is ${match.metric.strengthMeasure || 'reps'}`);
+      if (match.metricKindMismatch) details.push(`type is ${match.metric.metricKind || 'other'}`);
+      if (match.unitMismatch) details.push(`unit is ${match.metric.unitName}, file uses ${definition.unitName}`);
+      return `
+        <option value="${escapeHtml(match.metric.id)}" ${selectedId === match.metric.id ? 'selected' : ''} ${match.compatible ? '' : 'disabled'}>
+          Use existing: ${escapeHtml(match.metric.name)} (${escapeHtml(details.join('; '))})
+        </option>
+      `;
+    }).join('');
+    const measure = definition.role === 'exercise'
+      ? ` · ${definition.strengthMeasure === 'duration' ? 'duration' : 'reps'}`
+      : '';
+    return `
+      <label class="workout-import-metric">
+        ${escapeHtml(definition.role === 'exercise' ? 'Exercise' : 'Outcome')}: ${escapeHtml(definition.name)}${escapeHtml(measure)}
+        <select data-import-metric-key="${escapeHtml(definition.key)}">
+          <option value="${CREATE_IMPORTED_METRIC}" ${selectedId === CREATE_IMPORTED_METRIC ? 'selected' : ''}>Create new metric: ${escapeHtml(definition.name)}</option>
+          ${options}
+        </select>
+      </label>
+    `;
+  }
+
+  function renderWorkoutImport() {
+    const review = getWorkoutImportReview();
+    const preview = pendingWorkoutImport ? `
+      <div class="workout-import-preview" data-workout-import-preview>
+        <h3>${escapeHtml(pendingWorkoutImport.plan.name)}</h3>
+        <ol>
+          ${pendingWorkoutImport.plan.exercises.map((exercise) => {
+            const definition = pendingWorkoutImport.metrics.find((item) => item.key === exercise.metricKey);
+            const target = exercise.strengthMeasure === 'duration'
+              ? `${exercise.targetDurationSeconds} sec`
+              : `${exercise.targetReps} reps`;
+            return `<li>${escapeHtml(definition.name)} — ${exercise.targetSets} × ${target}</li>`;
+          }).join('')}
+        </ol>
+        ${pendingWorkoutImport.plan.outcomeMetrics.length
+          ? `<p>Outcome metrics: ${pendingWorkoutImport.plan.outcomeMetrics.map((outcome) => {
+            const definition = pendingWorkoutImport.metrics.find((item) => item.key === outcome.metricKey);
+            return `${escapeHtml(definition.name)} (${escapeHtml(outcome.direction)})`;
+          }).join(', ')}</p>`
+          : ''}
+        <h3>Match or create metrics</h3>
+        <p class="muted-text">Exact and similar names are suggestions. Review each choice; incompatible metric types or exercise measures cannot be reused.</p>
+        <div class="stacked-form">${pendingWorkoutImport.metrics.map(renderWorkoutImportMetric).join('')}</div>
+        <p data-workout-import-summary>${escapeHtml(review.summary)}</p>
+        <p class="${review.invalid ? '' : 'muted-text'}" data-workout-import-warning role="${review.invalid ? 'alert' : 'status'}">${escapeHtml(review.warning)}</p>
+        <div class="workout-exercise-actions">
+          <button type="button" class="primary" data-workout-import-confirm ${review.invalid ? 'disabled' : ''}>Import plan</button>
+          <button type="button" class="secondary" data-workout-import-cancel>Cancel</button>
+        </div>
+      </div>
+    ` : '';
+    return `
+      <section id="workoutImportPanel" class="panel${showWorkoutImport ? '' : ' hidden'}" aria-labelledby="workoutImportHeading">
+        <h2 id="workoutImportHeading" class="workflow-card-heading">Import workout plan</h2>
+        <p class="muted-text">Paste version 1 Quantifi workout JSON below or choose a JSON file. No metrics or plan are saved until you confirm the review.</p>
+        <input type="file" data-workout-import-file accept=".json,application/json" hidden />
+        <div class="workout-import-json-header">
+          <label for="workoutImportJson">Workout JSON</label>
+          <button type="button" class="secondary" data-workout-prompt-open>AI prompt</button>
+        </div>
+        <textarea id="workoutImportJson" data-workout-import-json rows="10" placeholder="Paste workout JSON here..." aria-describedby="workoutImportJsonHelp">${escapeHtml(workoutImportJson)}</textarea>
+        <p id="workoutImportJsonHelp" class="muted-text">Use the AI prompt for a template, then paste the chatbot's JSON response here.</p>
+        ${workoutImportFileName ? `<p class="muted-text">File: ${escapeHtml(workoutImportFileName)}</p>` : ''}
+        <p class="${workoutImportError ? '' : 'hidden'}" data-workout-import-error role="alert">${escapeHtml(workoutImportError)}</p>
+        <div class="workout-exercise-actions">
+          <button type="button" class="primary" data-workout-import-review>Review JSON</button>
+          <button type="button" class="secondary" data-workout-import-choose>Choose JSON file</button>
+        </div>
+        ${preview}
+        <dialog class="workout-prompt-dialog" data-workout-prompt-dialog aria-labelledby="workoutPromptHeading">
+          <div class="workout-prompt-dialog-content">
+            <h2 id="workoutPromptHeading" class="workflow-card-heading">Prompt for your chatbot</h2>
+            <p class="muted-text">Copy this prompt into a chatbot. It will ask about your needs, then produce version 1 Quantifi JSON for this importer.</p>
+            <textarea data-workout-prompt readonly rows="18" aria-label="Chatbot prompt">${escapeHtml(WORKOUT_CHATBOT_PROMPT)}</textarea>
+            <div class="workout-exercise-actions">
+              <button type="button" class="primary" data-workout-prompt-copy>Copy prompt</button>
+              <button type="button" class="secondary" data-workout-prompt-close>Close</button>
+            </div>
+            <p data-workout-prompt-status aria-live="polite"></p>
+          </div>
+        </dialog>
+      </section>
+    `;
+  }
+
   function renderPlans() {
     const sectionNav = `
       <nav class="workflow-subsection-switch" aria-label="Workout plan actions">
-        <button type="button" class="${planSection === 'select' ? 'active' : ''}" data-plan-section="select" aria-pressed="${planSection === 'select'}">Select Workout</button>
-        <button type="button" class="${planSection === 'create' ? 'active' : ''}" data-plan-section="create" aria-pressed="${planSection === 'create'}">Create Plan</button>
+        <button type="button" class="${planSection === 'select' && !showWorkoutImport ? 'active' : ''}" data-plan-section="select" aria-pressed="${planSection === 'select' && !showWorkoutImport}">Select Workout</button>
+        <button type="button" class="${planSection === 'create' && !showWorkoutImport ? 'active' : ''}" data-plan-section="create" aria-pressed="${planSection === 'create' && !showWorkoutImport}">Create Plan</button>
+        <button type="button" class="${showWorkoutImport ? 'active' : ''}" data-workout-import-toggle aria-controls="workoutImportPanel" aria-expanded="${showWorkoutImport}" aria-pressed="${showWorkoutImport}">Import plan</button>
       </nav>
     `;
+    if (showWorkoutImport) return `${sectionNav}${renderWorkoutImport()}`;
+
     const planCards = plans.filter((plan) => !plan.isArchived).map((plan) => {
       const canStart = plan.exercises.every((exercise) => metricFor(exercise.metricId));
       const exerciseLabels = plan.exercises.map((exercise) => {
@@ -143,10 +326,11 @@ export function mountWorkoutsView(root, {
       `;
     }).join('');
     if (planSection === 'create') {
-      return `${sectionNav}${renderPlanEditor()}`;
+      return `${sectionNav}${renderWorkoutImport()}${renderPlanEditor()}`;
     }
     return `
       ${sectionNav}
+      ${renderWorkoutImport()}
       <div class="panel">
         <h2 class="workflow-card-heading">Select Workout</h2>
         <p class="muted-text">Choose a saved plan to start your workout.</p>
@@ -455,6 +639,90 @@ export function mountWorkoutsView(root, {
     ]);
   }
 
+  function updateWorkoutImportReview() {
+    const review = getWorkoutImportReview();
+    const summary = root.querySelector('[data-workout-import-summary]');
+    const warning = root.querySelector('[data-workout-import-warning]');
+    const confirmButton = root.querySelector('[data-workout-import-confirm]');
+    if (summary) summary.textContent = review.summary;
+    if (warning) {
+      warning.textContent = review.warning;
+      warning.classList.toggle('muted-text', !review.invalid);
+      warning.setAttribute('role', review.invalid ? 'alert' : 'status');
+    }
+    if (confirmButton) confirmButton.disabled = review.invalid;
+  }
+
+  async function readWorkoutImportFile(file) {
+    capturePlanFormValues();
+    workoutImportFileName = file.name;
+    workoutImportError = '';
+    try {
+      workoutImportJson = await file.text();
+      parseWorkoutImportText(workoutImportJson);
+    } catch (error) {
+      pendingWorkoutImport = null;
+      workoutImportSelections = {};
+      workoutImportError = error.message;
+    }
+    showWorkoutImport = true;
+    render();
+    root.querySelector('[data-workout-import-confirm], [data-workout-import-review]')?.focus();
+  }
+
+  function parseWorkoutImportText(text) {
+    try {
+      pendingWorkoutImport = parseWorkoutImportJson(text);
+      workoutImportSelections = Object.fromEntries(pendingWorkoutImport.metrics.map((definition) => {
+        const exactMatch = findWorkoutMetricMatches(definition, metrics)
+          .find((match) => match.exact && match.compatible && !match.unitMismatch);
+        return [definition.key, exactMatch?.metric.id || CREATE_IMPORTED_METRIC];
+      }));
+      workoutImportError = '';
+    } catch (error) {
+      pendingWorkoutImport = null;
+      workoutImportSelections = {};
+      workoutImportError = error.message;
+    }
+    render();
+    root.querySelector('[data-workout-import-confirm], [data-workout-import-review]')?.focus();
+  }
+
+  async function confirmWorkoutImport() {
+    if (!pendingWorkoutImport) return;
+    const review = getWorkoutImportReview();
+    if (review.invalid) return;
+    try {
+      const metricDecisions = pendingWorkoutImport.metrics.map((definition) => ({
+        key: definition.key,
+        definition,
+        metricId: workoutImportSelections[definition.key] === CREATE_IMPORTED_METRIC
+          ? null
+          : workoutImportSelections[definition.key],
+      }));
+      const result = await saveWorkoutPlanImport({
+        plan: pendingWorkoutImport.plan,
+        metricDecisions,
+      });
+      const createdCount = result.createdMetrics.length;
+      const reusedCount = metricDecisions.length - createdCount;
+      const planName = result.plan.name;
+      pendingWorkoutImport = null;
+      workoutImportSelections = {};
+      workoutImportFileName = '';
+      workoutImportError = '';
+      workoutImportJson = '';
+      showWorkoutImport = false;
+      planSection = 'select';
+      await onDataChanged();
+      window.alert(`Imported "${planName}". Created ${createdCount} metric${createdCount === 1 ? '' : 's'} and reused ${reusedCount}.`);
+    } catch (error) {
+      workoutImportError = error.message;
+      showWorkoutImport = true;
+      render();
+    }
+  }
+
   async function savePlan(event) {
     event.preventDefault();
     capturePlanFormValues();
@@ -590,6 +858,20 @@ export function mountWorkoutsView(root, {
 
   root.addEventListener('input', (event) => {
     const input = event.target;
+    if (input.matches('[data-workout-import-json]')) {
+      workoutImportJson = input.value;
+      workoutImportFileName = '';
+      pendingWorkoutImport = null;
+      workoutImportSelections = {};
+      workoutImportError = '';
+      root.querySelector('[data-workout-import-preview]')?.remove();
+      const error = root.querySelector('[data-workout-import-error]');
+      if (error) {
+        error.textContent = '';
+        error.classList.add('hidden');
+      }
+      return;
+    }
     const picker = input.closest('.workout-metric-picker');
     if (picker && input.matches('.search-field')) {
       const row = picker.dataset.pickerType === 'exercise'
@@ -608,7 +890,19 @@ export function mountWorkoutsView(root, {
     }
   });
 
-  root.addEventListener('change', (event) => {
+  root.addEventListener('change', async (event) => {
+    if (event.target.matches('[data-workout-import-file]')) {
+      const file = event.target.files?.[0];
+      if (file) await readWorkoutImportFile(file);
+      return;
+    }
+    if (event.target.matches('[data-workout-import-json]')) return;
+    if (event.target.matches('[data-import-metric-key]')) {
+      workoutImportSelections[event.target.dataset.importMetricKey] = event.target.value;
+      workoutImportError = '';
+      updateWorkoutImportReview();
+      return;
+    }
     if (event.target.matches('#workoutReviewForm [name="reviewPlan"]')) {
       reviewPlanId = event.target.value;
     }
@@ -650,9 +944,59 @@ export function mountWorkoutsView(root, {
       beginNewPlan();
       return;
     }
+    if (event.target.closest('[data-workout-import-toggle]')) {
+      capturePlanFormValues();
+      showWorkoutImport = !showWorkoutImport;
+      if (!showWorkoutImport) root.querySelector('[data-workout-prompt-dialog]')?.close();
+      render();
+      return;
+    }
+    if (event.target.closest('[data-workout-import-choose]')) {
+      root.querySelector('[data-workout-import-file]')?.click();
+      return;
+    }
+    if (event.target.closest('[data-workout-import-review]')) {
+      parseWorkoutImportText(workoutImportJson);
+      return;
+    }
+    if (event.target.closest('[data-workout-import-confirm]')) {
+      await confirmWorkoutImport();
+      return;
+    }
+    if (event.target.closest('[data-workout-import-cancel]')) {
+      pendingWorkoutImport = null;
+      workoutImportSelections = {};
+      workoutImportFileName = '';
+      workoutImportError = '';
+      workoutImportJson = '';
+      showWorkoutImport = false;
+      render();
+      return;
+    }
+    if (event.target.closest('[data-workout-prompt-open]')) {
+      root.querySelector('[data-workout-prompt-dialog]')?.showModal();
+      return;
+    }
+    if (event.target.closest('[data-workout-prompt-close]')) {
+      root.querySelector('[data-workout-prompt-dialog]')?.close();
+      return;
+    }
+    if (event.target.closest('[data-workout-prompt-copy]')) {
+      const status = root.querySelector('[data-workout-prompt-status]');
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable.');
+        await navigator.clipboard.writeText(WORKOUT_CHATBOT_PROMPT);
+        status.textContent = 'Prompt copied. Paste it into your chatbot.';
+      } catch (error) {
+        status.textContent = `Could not copy the prompt: ${error.message} Select the prompt above and copy it manually.`;
+      }
+      return;
+    }
     const planSectionButton = event.target.closest('[data-plan-section]');
     if (planSectionButton) {
       capturePlanFormValues();
+      showWorkoutImport = false;
+      root.querySelector('[data-workout-prompt-dialog]')?.close();
       if (planSectionButton.dataset.planSection === 'create' && !isEditingPlan) {
         beginNewPlan();
       } else {
