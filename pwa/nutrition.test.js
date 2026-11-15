@@ -2,11 +2,31 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getNutritionPreviewRecords,
+  filterNutritionDaysForPeriod,
   normalizeNutritionDay,
   NUTRITION_PREVIEW_LIMIT,
   normalizeNutritionTarget,
   parseNutritionImportJson,
 } from './nutrition.js';
+
+test('filters nutrition days by the selected period and returns them chronologically', () => {
+  const days = [
+    { date: '2026-11-15', values: {} },
+    { date: '2026-11-07', values: {} },
+    { date: '2026-11-08', values: {} },
+    { date: '2026-11-16', values: {} },
+  ];
+  const endDate = new Date(2026, 10, 15, 12);
+
+  assert.deepEqual(
+    filterNutritionDaysForPeriod(days, 'Week', endDate).map((day) => day.date),
+    ['2026-11-08', '2026-11-15']
+  );
+  assert.deepEqual(
+    filterNutritionDaysForPeriod(days, 'All', endDate).map((day) => day.date),
+    ['2026-11-07', '2026-11-08', '2026-11-15']
+  );
+});
 
 test('parses a JSON array and fills unspecified nutrients with null', () => {
   const parsed = parseNutritionImportJson(JSON.stringify([

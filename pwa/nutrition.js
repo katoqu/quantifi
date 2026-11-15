@@ -1,3 +1,5 @@
+import { getStartDateForPeriod } from './stats.js';
+
 export const NUTRIENTS = [
   { id: 'calories', key: 'calories', label: 'Calories', name: 'calories', unit: 'kcal', decimals: 0 },
   { id: 'protein', key: 'protein_g', label: 'Protein', name: 'protein', unit: 'g', decimals: 1 },
@@ -145,4 +147,18 @@ export function formatNutritionTarget(target, nutrient) {
   if (target.type === 'minimum') return `At least ${formatNutrientValue(target.value, nutrient)}`;
   if (target.type === 'maximum') return `At most ${formatNutrientValue(target.value, nutrient)}`;
   return `${formatNutrientValue(target.minValue, nutrient)} – ${formatNutrientValue(target.maxValue, nutrient)}`;
+}
+
+export function filterNutritionDaysForPeriod(days, period, maxDate = new Date()) {
+  const startDate = getStartDateForPeriod(period, maxDate);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(maxDate);
+  endDate.setHours(23, 59, 59, 999);
+
+  return days
+    .filter((day) => {
+      const date = new Date(`${day.date}T00:00:00`);
+      return !Number.isNaN(date.getTime()) && date >= startDate && date <= endDate;
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
 }

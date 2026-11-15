@@ -214,6 +214,7 @@
           <nav id="nutritionSectionNav" class="workflow-section-switch" aria-label="Nutrition sections">
             <button type="button" class="active" data-nutrition-section-button="add" aria-pressed="true" aria-controls="nutritionAddSection">Add</button>
             <button type="button" data-nutrition-section-button="targets" aria-pressed="false" aria-controls="nutritionTargetsSection">Targets</button>
+            <button type="button" data-nutrition-section-button="trends" aria-pressed="false" aria-controls="nutritionTrendsSection">Trends</button>
             <button type="button" data-nutrition-section-button="history" aria-pressed="false" aria-controls="nutritionHistorySection">History</button>
             <button type="button" data-nutrition-section-button="display" aria-pressed="false" aria-controls="nutritionDisplaySection">Display</button>
           </nav>
@@ -322,6 +323,18 @@
               <summary>Target history</summary>
               <div id="nutritionTargetHistory" class="nutrition-record-list"></div>
             </details>
+          </div>
+
+          <div id="nutritionTrendsSection" class="panel nutrition-section hidden" data-nutrition-section="trends">
+            <h2 class="workflow-card-heading">Nutrition trends</h2>
+            <div class="segmented-control nutrition-period-control" id="nutritionPeriodControl" aria-label="Nutrition chart period">
+              <button type="button" class="segment" data-period="Week" aria-pressed="false">Week</button>
+              <button type="button" class="segment active" data-period="Month" aria-pressed="true">Month</button>
+              <button type="button" class="segment" data-period="6M" aria-pressed="false">6M</button>
+              <button type="button" class="segment" data-period="Year" aria-pressed="false">Year</button>
+              <button type="button" class="segment" data-period="All" aria-pressed="false">All</button>
+            </div>
+            <div id="nutritionChartContainer" class="chart-container nutrition-chart-container" aria-live="polite"></div>
           </div>
 
           <div id="nutritionHistorySection" class="panel nutrition-section hidden" data-nutrition-section="history">

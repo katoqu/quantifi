@@ -41,7 +41,7 @@ import {
   filterMetricsByView,
   sortMetricsByRecentEntry,
 } from './metric-filters.js';
-import { generateSvgChart, renderSparkline } from './chart.js';
+import { generateNutritionSvgChart, generateSvgChart, renderSparkline } from './chart.js';
 import { mountStrengthSetEditor, normalizeStrengthSet } from './strength-set-editor.js';
 import { renderMetricPicker, setMetricPickerOpen } from './metric-picker.js';
 import {
@@ -55,6 +55,7 @@ import {
 import { mountWorkoutsView } from './workouts-view.js';
 import {
   formatNutrientValue,
+  filterNutritionDaysForPeriod,
   getNutritionPreviewRecords,
   NUTRIENTS,
   parseNutritionImportJson,
@@ -166,6 +167,8 @@ const ui = {
   nutritionTargetClearButton: document.querySelector('#nutritionTargetClearButton'),
   nutritionVisibilitySettings: document.querySelector('#nutritionVisibilitySettings'),
   nutritionHistory: document.querySelector('#nutritionHistory'),
+  nutritionPeriodControl: document.querySelector('#nutritionPeriodControl'),
+  nutritionChartContainer: document.querySelector('#nutritionChartContainer'),
   statsSummary: document.querySelector('#statsSummary'),
   entryForm: document.querySelector('#entryForm'),
   changeForm: document.querySelector('#changeForm'),
@@ -286,6 +289,8 @@ let activeVizSettings = {
   zeros: false,
   strengthAgg: 'Max Load',
 };
+let activeNutritionPeriod = 'Month';
+let nutritionChartDays = [];
 
 function renderMarkdown(text) {
   if (!text) return '';
@@ -678,9 +683,11 @@ async function renderNutritionTargets() {
 
 async function renderNutrition() {
   const days = await listNutritionDays();
+  nutritionChartDays = days;
   await renderNutritionTargets();
   ui.nutritionHistory.replaceChildren();
   ui.nutritionVisibilitySettings.replaceChildren();
+  renderNutritionTrends(days);
 
   NUTRIENTS.forEach((nutrient) => {
     const label = document.createElement('label');
@@ -726,6 +733,17 @@ async function renderNutrition() {
     card.append(heading, values);
     ui.nutritionHistory.append(card);
   });
+}
+
+function renderNutritionTrends(days) {
+  ui.nutritionPeriodControl.querySelectorAll('.segment').forEach((button) => {
+    const isActive = button.dataset.period === activeNutritionPeriod;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+  ui.nutritionChartContainer.innerHTML = generateNutritionSvgChart(
+    filterNutritionDaysForPeriod(days, activeNutritionPeriod)
+  );
 }
 
 async function showNutritionImportPreview(parsed) {
@@ -2996,6 +3014,22 @@ document.querySelector('#nutritionAddModeNav').addEventListener('click', (event)
   if (button) {
     setNutritionAddMode(button.dataset.nutritionAddModeButton);
   }
+});
+
+ui.nutritionPeriodControl.addEventListener('click', (event) => {
+  const button = event.target.closest('.segment');
+  if (!button) return;
+  activeNutritionPeriod = button.dataset.period;
+  renderNutritionTrends(nutritionChartDays);
+});
+
+ui.nutritionChartContainer.addEventListener('click', (event) => {
+  const point = event.target.closest('.chart-point');
+  const wasOpen = point?.classList.contains('is-open');
+  ui.nutritionChartContainer.querySelectorAll('.chart-point.is-open').forEach((openPoint) => {
+    openPoint.classList.remove('is-open');
+  });
+  if (point && !wasOpen) point.classList.add('is-open');
 });
 
 document.querySelector('#changeSectionNav').addEventListener('click', (event) => {

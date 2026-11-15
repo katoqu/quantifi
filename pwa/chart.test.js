@@ -1,12 +1,64 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { generateSvgChart, renderSparkline } from './chart.js';
+import { generateNutritionSvgChart, generateSvgChart, renderSparkline } from './chart.js';
 
 const sampleData = [
   { date: new Date(2026, 0, 1), dateStr: 'Jan 1', value: 2 },
   { date: new Date(2026, 0, 2), dateStr: 'Jan 2', value: 4 },
 ];
+
+test('renders nutrition trends with two axes, six legend entries, and sparse values', () => {
+  const chart = generateNutritionSvgChart([
+    {
+      date: '2026-01-01',
+      values: {
+        calories: 2000,
+        protein: 130,
+        carbs: 220,
+        fat: 70,
+        saturated_fat: 18,
+        fiber: 28,
+      },
+    },
+    {
+      date: '2026-01-02',
+      values: {
+        calories: 2100,
+        protein: 135,
+        carbs: null,
+        fat: 72,
+        saturated_fat: null,
+        fiber: 30,
+      },
+    },
+  ]);
+
+  assert.match(chart, /Calories \(kcal\)/);
+  assert.match(chart, /Grams \(g\)/);
+  assert.doesNotMatch(chart, /<line x1="652" y1="[\d.]+" x2="656"/);
+  for (const nutrient of ['Calories', 'Protein', 'Carbs', 'Fat', 'Saturated fat', 'Fiber']) {
+    assert.match(chart, new RegExp(nutrient));
+  }
+  assert.match(chart, /aria-label="Jan 2: Protein 135\.0 g"/);
+  assert.doesNotMatch(chart, /Jan 2: Carbs/);
+  assert.doesNotMatch(chart, /Jan 2: Saturated fat/);
+  assert.match(chart, /2 days plotted/);
+});
+
+test('renders a no-data message for an empty nutrition period', () => {
+  assert.match(generateNutritionSvgChart([]), /No nutrition data in this period\./);
+});
+
+test('preserves fractional values on nutrition axes', () => {
+  const chart = generateNutritionSvgChart([{
+    date: '2026-01-01',
+    values: { calories: 2000, protein: 1 },
+  }]);
+
+  assert.match(chart, />0\.25<\/text>/);
+  assert.match(chart, />0\.75<\/text>/);
+});
 
 test('renders a no-data message for an empty period', () => {
   assert.match(generateSvgChart([], { metricKind: 'quantitative' }), /No data in this period\./);

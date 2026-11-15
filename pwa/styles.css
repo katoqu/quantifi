@@ -1379,6 +1379,43 @@ main {
   stroke-width: 2;
 }
 
+.nutrition-period-control {
+  margin: 12px 0 16px;
+}
+
+.nutrition-chart-container {
+  min-height: 200px;
+  margin: 12px 0;
+}
+
+.nutrition-chart-summary {
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  text-align: right;
+}
+
+.nutrition-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  margin: 8px 0 12px;
+  font-size: 0.8rem;
+}
+
+.nutrition-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.nutrition-chart-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
 /* Dark Mode support variables & styles */
 html[data-theme="dark"] {
   --bg: #0f172a;

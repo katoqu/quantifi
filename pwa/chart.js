@@ -1,3 +1,5 @@
+import { formatNutrientValue, NUTRIENTS } from './nutrition.js';
+
 function escapeSvgText(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
@@ -20,9 +22,150 @@ function getNiceStep(value) {
 }
 
 function formatAxisTick(value, step) {
-  const decimalPlaces = Math.max(0, -Math.floor(Math.log10(step)));
+  const [coefficient, exponentText = '0'] = String(step).split('e');
+  const exponent = Number(exponentText);
+  const decimalPlaces = Math.min(
+    20,
+    Math.max(0, (coefficient.split('.')[1] || '').length - exponent)
+  );
   if (decimalPlaces === 0) return String(Math.round(value));
   return value.toFixed(decimalPlaces).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+
+function getNutritionAxisTicks(values) {
+  const maxValue = Math.max(0, ...values);
+  const step = getNiceStep((maxValue || 1) / 4);
+  const max = Math.ceil((maxValue || 1) / step) * step;
+  const count = Math.round(max / step);
+  return {
+    step,
+    values: Array.from({ length: count + 1 }, (_, index) => index * step),
+    max,
+  };
+}
+
+const NUTRITION_SERIES_COLORS = {
+  calories: '#3b82f6',
+  protein: '#10b981',
+  carbs: '#f59e0b',
+  fat: '#ef4444',
+  saturated_fat: '#a855f7',
+  fiber: '#06b6d4',
+};
+
+export function generateNutritionSvgChart(days) {
+  if (days.length === 0) {
+    return '<div class="muted-text" style="text-align: center; padding: 40px;">No nutrition data in this period.</div>';
+  }
+
+  const width = 720;
+  const height = 300;
+  const padding = { top: 34, right: 68, bottom: 46, left: 68 };
+  const xMin = padding.left;
+  const xMax = width - padding.right;
+  const yMin = padding.top;
+  const yMax = height - padding.bottom;
+  const orderedDays = days.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const dates = orderedDays.map((day) => new Date(`${day.date}T00:00:00`));
+  const minTime = dates[0].getTime();
+  const maxTime = dates.at(-1).getTime();
+  const timeRange = maxTime - minTime;
+  const getX = (date) => timeRange
+    ? xMin + ((date.getTime() - minTime) / timeRange) * (xMax - xMin)
+    : (xMin + xMax) / 2;
+
+  const valuesByNutrient = new Map(NUTRIENTS.map((nutrient) => [
+    nutrient.id,
+    orderedDays
+      .map((day, index) => ({
+        date: dates[index],
+        dateStr: dates[index].toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+        value: day.values[nutrient.id],
+      }))
+      .filter((point) => typeof point.value === 'number' && Number.isFinite(point.value)),
+  ]));
+  const caloriesTicks = getNutritionAxisTicks(valuesByNutrient.get('calories').map((point) => point.value));
+  const gramsTicks = getNutritionAxisTicks(
+    NUTRIENTS.filter((nutrient) => nutrient.id !== 'calories')
+      .flatMap((nutrient) => valuesByNutrient.get(nutrient.id).map((point) => point.value))
+  );
+  const getY = (value, axis) => yMax - (value / axis.max) * (yMax - yMin);
+  const yGridHtml = caloriesTicks.values.map((value) => {
+    const y = getY(value, caloriesTicks);
+    return `
+      <line x1="${xMin}" y1="${y}" x2="${xMax}" y2="${y}" stroke="var(--border, #cbd5e1)" stroke-dasharray="2,4" opacity="0.4" />
+      <text x="${xMin - 10}" y="${y + 4}" font-size="10" fill="var(--muted, #64748b)" text-anchor="end">${formatAxisTick(value, caloriesTicks.step)}</text>
+    `;
+  }).join('');
+  const gramsAxisHtml = gramsTicks.values.map((value) => {
+    const y = getY(value, gramsTicks);
+    return `
+      <text x="${xMax + 8}" y="${y + 4}" font-size="10" fill="var(--muted, #64748b)" text-anchor="start">${formatAxisTick(value, gramsTicks.step)}</text>
+    `;
+  }).join('');
+
+  const xTickIndices = [0, Math.floor(orderedDays.length / 2), orderedDays.length - 1]
+    .filter((value, index, list) => list.indexOf(value) === index);
+  const xGridHtml = xTickIndices.map((index) => {
+    const x = getX(dates[index]);
+    return `
+      <line x1="${x}" y1="${yMin}" x2="${x}" y2="${yMax}" stroke="var(--border, #cbd5e1)" stroke-dasharray="2,4" opacity="0.4" />
+      <text x="${x}" y="${yMax + 18}" font-size="10" fill="var(--muted, #64748b)" text-anchor="middle">${dates[index].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</text>
+    `;
+  }).join('');
+
+  const seriesHtml = NUTRIENTS.map((nutrient) => {
+    const points = valuesByNutrient.get(nutrient.id);
+    if (!points.length) return '';
+    const axis = nutrient.id === 'calories' ? caloriesTicks : gramsTicks;
+    const color = NUTRITION_SERIES_COLORS[nutrient.id];
+    const path = points.map((point, index) => (
+      `${index === 0 ? 'M' : 'L'} ${getX(point.date)} ${getY(point.value, axis)}`
+    )).join(' ');
+    const marks = points.map((point) => {
+      const x = getX(point.date);
+      const y = getY(point.value, axis);
+      const label = `${point.dateStr}: ${nutrient.label} ${formatNutrientValue(point.value, nutrient)}`;
+      const tooltipWidth = Math.min(width - 16, Math.max(96, label.length * 6 + 16));
+      const tooltipX = Math.max(
+        tooltipWidth / 2 + 8,
+        Math.min(width - tooltipWidth / 2 - 8, x)
+      );
+      const tooltipY = y > 58 ? y - 4 : y + 34;
+      return `<g class="chart-point nutrition-chart-point" tabindex="0" role="img" aria-label="${escapeSvgText(label)}">
+        <circle class="chart-mark" cx="${x}" cy="${y}" r="4" fill="${color}" stroke="white" stroke-width="1">
+          <title>${escapeSvgText(label)}</title>
+        </circle>
+        <circle class="chart-point-hit-area" cx="${x}" cy="${y}" r="12" />
+        <g class="chart-tooltip" transform="translate(${tooltipX} ${tooltipY})" aria-hidden="true">
+          <rect x="${-tooltipWidth / 2}" y="-26" width="${tooltipWidth}" height="22" rx="5" />
+          <text x="0" y="-11" text-anchor="middle">${escapeSvgText(label)}</text>
+        </g>
+      </g>`;
+    }).join('');
+
+    return `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />${marks}`;
+  }).join('');
+  const legendHtml = NUTRIENTS.map((nutrient) => `
+    <span class="nutrition-chart-legend-item" role="listitem">
+      <span class="nutrition-chart-legend-swatch" style="background: ${NUTRITION_SERIES_COLORS[nutrient.id]};"></span>
+      ${escapeSvgText(nutrient.label)}
+    </span>
+  `).join('');
+
+  return `
+    <div class="nutrition-chart-summary muted-text">${orderedDays.length} days plotted</div>
+    <div class="nutrition-chart-legend" role="list" aria-label="Nutrient series">${legendHtml}</div>
+    <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" style="display: block; overflow: visible;" aria-labelledby="nutrition-chart-title">
+      <title id="nutrition-chart-title">Daily nutrition trends with calories on the left axis and grams on the right axis</title>
+      ${yGridHtml}
+      ${gramsAxisHtml}
+      ${xGridHtml}
+      <text x="18" y="${(yMin + yMax) / 2}" transform="rotate(-90 18 ${(yMin + yMax) / 2})" font-size="10" fill="var(--muted, #64748b)" text-anchor="middle">Calories (kcal)</text>
+      <text x="${width - 10}" y="${(yMin + yMax) / 2}" transform="rotate(90 ${width - 10} ${(yMin + yMax) / 2})" font-size="10" fill="var(--muted, #64748b)" text-anchor="middle">Grams (g)</text>
+      ${seriesHtml}
+    </svg>
+  `;
 }
 
 export function generateSvgChart(data, metric) {
