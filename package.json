@@ -1,0 +1,12 @@
+{
+  "name": "quantifi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test pwa/*.test.js",
+    "test:mutation": "stryker run"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^9.0.1"
+  }
+}
