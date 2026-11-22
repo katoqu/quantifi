@@ -65,6 +65,7 @@ import {
 } from './nutrition.js';
 
 const ui = {
+  primaryNav: document.querySelector('.tabs'),
   tabs: Array.from(document.querySelectorAll('.tab')),
   views: Array.from(document.querySelectorAll('.view')),
   metricGrid: document.querySelector('#metricGrid'),
@@ -350,20 +351,6 @@ function resetChangeFormDateTime() {
   const timeStr = now.toTimeString().slice(0, 5);
   if (ui.changeDate) ui.changeDate.value = dateStr;
   if (ui.changeTime) ui.changeTime.value = timeStr;
-}
-
-async function getHomeSearchMetric() {
-  const searchTerm = ui.homeSearch?.value.trim() || homeSearchTerm;
-  if (!searchTerm) return null;
-
-  const [metrics, categories] = await Promise.all([
-    listMetrics(showArchivedMetrics),
-    listCategories(),
-  ]);
-  const matches = filterMetricsBySearch(metrics, categories, searchTerm);
-  const normalizedSearchTerm = searchTerm.replace(/^#\s*/, '').trim().toLowerCase();
-  const exactMatch = matches.find((metric) => metric.name.trim().toLowerCase() === normalizedSearchTerm);
-  return exactMatch || (matches.length === 1 ? matches[0] : null);
 }
 
 function selectMetric(metricId) {
@@ -1836,20 +1823,24 @@ ui.homeSettingsLink.addEventListener('click', (event) => {
 
 ui.homeAddMetricBtn.addEventListener('click', () => openSettingsManagement('metrics', true));
 ui.homeAddCategoryBtn.addEventListener('click', () => openSettingsManagement('categories', true));
+
+async function showFocusedView(viewName) {
+  ui.primaryNav.classList.add('hidden');
+  ui.tabs.forEach((item) => item.classList.toggle('active', item.dataset.view === 'home'));
+  ui.views.forEach((view) => view.classList.remove('active'));
+  const focusedView = document.querySelector(`#view-${viewName}`);
+  focusedView.classList.add('active');
+
+  suppressDetailsReset = true;
+  focusedView.querySelectorAll('details').forEach((detail) => detail.removeAttribute('open'));
+  suppressDetailsReset = false;
+
+  if (viewName === 'stats') await renderStats();
+}
+
 ui.tabs.forEach((tab) => {
   tab.addEventListener('click', async () => {
-    const activeTab = ui.tabs.find((item) => item.classList.contains('active'));
-    if (activeTab?.dataset.view === 'home' && ['add', 'stats'].includes(tab.dataset.view)) {
-      const searchedMetric = await getHomeSearchMetric();
-      if (searchedMetric) {
-        if (tab.dataset.view === 'add') {
-          const didSwitchMetric = await changeAddMetric(searchedMetric.id);
-          if (!didSwitchMetric) return;
-        } else {
-          selectMetric(searchedMetric.id);
-        }
-      }
-    }
+    ui.primaryNav.classList.remove('hidden');
     if (tab.dataset.view === 'home' && currentMetricId) {
       const metrics = await listMetrics(showArchivedMetrics);
       const selectedMetric = metrics.find((metric) => metric.id === currentMetricId);
@@ -1875,14 +1866,6 @@ ui.tabs.forEach((tab) => {
     if (tab.dataset.view === 'settings' && openManageAttributesOnSettings) {
       ui.manageAttributesDetails.open = true;
       openManageAttributesOnSettings = false;
-    }
-    // Initialize Add form if switching to Add tab
-    if (tab.dataset.view === 'add') {
-      await renderMetricDropdown();
-    }
-    // Render Stats when switching to Stats tab
-    if (tab.dataset.view === 'stats') {
-      await renderStats();
     }
     if (tab.dataset.view === 'settings') {
       activateSettingsMode(settingsMode);
@@ -3182,10 +3165,7 @@ ui.importFile.addEventListener('change', async (event) => {
   await renderAll();
   alert(`Import complete. ${summary.entries} entries, ${summary.changes} changes, ${summary.workoutPlans} workout plans, ${summary.workoutSessions} workout sessions, and ${summary.nutritionTargets} nutrition targets imported; ${summary.metrics} new metrics created. Matching metrics were reused where possible.`);
 
-  const statsTab = document.querySelector('.tab[data-view="stats"]');
-  if (statsTab) {
-    statsTab.click();
-  }
+  await showFocusedView('stats');
 });
 
 if ('serviceWorker' in navigator) {
@@ -3285,8 +3265,7 @@ ui.metricGrid.addEventListener('click', async (event) => {
       await renderMetricDropdown();
       ui.metricSelect.value = metricId;
       await syncAddFormMode();
-      const addTab = document.querySelector('.tab[data-view="add"]');
-      if (addTab) addTab.click();
+      await showFocusedView('add');
     } else if (action === 'nutrition') {
       const nutritionTab = document.querySelector('.tab[data-view="nutrition"]');
       if (nutritionTab) {
@@ -3307,8 +3286,7 @@ ui.metricGrid.addEventListener('click', async (event) => {
         homeSearchTerm = metric.name.toLowerCase();
         updateHomeSearchClearButton();
       }
-      const statsTab = document.querySelector('.tab[data-view="stats"]');
-      if (statsTab) statsTab.click();
+      await showFocusedView('stats');
     } else if (action === 'settings') {
       isAddingMetric = false;
       isEditingMetric = true;
