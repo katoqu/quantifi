@@ -743,6 +743,63 @@ input[type="checkbox"] {
   gap: 10px;
 }
 
+.home-recent-section,
+.home-category-group {
+  grid-column: 1 / -1;
+}
+
+.home-category-group {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.home-category-group > summary,
+.home-category-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  font-weight: 600;
+}
+
+.home-category-group > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.home-category-heading {
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.home-category-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.home-category-group > summary::before {
+  content: "›";
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.home-category-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.home-category-group > summary > span:first-child {
+  text-transform: capitalize;
+}
+
+.home-category-count {
+  color: var(--muted);
+  font-size: 0.85em;
+  font-weight: 400;
+}
+
+.home-category-group > .metric-grid {
+  padding: 6px 0 10px 14px;
+}
+
 .quick-start-heading {
   display: flex;
   align-items: flex-start;

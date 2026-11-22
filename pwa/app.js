@@ -39,6 +39,7 @@ import {
   canKeepMetricValues,
   filterMetricsBySearch,
   filterMetricsByView,
+  getRecentMetricIds,
   sortMetricsByRecentEntry,
 } from './metric-filters.js';
 import { generateNutritionSvgChart, generateSvgChart, renderSparkline } from './chart.js';
@@ -260,6 +261,7 @@ const NUTRITION_VISIBILITY_KEY = 'quantifi-nutrition-visible-nutrients';
 let visibleNutritionNutrients = loadVisibleNutritionNutrients();
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
+const expandedHomeCategories = new Set();
 let homeSearchTerm = '';
 let homeSearchOptions = [];
 let homeSearchSuggestionsOpen = false;
@@ -357,6 +359,16 @@ function selectMetric(metricId) {
   if (!metricId) return;
   currentMetricId = metricId;
   activeVizSettings.metricId = metricId;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[character]));
 }
 
 function updateHomeSearchClearButton() {
@@ -1081,18 +1093,18 @@ async function renderHome() {
   const visibleMetrics = showArchivedMetrics ? metrics : metrics.filter((m) => !m.isArchived);
   const hasActiveMetrics = metrics.some((metric) => !metric.isArchived);
   setHomeSearchOptions(categories, visibleMetrics);
-  let filteredMetrics = filterMetricsByView(activeFilters.home, visibleMetrics, entries, categories);
+  let availableMetrics = filterMetricsByView(activeFilters.home, visibleMetrics, entries, categories);
+  availableMetrics = availableMetrics.filter((metric) => (
+    !metric.nutritionId || visibleNutritionNutrients.has(metric.nutritionId)
+  ));
   const currentSearchTerm = ui.homeSearch ? ui.homeSearch.value.trim().toLowerCase() : homeSearchTerm;
   homeSearchTerm = currentSearchTerm;
   updateHomeSearchClearButton();
-  filteredMetrics = filterMetricsBySearch(filteredMetrics, categories, currentSearchTerm);
+  const filteredMetrics = filterMetricsBySearch(availableMetrics, categories, currentSearchTerm);
 
   const categoryMap = Object.fromEntries(categories.map((category) => [category.id, category.name]));
-  filteredMetrics = filteredMetrics.filter((metric) => (
-    !metric.nutritionId || visibleNutritionNutrients.has(metric.nutritionId)
-  ));
 
-  ui.metricGrid.innerHTML = filteredMetrics.map((metric) => {
+  const metricCardHtml = filteredMetrics.map((metric) => {
     const metricEntries = entries.filter((entry) => entry.metricId === metric.id);
     const sortedEntries = [...metricEntries].sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt));
     const latest = sortedEntries[sortedEntries.length - 1];
@@ -1181,9 +1193,65 @@ async function renderHome() {
         </div>
       </div>
     `;
-  }).join('') || (currentSearchTerm.startsWith('#') && !showArchivedMetrics
+  });
+
+  const metricCardsById = new Map(
+    filteredMetrics.map((metric, index) => [metric.id, metricCardHtml[index]])
+  );
+  const cardMarkup = (groupMetrics) => (
+    groupMetrics.map((metric) => metricCardsById.get(metric.id)).join('')
+  );
+  const availableMetricIds = new Set(availableMetrics.map((metric) => metric.id));
+  const recentMetricIds = currentSearchTerm
+    ? []
+    : getRecentMetricIds(entries.filter((entry) => availableMetricIds.has(entry.metricId)), 3);
+  const recentMetricIdSet = new Set(recentMetricIds);
+  const recentMetrics = recentMetricIds
+    .map((metricId) => availableMetrics.find((metric) => metric.id === metricId))
+    .filter(Boolean);
+  const categoryMetrics = currentSearchTerm
+    ? filteredMetrics
+    : availableMetrics.filter((metric) => !recentMetricIdSet.has(metric.id));
+  const categoriesById = new Map();
+  categoryMetrics.forEach((metric) => {
+    const categoryId = metric.categoryId || '';
+    const categoryName = categoryMap[categoryId] || 'General';
+    const group = categoriesById.get(categoryId) || { name: categoryName, metrics: [] };
+    group.metrics.push(metric);
+    categoriesById.set(categoryId, group);
+  });
+
+  const recentSection = recentMetrics.length
+    ? `<section class="home-recent-section">
+        <div class="home-category-heading">Top 3 Recent</div>
+        <div class="metric-grid">${cardMarkup(recentMetrics)}</div>
+      </section>`
+    : '';
+  const categorySections = [...categoriesById.entries()]
+    .sort(([, first], [, second]) => first.name.localeCompare(second.name))
+    .map(([categoryId, group]) => {
+      const isOpen = Boolean(currentSearchTerm) || expandedHomeCategories.has(categoryId);
+      return `<details class="home-category-group" data-home-category="${escapeHtml(categoryId)}" ${isOpen ? 'open' : ''}>
+        <summary>
+          <span>${escapeHtml(group.name)}</span>
+          <span class="home-category-count">${group.metrics.length}</span>
+        </summary>
+        <div class="metric-grid">${cardMarkup(group.metrics)}</div>
+      </details>`;
+    })
+    .join('');
+
+  ui.metricGrid.innerHTML = recentSection + categorySections || (currentSearchTerm.startsWith('#') && !showArchivedMetrics
     ? '<p>No archived metrics shown. Enable “Show archived metrics in search and Stats” in Settings → Default behaviour.</p>'
     : '<p>No metrics match this filter.</p>');
+  ui.metricGrid.querySelectorAll('.home-category-group').forEach((group) => {
+    group.addEventListener('toggle', () => {
+      if (currentSearchTerm) return;
+      const categoryId = group.dataset.homeCategory;
+      if (group.open) expandedHomeCategories.add(categoryId);
+      else expandedHomeCategories.delete(categoryId);
+    });
+  });
   ui.homeNoMetrics.classList.toggle('hidden', hasActiveMetrics || Boolean(currentSearchTerm));
 }
 
