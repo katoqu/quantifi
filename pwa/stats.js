@@ -17,8 +17,7 @@ export function getStartDateForPeriod(period, maxDate) {
   return start;
 }
 
-export function resampleAndProcessData(entries, metric, period, zeros, strengthAgg) {
-  const startDate = getStartDateForPeriod(period, new Date());
+export function resampleAndProcessData(entries, metric, period, strengthAgg) {
   const endDate = new Date();
   endDate.setHours(0, 0, 0, 0);
   const rows = entries
@@ -34,30 +33,36 @@ export function resampleAndProcessData(entries, metric, period, zeros, strengthA
     const day = new Date(date);
     day.setHours(0, 0, 0, 0);
     const key = day.toISOString();
+    const rawValue = entry.value;
     const value = metric.metricKind === 'strength_session'
       ? (metric.strengthMeasure === 'duration'
         ? computeDurationValue(entry, strengthAgg)
         : computeStrengthValue(entry, strengthAgg))
-      : Number(entry.value);
-    if (Number.isNaN(value)) continue;
+      : rawValue === null || rawValue === undefined || (typeof rawValue === 'string' && !rawValue.trim())
+        ? Number.NaN
+        : Number(rawValue);
+    if (!Number.isFinite(value)) continue;
     const existing = bucketMap.get(key);
     if (!existing || date > existing.recordedAt) {
       bucketMap.set(key, { date: new Date(day), recordedAt: date, value });
     }
   }
 
-  const result = [];
-  const cursor = new Date(startDate);
-  cursor.setHours(0, 0, 0, 0);
-  while (cursor <= endDate) {
-    const key = cursor.toISOString();
-    const bucket = bucketMap.get(key);
-    if (bucket) {
-      result.push({ date: bucket.date, value: bucket.value, dateStr: bucket.date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) });
-    } else if (zeros) {
-      result.push({ date: new Date(cursor), value: 0, dateStr: cursor.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) });
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return result;
+  if (!bucketMap.size) return [];
+
+  const firstRecordedDate = [...bucketMap.values()]
+    .reduce((earliest, bucket) => bucket.date < earliest ? bucket.date : earliest, endDate);
+  const startDate = period === 'All'
+    ? new Date(firstRecordedDate)
+    : getStartDateForPeriod(period, new Date());
+  startDate.setHours(0, 0, 0, 0);
+
+  return [...bucketMap.values()]
+    .filter((bucket) => bucket.date >= startDate && bucket.date <= endDate)
+    .sort((first, second) => first.date - second.date)
+    .map((bucket) => ({
+      date: bucket.date,
+      value: bucket.value,
+      dateStr: bucket.date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+    }));
 }

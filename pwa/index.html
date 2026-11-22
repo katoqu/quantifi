@@ -172,7 +172,7 @@
           <div class="panel workflow-card">
             <h2 class="workflow-card-heading">Explore stats</h2>
             <div id="statsControls" class="viz-controls hidden" style="margin-top: 12px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div class="segmented-control" id="statsPeriodControl" style="display: flex; background: var(--secondary-background-color, #1e293b); border-radius: 8px; padding: 2px;">
                   <button type="button" class="segment active" data-period="Month" style="background: var(--primary, #3b82f6); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Month</button>
                   <button type="button" class="segment" data-period="Week" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Week</button>
@@ -180,9 +180,6 @@
                   <button type="button" class="segment" data-period="Year" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Year</button>
                   <button type="button" class="segment" data-period="All" style="background: transparent; color: var(--text-color, #f8fafc); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">All</button>
                 </div>
-                <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer;">
-                  <input type="checkbox" id="statsZerosToggle" /> Zeros
-                </label>
               </div>
 
               <div id="statsStrengthControl" class="hidden" style="margin-top: 12px;">
@@ -198,6 +195,7 @@
               </div>
             </div>
             <div id="statsChartContainer" class="chart-container hidden" style="margin: 20px 0; min-height: 200px;"></div>
+            <p id="statsMissingDataNote" class="muted-text hidden">Unrecorded days are shown as gaps; averages use recorded days only.</p>
             <div id="statsSummary" class="stats-summary"></div>
           </div>
         </section>

@@ -213,10 +213,10 @@ const ui = {
   statsMetricSelect: document.querySelector('#statsMetricSelect'),
   statsControls: document.querySelector('#statsControls'),
   statsPeriodControl: document.querySelector('#statsPeriodControl'),
-  statsZerosToggle: document.querySelector('#statsZerosToggle'),
   statsStrengthControl: document.querySelector('#statsStrengthControl'),
   statsStrengthSelect: document.querySelector('#statsStrengthSelect'),
   statsChartContainer: document.querySelector('#statsChartContainer'),
+  statsMissingDataNote: document.querySelector('#statsMissingDataNote'),
   themeToggle: document.querySelector('#themeToggle'),
   entriesModal: document.querySelector('#entriesModal'),
   entriesModalTitle: document.querySelector('#entriesModalTitle'),
@@ -289,7 +289,6 @@ let backupReminderTimer = null;
 let activeVizSettings = {
   metricId: null,
   period: 'Month',
-  zeros: false,
   strengthAgg: 'Max Load',
 };
 let activeNutritionPeriod = 'Month';
@@ -1591,24 +1590,24 @@ async function renderStats() {
       }
     });
 
-    ui.statsZerosToggle.checked = activeVizSettings.zeros;
     ui.statsStrengthSelect.value = activeVizSettings.strengthAgg;
 
     const processedData = resampleAndProcessData(
       entries,
       selectedMetric,
       activeVizSettings.period,
-      activeVizSettings.zeros,
       activeVizSettings.strengthAgg
     );
 
     ui.statsChartContainer.innerHTML = generateSvgChart(processedData, selectedMetric.strengthMeasure === 'duration'
       ? { ...selectedMetric, unitName: 'sec' }
       : selectedMetric);
+    ui.statsMissingDataNote.classList.remove('hidden');
   } else {
     ui.statsControls.classList.add('hidden');
     ui.statsChartContainer.classList.add('hidden');
     ui.statsChartContainer.innerHTML = '';
+    ui.statsMissingDataNote.classList.add('hidden');
   }
 
   const selectedSummary = (selectedMetric ? [selectedMetric] : [])
@@ -3405,11 +3404,6 @@ ui.statsPeriodControl.addEventListener('click', (event) => {
     activeVizSettings.period = btn.dataset.period;
     renderStats();
   }
-});
-
-ui.statsZerosToggle.addEventListener('change', () => {
-  activeVizSettings.zeros = ui.statsZerosToggle.checked;
-  renderStats();
 });
 
 ui.statsStrengthSelect.addEventListener('change', () => {

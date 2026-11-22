@@ -75,10 +75,22 @@ test('renders quantitative values as a line chart with average and unit', () => 
   assert.match(chart, /<path d="M [\d.]+ [\d.]+ C /);
   assert.equal((chart.match(/<circle class="chart-mark"/g) || []).length, 2);
   assert.match(chart, /Average: 3\.0 \(reps\)/);
-  assert.match(chart, /2 days plotted/);
+  assert.match(chart, /2 recorded days/);
   assert.match(chart, /aria-label="Jan 1: 2 reps"/);
   assert.match(chart, /<title>Jan 1: 2 reps<\/title>/);
   assert.match(chart, /class="chart-tooltip"/);
+});
+
+test('breaks quantitative lines across unrecorded days', () => {
+  const chart = generateSvgChart([
+    { date: new Date(2026, 0, 1), dateStr: 'Jan 1', value: 2 },
+    { date: new Date(2026, 0, 3), dateStr: 'Jan 3', value: 4 },
+  ], { metricKind: 'quantitative' });
+  const path = chart.match(/<path d="([^"]+)"/)?.[1];
+
+  assert.ok(path);
+  assert.equal((path.match(/\bM\b/g) || []).length, 2);
+  assert.doesNotMatch(path, /\bC\b/);
 });
 
 test('uses rounded, evenly spaced guide values for quantitative y-axis labels', () => {

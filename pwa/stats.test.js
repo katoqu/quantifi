@@ -29,22 +29,40 @@ test('uses the latest valid entry for each day and filters by metric', () => {
     { metricId: 'metric-a', recordedAt: previousDay.toISOString(), value: 2 },
     { metricId: 'metric-b', recordedAt: latestTime.toISOString(), value: 99 },
     { metricId: 'metric-a', recordedAt: 'not-a-date', value: 100 },
-  ], { id: 'metric-a', metricKind: 'quantitative' }, 'Week', false, 'Max Load');
+  ], { id: 'metric-a', metricKind: 'quantitative' }, 'Week', 'Max Load');
 
   assert.deepEqual(result.map(({ value }) => value), [2, 8]);
 });
 
-test('fills missing dates with zero when enabled', () => {
+test('leaves missing days out and preserves explicitly recorded zero values', () => {
   const today = new Date();
   today.setHours(12, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const twoDaysAgo = new Date(today);
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
   const result = resampleAndProcessData([
+    { metricId: 'metric-a', recordedAt: twoDaysAgo.toISOString(), value: null },
+    { metricId: 'metric-a', recordedAt: today.toISOString(), value: '' },
     { metricId: 'metric-a', recordedAt: today.toISOString(), value: 4 },
-  ], { id: 'metric-a', metricKind: 'quantitative' }, 'Week', true, 'Max Load');
+    { metricId: 'metric-a', recordedAt: yesterday.toISOString(), value: 0 },
+  ], { id: 'metric-a', metricKind: 'quantitative' }, 'Week', 'Max Load');
 
-  assert.equal(result.length, 8);
-  assert.equal(result.filter(({ value }) => value === 0).length, 7);
-  assert.equal(result.at(-1).value, 4);
+  assert.deepEqual(result.map(({ value }) => value), [0, 4]);
+});
+
+test('bounds the All period to recorded dates and returns no points for an empty metric', () => {
+  const result = resampleAndProcessData([
+    { metricId: 'metric-a', recordedAt: '2020-01-02T12:00:00.000Z', value: 2 },
+    { metricId: 'metric-a', recordedAt: new Date().toISOString(), value: 4 },
+  ], { id: 'metric-a', metricKind: 'quantitative' }, 'All', 'Max Load');
+
+  assert.deepEqual(result.map(({ value }) => value), [2, 4]);
+  assert.deepEqual(
+    resampleAndProcessData([], { id: 'metric-a', metricKind: 'quantitative' }, 'All', 'Max Load'),
+    []
+  );
 });
 
 test('resamples strength entries using the selected aggregate', () => {
@@ -57,7 +75,7 @@ test('resamples strength entries using the selected aggregate', () => {
       recordedAt: today.toISOString(),
       sets: [{ loadKg: 60, reps: 8 }, { loadKg: 70, reps: 5 }],
     },
-  ], { id: 'strength', metricKind: 'strength_session' }, 'Week', false, 'Total Volume');
+  ], { id: 'strength', metricKind: 'strength_session' }, 'Week', 'Total Volume');
 
   assert.equal(result.length, 1);
   assert.equal(result[0].value, 830);
@@ -73,7 +91,7 @@ test('resamples timed strength entries as durations rather than loads', () => {
       recordedAt: today.toISOString(),
       sets: [{ durationSeconds: 25 }, { durationSeconds: 30 }],
     },
-  ], { id: 'plank', metricKind: 'strength_session', strengthMeasure: 'duration' }, 'Week', false, 'Max Duration');
+  ], { id: 'plank', metricKind: 'strength_session', strengthMeasure: 'duration' }, 'Week', 'Max Duration');
 
   assert.equal(result[0].value, 30);
 });

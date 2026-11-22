@@ -320,6 +320,11 @@ export function generateSvgChart(data, metric) {
     }).join('');
   } else {
     let pathD = '';
+    const calendarDay = (date) => Date.UTC(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
     data.forEach((d, idx) => {
       const x = getX(d.date);
       const y = getY(d.value);
@@ -327,13 +332,18 @@ export function generateSvgChart(data, metric) {
         pathD += `M ${x} ${y}`;
       } else {
         const prev = data[idx - 1];
-        const prevX = getX(prev.date);
-        const prevY = getY(prev.value);
-        const cpX1 = prevX + (x - prevX) / 3;
-        const cpY1 = prevY;
-        const cpX2 = prevX + 2 * (x - prevX) / 3;
-        const cpY2 = y;
-        pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${x} ${y}`;
+        const dayGap = (calendarDay(d.date) - calendarDay(prev.date)) / 86_400_000;
+        if (dayGap > 1) {
+          pathD += ` M ${x} ${y}`;
+        } else {
+          const prevX = getX(prev.date);
+          const prevY = getY(prev.value);
+          const cpX1 = prevX + (x - prevX) / 3;
+          const cpY1 = prevY;
+          const cpX2 = prevX + 2 * (x - prevX) / 3;
+          const cpY2 = y;
+          pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${x} ${y}`;
+        }
       }
     });
 
@@ -359,7 +369,7 @@ export function generateSvgChart(data, metric) {
   return `
     <div style="font-size: 0.9rem; margin-bottom: 8px; display: flex; justify-content: space-between;">
       <span style="font-weight: 600; color: var(--text-color, #f8fafc);">Average: ${avgVal.toFixed(1)}${unitStr}</span>
-      <span style="color: var(--muted, #64748b); font-size: 0.8rem;">${data.length} days plotted</span>
+      <span style="color: var(--muted, #64748b); font-size: 0.8rem;">${data.length} recorded days</span>
     </div>
     <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" style="display: block; overflow: visible;">
       ${yGridHtml}
