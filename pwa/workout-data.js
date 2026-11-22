@@ -176,14 +176,35 @@ export async function listWorkoutSessions() {
   });
 }
 
-export async function saveWorkoutSession(plan, { recordedAt, exercises }) {
+export async function saveWorkoutSession(plan, {
+  recordedAt,
+  startedAt,
+  completedAt,
+  durationSeconds: confirmedDurationSeconds,
+  exercises,
+}) {
   if (!plan?.id) throw new Error('Choose a saved workout plan.');
   if (!recordedAt || Number.isNaN(new Date(recordedAt).getTime())) {
-    throw new Error('Choose a valid workout date and time.');
+    throw new Error('Workout date and time must be valid.');
   }
   if (!Array.isArray(exercises) || exercises.length !== plan.exercises.length) {
     throw new Error('Every exercise in the plan must be included in the workout.');
   }
+
+  let measuredDurationSeconds;
+  if (startedAt !== undefined || completedAt !== undefined) {
+    const startTime = new Date(startedAt).getTime();
+    const endTime = new Date(completedAt).getTime();
+    if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime < startTime) {
+      throw new Error('Workout start and finish times must be valid and in order.');
+    }
+    measuredDurationSeconds = Math.round((endTime - startTime) / 1000);
+  }
+  if (confirmedDurationSeconds !== undefined
+    && (!Number.isFinite(confirmedDurationSeconds) || confirmedDurationSeconds < 0)) {
+    throw new Error('Workout duration must be a non-negative number of seconds.');
+  }
+  const durationSeconds = confirmedDurationSeconds ?? measuredDurationSeconds;
 
   const sessionId = uid();
   const createdAt = nowIso();
@@ -198,6 +219,10 @@ export async function saveWorkoutSession(plan, { recordedAt, exercises }) {
       strengthMeasure === 'duration' ? set.durationSeconds : set.reps,
       strengthMeasure
     ));
+    const skippedSets = Math.max(0, Number(planned.targetSets) - sets.length);
+    if (exercise.skippedSets !== undefined && exercise.skippedSets !== skippedSets) {
+      throw new Error('Skipped sets must match the remaining planned sets.');
+    }
     const entryId = uid();
     const firstSetValue = strengthMeasure === 'duration'
       ? sets[0].durationSeconds
@@ -221,6 +246,7 @@ export async function saveWorkoutSession(plan, { recordedAt, exercises }) {
         entryId,
         strengthMeasure,
         targetSets: planned.targetSets,
+        skippedSets,
         ...(strengthMeasure === 'duration'
           ? { targetDurationSeconds: planned.targetDurationSeconds }
           : { targetReps: planned.targetReps }),
@@ -233,6 +259,12 @@ export async function saveWorkoutSession(plan, { recordedAt, exercises }) {
     planId: plan.id,
     planName: plan.name,
     recordedAt,
+    ...(durationSeconds === undefined
+      ? {}
+      : {
+        ...(startedAt === undefined ? {} : { startedAt, completedAt }),
+        durationSeconds,
+      }),
     exercises: exerciseEntries.map(({ sessionExercise }) => sessionExercise),
     createdAt,
   };

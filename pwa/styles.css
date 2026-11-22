@@ -234,6 +234,96 @@ button:hover { filter: brightness(0.98); }
   margin: 10px 0;
 }
 
+.workout-exercise-card--active {
+  border-color: var(--primary);
+}
+
+.workout-session-progress {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.workout-session-progress-label {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.workout-session-progress-label span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+#workoutSetProgress {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--primary);
+}
+
+.workout-session-progress > p {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.workout-time-control,
+.workout-duration-review {
+  display: grid;
+  gap: 8px;
+}
+
+.workout-time-control p,
+.workout-duration-review p,
+.workout-duration-review h3 {
+  margin: 0;
+}
+
+.workout-duration-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.workout-time-choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.workout-time-choice input[type="radio"] {
+  appearance: auto;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: initial;
+  border-radius: 50%;
+  background: initial;
+  accent-color: var(--primary);
+}
+
+.workout-exercise-completed-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workout-exercise-completed-heading h3 {
+  margin: 0;
+}
+
+.workout-exercise-completed-heading span {
+  color: var(--primary-strong);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.workout-exercise-card--completed {
+  gap: 6px;
+}
+
 .workout-exercise-actions {
   display: flex;
   gap: 6px;

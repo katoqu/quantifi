@@ -144,6 +144,8 @@ test('saves grouped workout entries and includes plans and sessions in CSV backu
 
   const session = await saveWorkoutSession(plan, {
     recordedAt: '2026-10-11T10:00:00.000Z',
+    startedAt: '2026-10-11T10:01:00.000Z',
+    completedAt: '2026-10-11T10:22:00.000Z',
     exercises: [{
       metricId: bench.id,
       metricName: bench.name,
@@ -157,12 +159,28 @@ test('saves grouped workout entries and includes plans and sessions in CSV backu
   assert.equal(exerciseEntry.metricId, bench.id);
   assert.equal(exerciseEntry.sets.length, 2);
   assert.deepEqual(exerciseEntry.sets, [{ loadValue: 50, reps: 8 }, { loadValue: 52.5, reps: 7 }]);
-
+  assert.equal(session.durationSeconds, 21 * 60);
+  assert.equal(session.exercises[0].skippedSets, 1);
+  await assert.rejects(
+    saveWorkoutSession(plan, {
+      recordedAt: '2026-10-11T10:00:00.000Z',
+      startedAt: '2026-10-11T10:30:00.000Z',
+      completedAt: '2026-10-11T10:20:00.000Z',
+      exercises: [{
+        metricId: bench.id,
+        metricName: bench.name,
+        sets: [{ loadValue: 50, reps: 8 }],
+      }],
+    }),
+    /Workout start and finish times must be valid and in order/
+  );
   const csv = await exportDataAsCsv();
   assert.match(csv, /workout_plan/);
   assert.match(csv, /workout_session/);
   assert.match(csv, /WorkoutSessionId/);
   assert.match(csv, /LoadValue/);
+  assert.match(csv, /durationSeconds/);
+  assert.match(csv, /skippedSets/);
   assert.doesNotMatch(csv.split('\n')[0], /LoadKg/);
   const imported = await importCsvText(csv);
   assert.equal(imported.workoutPlans, 0);
@@ -192,6 +210,38 @@ test('saves grouped workout entries and includes plans and sessions in CSV backu
   assert.equal(restoredSession.exercises[0].entryId, restoredEntry.id);
   assert.equal(restoredEntry.workoutSessionId, restoredSession.id);
   assert.deepEqual(restoredEntry.sets, [{ loadValue: 50, reps: 8 }, { loadValue: 52.5, reps: 7 }]);
+  const confirmedSession = await saveWorkoutSession(plan, {
+    recordedAt: '2026-10-11T10:00:00.000Z',
+    durationSeconds: 30 * 60,
+    exercises: [{
+      metricId: bench.id,
+      metricName: bench.name,
+      sets: [{ loadValue: 50, reps: 8 }],
+    }],
+  });
+  assert.equal(confirmedSession.durationSeconds, 30 * 60);
+  assert.equal(confirmedSession.startedAt, undefined);
+  const unrecordedSession = await saveWorkoutSession(plan, {
+    recordedAt: '2026-10-11T10:00:00.000Z',
+    exercises: [{
+      metricId: bench.id,
+      metricName: bench.name,
+      sets: [{ loadValue: 50, reps: 8 }],
+    }],
+  });
+  assert.equal(unrecordedSession.durationSeconds, undefined);
+  await assert.rejects(
+    saveWorkoutSession(plan, {
+      recordedAt: '2026-10-11T10:00:00.000Z',
+      durationSeconds: -1,
+      exercises: [{
+        metricId: bench.id,
+        metricName: bench.name,
+        sets: [{ loadValue: 50, reps: 8 }],
+      }],
+    }),
+    /Workout duration must be a non-negative number of seconds/
+  );
 });
 
 test('saves duration sets with optional added load and exports their metric measure', async () => {

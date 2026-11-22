@@ -59,7 +59,7 @@ export function mountStrengthSetEditor({
                 </label>
               </div>
               <div style="display: flex; gap: 0.5rem; width: 100%;">
-                <button type="button" data-save-strength-set class="primary" style="flex: 1;">Save</button>
+                <button type="button" data-save-strength-set="${index}" class="primary" style="flex: 1;">Save</button>
                 <button type="button" data-cancel-strength-set class="secondary" style="flex: 1;">Cancel</button>
               </div>
             </div>
