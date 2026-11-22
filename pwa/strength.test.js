@@ -94,7 +94,7 @@ test('computes and formats timed strength sessions without applying load aggrega
   assert.equal(computeDurationValue(entry, 'Max Duration'), 30);
   assert.equal(computeDurationValue(entry, 'Total Duration'), 55);
   assert.equal(formatStrengthSession(entry), '25 sec hold · 30 sec hold + 5 kg');
-  assert.equal(formatStrengthSession({ value: 30 }, 'lb', 'duration'), '30 sec');
+  assert.equal(formatStrengthSession({ value: 30 }, 'lb', 'duration'), '30 sec hold');
 });
 
 test('recommends extra repetitions after four unchanged sessions', () => {

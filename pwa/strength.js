@@ -43,7 +43,7 @@ export function formatStrengthSession(entry, loadUnit = 'kg', strengthMeasure = 
   const sets = entry.sets || [];
   if (strengthMeasure === 'duration' || sets.some((set) => set.durationSeconds !== undefined)) {
     if (!sets.length) {
-      return entry.value !== null && entry.value !== undefined ? `${Number(entry.value)} sec` : '—';
+      return entry.value !== null && entry.value !== undefined ? `${Number(entry.value)} sec hold` : '—';
     }
     return sets.map((set) => `${set.durationSeconds} sec hold${set.loadValue === undefined ? '' : ` + ${set.loadValue} ${loadUnit}`}`).join(' · ');
   }

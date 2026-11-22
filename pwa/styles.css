@@ -236,71 +236,182 @@ button:hover { filter: brightness(0.98); }
 
 .workout-exercise-card--active {
   border-color: var(--primary);
-}
-
-.workout-session-progress {
-  display: grid;
   gap: 6px;
-  margin-bottom: 12px;
+  margin: 4px 0;
+  padding: 8px;
 }
 
-.workout-session-progress-label {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 4px 10px;
-}
-
-.workout-session-progress-label span {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-#workoutSetProgress {
-  width: 100%;
-  height: 12px;
-  accent-color: var(--primary);
-}
-
-.workout-session-progress > p {
+.workout-exercise-card--active h3,
+.workout-exercise-card--active > p {
   margin: 0;
+}
+
+.workout-exercise-card--active h3 {
+  font-size: 0.96rem;
+}
+
+.workout-exercise-card--active .muted-text {
   font-size: 0.8rem;
 }
 
-.workout-time-control,
-.workout-duration-review {
-  display: grid;
+.workout-session-form {
+  gap: 6px;
+}
+
+.workout-session-progress {
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.workout-session-progress-placeholder {
+  min-height: 38px;
+  margin-bottom: 6px;
+}
+
+.workout-session-progress--pinned {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom) + 8px);
+  z-index: 25;
+}
+
+.workout-session-panel {
+  overflow: visible;
+}
+
+.workout-session-form {
+  padding-bottom: calc(52px + env(safe-area-inset-bottom));
+}
+
+.workout-session-form .workout-strength-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  margin-top: 6px;
 }
 
-.workout-time-control p,
-.workout-duration-review p,
-.workout-duration-review h3 {
-  margin: 0;
+.workout-strength-grid label {
+  gap: 3px;
+  font-size: 0.88rem;
 }
 
-.workout-duration-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+.workout-strength-grid input {
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 10px;
 }
 
-.workout-time-choice {
+.workout-hold-stopwatch {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 500;
 }
 
-.workout-time-choice input[type="radio"] {
-  appearance: auto;
-  width: auto;
-  min-height: 0;
-  padding: 0;
-  border: initial;
-  border-radius: 50%;
-  background: initial;
-  accent-color: var(--primary);
+.workout-hold-stopwatch-readout {
+  min-width: 5.5ch;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.workout-hold-stopwatch button {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.workout-add-set {
+  margin-top: 4px;
+}
+
+.workout-set-list {
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.workout-set-list .item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.strength-set-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.strength-set-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.strength-set-actions button {
+  min-height: 34px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.strength-set-edit-grid {
+  margin: 0.5rem 0;
+}
+
+.strength-set-edit-grid.strength-set-edit-grid--duration {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workout-session-progress-track {
+  position: relative;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.workout-session-progress-track span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#workoutSetProgress {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  appearance: none;
+  border: 0;
+  border-radius: inherit;
+  background: var(--border);
+}
+
+#workoutSetProgress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: var(--border);
+}
+
+#workoutSetProgress::-webkit-progress-value {
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), #06b6d4 65%, #22c55e);
+  transition: width 0.25s ease;
+}
+
+#workoutSetProgress::-moz-progress-bar {
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), #06b6d4 65%, #22c55e);
+  transition: width 0.25s ease;
 }
 
 .workout-exercise-completed-heading {
@@ -801,6 +912,22 @@ textarea {
 
 #entryFields.strength-mode #saveEntryButton {
   grid-row: auto;
+}
+
+#strengthWorkoutFields.strength-duration .strength-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#strengthWorkoutFields.strength-duration .strength-grid label:first-child {
+  order: 2;
+}
+
+#strengthWorkoutFields.strength-duration .strength-grid label:last-child {
+  order: 1;
+}
+
+#strengthAddSetButton {
+  margin-top: 8px;
 }
 
 #entryFields:disabled {
@@ -1361,6 +1488,11 @@ label[for="nutritionJsonInput"] {
 @media (max-width: 700px) {
   .strength-grid {
     grid-template-columns: 1fr;
+  }
+
+  #strengthWorkoutFields.strength-duration .strength-grid,
+  .strength-set-edit-grid.strength-set-edit-grid--duration {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

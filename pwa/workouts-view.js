@@ -95,10 +95,12 @@ export function mountWorkoutsView(root, {
   let sessionSets = [];
   let completedExercises = [];
   let sessionRecordedAt = null;
-  let sessionStartedAt = null;
-  let sessionCompletedAt = null;
   let activeExerciseIndex = 0;
   let editingExerciseIndex = null;
+  let holdStopwatchStartedAt = null;
+  let holdStopwatchElapsedMs = 0;
+  let holdStopwatchInterval = null;
+  let holdStopwatchExerciseIndex = null;
   let reviewResult = null;
   let reviewRange = null;
   let reviewPlanId = null;
@@ -249,7 +251,7 @@ export function mountWorkoutsView(root, {
           ${pendingWorkoutImport.plan.exercises.map((exercise) => {
             const definition = pendingWorkoutImport.metrics.find((item) => item.key === exercise.metricKey);
             const target = exercise.strengthMeasure === 'duration'
-              ? `${exercise.targetDurationSeconds} sec`
+              ? `${exercise.targetDurationSeconds} sec hold`
               : `${exercise.targetReps} reps`;
             return `<li>${escapeHtml(definition.name)} — ${exercise.targetSets} × ${target}</li>`;
           }).join('')}
@@ -272,8 +274,7 @@ export function mountWorkoutsView(root, {
       </div>
     ` : '';
     return `
-      <section id="workoutImportPanel" class="panel${showWorkoutImport ? '' : ' hidden'}" aria-labelledby="workoutImportHeading">
-        <h2 id="workoutImportHeading" class="workflow-card-heading">Import workout plan</h2>
+      <section id="workoutImportPanel" class="panel${showWorkoutImport ? '' : ' hidden'}" aria-label="Import workout plan">
         <p class="muted-text">Paste version 1 Quantifi workout JSON below or choose a JSON file. No metrics or plan are saved until you confirm the review.</p>
         <input type="file" data-workout-import-file accept=".json,application/json" hidden />
         <div class="workout-import-json-header">
@@ -321,7 +322,7 @@ export function mountWorkoutsView(root, {
         const metric = metricFor(exercise.metricId);
         const strengthMeasure = exercise.strengthMeasure || metric?.strengthMeasure || 'reps';
         const target = strengthMeasure === 'duration'
-          ? `${exercise.targetDurationSeconds ?? exercise.targetReps} sec`
+          ? `${exercise.targetDurationSeconds ?? exercise.targetReps} sec hold`
           : `${exercise.targetReps} reps`;
         return `<li>${escapeHtml(metric?.name || 'Archived exercise')} — ${exercise.targetSets} × ${target}</li>`;
       }).join('');
@@ -350,7 +351,6 @@ export function mountWorkoutsView(root, {
       ${sectionNav}
       ${renderWorkoutImport()}
       <div class="panel">
-        <h2 class="workflow-card-heading">Select Workout</h2>
         <p class="muted-text">Choose a saved plan to start your workout.</p>
         <div id="workoutPlanList" class="list">
           ${planCards || '<p class="muted-text">No workout plans yet. Choose Create Plan to build your first one.</p>'}
@@ -401,7 +401,7 @@ export function mountWorkoutsView(root, {
   function renderPlanEditor() {
     return `
       <div class="panel">
-        <h2 class="workflow-card-heading">${editingPlanId ? 'Edit workout plan' : 'Create workout plan'}</h2>
+        ${editingPlanId ? '<h2 class="workflow-card-heading">Edit workout plan</h2>' : ''}
         <form id="workoutPlanForm" class="stacked-form">
           <label>
             Plan name
@@ -456,28 +456,110 @@ export function mountWorkoutsView(root, {
     };
   }
 
+  function getHoldStopwatchElapsedMs() {
+    return holdStopwatchElapsedMs
+      + (holdStopwatchStartedAt === null ? 0 : Date.now() - holdStopwatchStartedAt);
+  }
+
+  function formatHoldStopwatch(elapsedMs) {
+    const tenths = Math.floor(elapsedMs / 100) % 10;
+    const totalSeconds = Math.floor(elapsedMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = String(totalSeconds % 60).padStart(2, '0');
+    return `${String(minutes).padStart(2, '0')}:${seconds}.${tenths}`;
+  }
+
+  function updateHoldStopwatch() {
+    if (holdStopwatchExerciseIndex === null) return;
+    const elapsedMs = getHoldStopwatchElapsedMs();
+    const stopwatch = root.querySelector(`[data-hold-stopwatch="${holdStopwatchExerciseIndex}"]`);
+    const readout = stopwatch?.querySelector('.workout-hold-stopwatch-readout');
+    const toggle = stopwatch?.querySelector('[data-hold-stopwatch-toggle]');
+    const reset = stopwatch?.querySelector('[data-hold-stopwatch-reset]');
+    const durationInput = root.querySelector(
+      `[data-session-exercise="${holdStopwatchExerciseIndex}"] .workout-reps`
+    );
+    if (readout) readout.textContent = formatHoldStopwatch(elapsedMs);
+    if (toggle) {
+      toggle.textContent = holdStopwatchStartedAt === null ? 'Start' : 'Pause';
+      toggle.setAttribute('aria-label', holdStopwatchStartedAt === null ? 'Start hold stopwatch' : 'Pause hold stopwatch');
+    }
+    if (reset) reset.disabled = elapsedMs === 0;
+    if (durationInput && elapsedMs > 0) durationInput.value = (elapsedMs / 1000).toFixed(1);
+  }
+
+  function pauseHoldStopwatch() {
+    if (holdStopwatchStartedAt === null) return;
+    holdStopwatchElapsedMs = getHoldStopwatchElapsedMs();
+    holdStopwatchStartedAt = null;
+    clearInterval(holdStopwatchInterval);
+    holdStopwatchInterval = null;
+    updateHoldStopwatch();
+  }
+
+  function resetHoldStopwatch() {
+    pauseHoldStopwatch();
+    if (holdStopwatchExerciseIndex !== null) {
+      const durationInput = root.querySelector(
+        `[data-session-exercise="${holdStopwatchExerciseIndex}"] .workout-reps`
+      );
+      if (durationInput) durationInput.value = '';
+    }
+    holdStopwatchElapsedMs = 0;
+    updateHoldStopwatch();
+  }
+
+  function clearHoldStopwatch() {
+    clearInterval(holdStopwatchInterval);
+    holdStopwatchInterval = null;
+    holdStopwatchStartedAt = null;
+    holdStopwatchElapsedMs = 0;
+    holdStopwatchExerciseIndex = null;
+  }
+
   function updateSessionProgress() {
     if (!sessionPlan) return;
     const progress = getSessionProgress();
     const progressElement = root.querySelector('#workoutSetProgress');
-    const progressLabel = root.querySelector('[data-session-progress-label]');
-    const accountedLabel = root.querySelector('[data-session-accounted-label]');
     if (progressElement) progressElement.value = progress.accountedSets;
-    if (progressLabel) {
-      progressLabel.textContent = `${progress.completedExerciseCount} of ${progress.totalExercises} exercises finished · `
-        + `${progress.recordedSets} sets recorded · ${progress.skippedSets} skipped`;
-    }
-    if (accountedLabel) {
-      accountedLabel.textContent = `${progress.accountedSets} of ${progress.totalPlannedSets} planned sets accounted for.`;
-    }
 
     const activeIndex = editingExerciseIndex ?? activeExerciseIndex;
     const finishButton = root.querySelector('[data-finish-exercise], [data-finish-edit]');
     if (finishButton) finishButton.disabled = !sessionSets[activeIndex]?.length;
+
+    const progressLabel = root.querySelector('[data-session-progress-label]');
+    if (progressLabel) {
+      progressLabel.textContent = `Sets ${progress.accountedSets}/${progress.totalPlannedSets} · `
+        + `exercises ${progress.completedExerciseCount}/${progress.totalExercises}`;
+    }
+    if (progressElement) {
+      progressElement.setAttribute(
+        'aria-valuetext',
+        `${progress.accountedSets} of ${progress.totalPlannedSets} planned sets accounted for; `
+          + `${progress.completedExerciseCount} of ${progress.totalExercises} exercises finished.`
+      );
+    }
   }
 
   function focusSessionStep() {
     root.querySelector('[data-session-exercise] .workout-reps, #workoutSessionForm [type="submit"]')?.focus();
+  }
+
+  function updateSessionProgressPosition() {
+    const placeholder = root.querySelector('.workout-session-progress-placeholder');
+    const progress = placeholder?.querySelector('.workout-session-progress');
+    if (!placeholder || !progress) return;
+
+    const shouldPin = placeholder.getBoundingClientRect().bottom < 0;
+    progress.classList.toggle('workout-session-progress--pinned', shouldPin);
+    if (shouldPin) {
+      const { left, width } = placeholder.getBoundingClientRect();
+      progress.style.left = `${left}px`;
+      progress.style.width = `${width}px`;
+    } else {
+      progress.style.left = '';
+      progress.style.width = '';
+    }
   }
 
   function renderSession() {
@@ -499,7 +581,7 @@ export function mountWorkoutsView(root, {
               <h3>${escapeHtml(exerciseName)}</h3>
               <span>Complete</span>
             </div>
-            <p class="muted-text">${recordedSetCount} sets recorded${skipped ? ` · ${skipped} skipped` : ''}</p>
+            <p class="muted-text">${recordedSetCount} sets${skipped ? ` · ${skipped} skipped` : ''}</p>
             <button type="button" class="secondary" data-edit-session-exercise="${index}" ${editingExerciseIndex !== null ? 'disabled' : ''}>Edit exercise</button>
           </article>
         `;
@@ -515,8 +597,8 @@ export function mountWorkoutsView(root, {
         .sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0];
       const previousSets = previous?.sets || [];
       const previousHtml = previousSets.length
-        ? `<p class="muted-text">Previous: ${previousSets.map((set) => duration
-          ? `${escapeHtml(set.durationSeconds)} sec${set.loadValue === undefined ? '' : ` · ${escapeHtml(set.loadValue)} ${escapeHtml(loadUnit)}`}`
+        ? `<p class="muted-text">Last: ${previousSets.map((set) => duration
+          ? `${escapeHtml(set.durationSeconds)} sec hold${set.loadValue === undefined ? '' : ` · ${escapeHtml(set.loadValue)} ${escapeHtml(loadUnit)}`}`
           : `${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0)} ${escapeHtml(loadUnit)} × ${escapeHtml(set.reps)} reps`).join(' · ')}</p>`
         : '';
       const targetValue = duration
@@ -526,16 +608,25 @@ export function mountWorkoutsView(root, {
         ?? (duration ? '' : previous?.value ?? '');
       const actionButton = isEditing
         ? '<button type="button" class="primary" data-finish-edit>Done editing</button>'
-        : '<button type="button" class="primary" data-finish-exercise>Finish exercise</button><p class="muted-text">Any remaining planned sets will be marked as skipped.</p>';
+        : '<button type="button" class="primary" data-finish-exercise>Finish exercise</button><p class="muted-text">Remaining sets are skipped.</p>';
+      const loadLabel = `<label>Load (${escapeHtml(loadUnit)})${duration ? ' (optional)' : ''}<input type="number" class="workout-load" min="0" step="0.5" value="${escapeHtml(previousLoad)}" ${duration ? '' : 'required'} /></label>`;
+      const measureLabel = `<label>${duration ? 'Hold (seconds)' : 'Reps'}<input type="number" class="workout-reps" min="${duration ? '0.01' : '1'}" step="${duration ? 'any' : '1'}" value="${targetValue}" required /></label>`;
+      const stopwatch = duration ? `
+        <div class="workout-hold-stopwatch" data-hold-stopwatch="${index}">
+          <output class="workout-hold-stopwatch-readout" aria-live="off">${escapeHtml(formatHoldStopwatch(getHoldStopwatchElapsedMs()))}</output>
+          <button type="button" class="secondary" data-hold-stopwatch-toggle aria-label="${holdStopwatchStartedAt === null ? 'Start' : 'Pause'} hold stopwatch">${holdStopwatchStartedAt === null ? 'Start' : 'Pause'}</button>
+          <button type="button" class="secondary" data-hold-stopwatch-reset ${getHoldStopwatchElapsedMs() === 0 ? 'disabled' : ''}>Reset</button>
+        </div>
+      ` : '';
       return `
         <article class="panel workout-exercise-card workout-exercise-card--active" data-session-exercise="${index}">
           <h3>Exercise ${index + 1} of ${progress.totalExercises}: ${escapeHtml(exerciseName)}</h3>
-          <p class="muted-text">Target: ${exercise.targetSets} sets × ${targetValue} ${duration ? 'sec hold' : 'reps'}</p>
+          <p class="muted-text">Goal: ${exercise.targetSets} × ${targetValue} ${duration ? 'sec hold' : 'reps'}</p>
           ${previousHtml}
-          <div class="strength-grid">
-            <label>Load (${escapeHtml(loadUnit)})${duration ? ' (optional)' : ''}<input type="number" class="workout-load" min="0" step="0.5" value="${escapeHtml(previousLoad)}" ${duration ? '' : 'required'} /></label>
-            <label>${duration ? 'Hold (seconds)' : 'Reps'}<input type="number" class="workout-reps" min="${duration ? '0.01' : '1'}" step="${duration ? 'any' : '1'}" value="${targetValue}" required /></label>
+          <div class="strength-grid workout-strength-grid">
+            ${duration ? `${measureLabel}${loadLabel}` : `${loadLabel}${measureLabel}`}
           </div>
+          ${stopwatch}
           <button type="button" class="secondary workout-add-set">Add set</button>
           <div class="list workout-set-list"></div>
           ${actionButton}
@@ -543,38 +634,20 @@ export function mountWorkoutsView(root, {
       `;
     }).join('');
     const allExercisesComplete = completedExercises.every(Boolean) && editingExerciseIndex === null;
-    const timerCanStart = sessionStartedAt === null && sessionCompletedAt === null;
-    const recordedDurationMinutes = sessionStartedAt !== null && sessionCompletedAt !== null
-      ? Math.max(0, (sessionCompletedAt - sessionStartedAt) / 60_000).toFixed(2)
-      : '';
     return `
-      <div class="panel">
+      <div class="panel workout-session-panel">
         <h2 class="workflow-card-heading">${escapeHtml(selectedPlan.name)}</h2>
-        <div class="workout-session-progress">
-          <div class="workout-session-progress-label">
-            <strong>${progress.completedExerciseCount} of ${progress.totalExercises} exercises finished</strong>
-            <span data-session-progress-label>${progress.recordedSets} sets recorded · ${progress.skippedSets} skipped</span>
+        <div class="workout-session-progress-placeholder">
+          <div class="workout-session-progress">
+            <div class="workout-session-progress-track">
+              <progress id="workoutSetProgress" max="${progress.totalPlannedSets}" value="${progress.accountedSets}" aria-label="Workout progress" aria-valuetext="${progress.accountedSets} of ${progress.totalPlannedSets} planned sets accounted for; ${progress.completedExerciseCount} of ${progress.totalExercises} exercises finished."></progress>
+              <span data-session-progress-label aria-hidden="true">Sets ${progress.accountedSets}/${progress.totalPlannedSets} · exercises ${progress.completedExerciseCount}/${progress.totalExercises}</span>
+            </div>
           </div>
-          <progress id="workoutSetProgress" max="${progress.totalPlannedSets}" value="${progress.accountedSets}" aria-label="Planned workout sets completed"></progress>
-          <p class="muted-text" data-session-accounted-label>${progress.accountedSets} of ${progress.totalPlannedSets} planned sets accounted for.</p>
         </div>
-        ${sessionStartedAt !== null
-          ? '<p class="muted-text" role="status">Workout time recording is on. You can confirm or edit the duration before saving.</p>'
-          : timerCanStart
-            ? '<div class="workout-time-control"><button type="button" class="secondary" data-start-workout-timer>Record workout time</button><p class="muted-text">Optional. Starts a timer for the workout duration.</p></div>'
-            : ''}
-        <form id="workoutSessionForm" class="stacked-form">
+        <form id="workoutSessionForm" class="stacked-form workout-session-form">
           ${exerciseCards}
           ${allExercisesComplete ? `
-            <section class="workout-duration-review" aria-labelledby="workoutDurationHeading">
-              <h3 id="workoutDurationHeading">Workout time</h3>
-              <p class="muted-text">Confirm the duration, adjust it, or choose not to record it.</p>
-              <div class="workout-duration-options" role="group" aria-label="Record workout duration">
-                <label class="workout-time-choice"><input type="radio" name="durationMode" value="recorded" ${sessionStartedAt !== null ? 'checked' : ''} /> Record duration</label>
-                <label class="workout-time-choice"><input type="radio" name="durationMode" value="not-recorded" ${sessionStartedAt === null ? 'checked' : ''} /> Not recorded</label>
-              </div>
-              <label>Duration (minutes)<input type="number" name="durationMinutes" min="0" step="0.01" value="${recordedDurationMinutes}" ${sessionStartedAt === null ? 'disabled' : 'required'} /></label>
-            </section>
             <button type="submit" class="primary">Save workout</button>
           ` : ''}
           <button type="button" class="secondary" data-cancel-session>Cancel workout</button>
@@ -602,7 +675,7 @@ export function mountWorkoutsView(root, {
               const skippedSets = Number(exercise.skippedSets) || 0;
               const detail = sets.length
                 ? sets.map((set) => strengthMeasure === 'duration'
-                  ? `${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${metricFor(exercise.metricId)?.unitName || 'kg'}`}`
+                  ? `${set.durationSeconds} sec hold${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${metricFor(exercise.metricId)?.unitName || 'kg'}`}`
                   : `${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0)} ${metricFor(exercise.metricId)?.unitName || 'kg'} × ${set.reps}`).join(' · ')
                 : 'Entry no longer available';
               return `<li><strong>${escapeHtml(exercise.metricName)}</strong>: ${escapeHtml(detail)}${skippedSets ? ` · ${skippedSets} skipped` : ''}</li>`;
@@ -756,8 +829,6 @@ export function mountWorkoutsView(root, {
     sessionSets = plan.exercises.map(() => []);
     completedExercises = plan.exercises.map(() => false);
     sessionRecordedAt = null;
-    sessionStartedAt = null;
-    sessionCompletedAt = null;
     activeExerciseIndex = 0;
     editingExerciseIndex = null;
     mode = 'session';
@@ -889,7 +960,6 @@ export function mountWorkoutsView(root, {
 
   async function saveSession(event) {
     event.preventDefault();
-    const form = event.target;
     try {
       if (!completedExercises.every(Boolean) || editingExerciseIndex !== null) {
         throw new Error('Finish or skip the remaining sets for every exercise before saving.');
@@ -898,15 +968,6 @@ export function mountWorkoutsView(root, {
         throw new Error('Add at least one set before saving the workout.');
       }
       const recordedAt = new Date(sessionRecordedAt ?? Date.now()).toISOString();
-      const shouldRecordDuration = form.elements.durationMode.value === 'recorded';
-      let durationSeconds;
-      if (shouldRecordDuration) {
-        const durationMinutes = Number(form.elements.durationMinutes.value);
-        if (form.elements.durationMinutes.value.trim() === '' || !Number.isFinite(durationMinutes) || durationMinutes < 0) {
-          throw new Error('Enter a valid workout duration or choose Not recorded.');
-        }
-        durationSeconds = Math.round(durationMinutes * 60);
-      }
       const exercises = sessionPlan.exercises.map((exercise, index) => ({
         metricId: exercise.metricId,
         metricName: metricFor(exercise.metricId)?.name || 'Archived exercise',
@@ -915,21 +976,12 @@ export function mountWorkoutsView(root, {
       }));
       const saved = await saveWorkoutSession(sessionPlan, {
         recordedAt,
-        ...(shouldRecordDuration && sessionStartedAt !== null && sessionCompletedAt !== null
-          ? {
-            startedAt: new Date(sessionStartedAt).toISOString(),
-            completedAt: new Date(sessionCompletedAt).toISOString(),
-          }
-          : {}),
-        ...(durationSeconds === undefined ? {} : { durationSeconds }),
         exercises,
       });
       sessionPlan = null;
       sessionSets = [];
       completedExercises = [];
       sessionRecordedAt = null;
-      sessionStartedAt = null;
-      sessionCompletedAt = null;
       activeExerciseIndex = 0;
       editingExerciseIndex = null;
       mode = 'history';
@@ -1001,6 +1053,7 @@ export function mountWorkoutsView(root, {
     if (mode === 'session') {
       root.innerHTML = `${renderModes()}${renderSession()}`;
       mountSessionEditors();
+      updateSessionProgressPosition();
       return;
     }
     const content = mode === 'plans'
@@ -1025,6 +1078,9 @@ export function mountWorkoutsView(root, {
       }
     }
   }
+
+  document.addEventListener('scroll', updateSessionProgressPosition, { capture: true, passive: true });
+  window.addEventListener('resize', updateSessionProgressPosition, { passive: true });
 
   root.addEventListener('input', (event) => {
     const input = event.target;
@@ -1077,14 +1133,6 @@ export function mountWorkoutsView(root, {
       reviewPlanId = event.target.value;
       return;
     }
-    if (event.target.matches('#workoutSessionForm [name="durationMode"]')) {
-      const durationInput = root.querySelector('#workoutSessionForm [name="durationMinutes"]');
-      if (durationInput) {
-        const shouldRecord = event.target.value === 'recorded';
-        durationInput.disabled = !shouldRecord;
-        durationInput.required = shouldRecord;
-      }
-    }
   });
 
   root.addEventListener('keydown', (event) => {
@@ -1112,30 +1160,41 @@ export function mountWorkoutsView(root, {
     const sessionExerciseCard = event.target.closest('[data-session-exercise]');
     if (sessionExerciseCard) {
       const exerciseIndex = Number(sessionExerciseCard.dataset.sessionExercise);
+      if (event.target.closest('[data-hold-stopwatch-toggle]')) {
+        if (holdStopwatchExerciseIndex !== exerciseIndex) {
+          resetHoldStopwatch();
+          holdStopwatchExerciseIndex = exerciseIndex;
+        }
+        if (holdStopwatchStartedAt === null) {
+          holdStopwatchStartedAt = Date.now();
+          holdStopwatchInterval = setInterval(updateHoldStopwatch, 100);
+        } else {
+          pauseHoldStopwatch();
+        }
+        updateHoldStopwatch();
+        return;
+      }
+      if (event.target.closest('[data-hold-stopwatch-reset]')) {
+        resetHoldStopwatch();
+        return;
+      }
       const addSetButton = event.target.closest('.workout-add-set');
       if (addSetButton && sessionSets[exerciseIndex]?.length && sessionRecordedAt === null) {
         sessionRecordedAt = Date.now();
       }
     }
 
-    if (event.target.closest('[data-start-workout-timer]')) {
-      sessionStartedAt = Date.now();
-      sessionRecordedAt ??= sessionStartedAt;
-      render();
-      focusSessionStep();
-      return;
-    }
-
     const finishExerciseButton = event.target.closest('[data-finish-exercise]');
     if (finishExerciseButton) {
+      pauseHoldStopwatch();
       if (!sessionSets[activeExerciseIndex]?.length) return;
+      clearHoldStopwatch();
       completedExercises[activeExerciseIndex] = true;
       activeExerciseIndex = sessionPlan.exercises.findIndex(
         (_, index) => index > activeExerciseIndex && !completedExercises[index]
       );
       if (activeExerciseIndex < 0) {
         activeExerciseIndex = sessionPlan.exercises.length;
-        sessionCompletedAt = Date.now();
       }
       render();
       focusSessionStep();
@@ -1146,6 +1205,8 @@ export function mountWorkoutsView(root, {
     if (finishEditButton) {
       const editedSets = sessionSets[editingExerciseIndex] || [];
       if (!editedSets.length) return;
+      pauseHoldStopwatch();
+      clearHoldStopwatch();
       editingExerciseIndex = null;
       render();
       focusSessionStep();
@@ -1346,12 +1407,11 @@ export function mountWorkoutsView(root, {
     if (event.target.closest('[data-cancel-session]')) {
       const hasSets = sessionSets.some((sets) => sets.length > 0);
       if (hasSets && !window.confirm('Discard the workout in progress?')) return;
+      clearHoldStopwatch();
       sessionPlan = null;
       sessionSets = [];
       completedExercises = [];
       sessionRecordedAt = null;
-      sessionStartedAt = null;
-      sessionCompletedAt = null;
       activeExerciseIndex = 0;
       editingExerciseIndex = null;
       mode = 'plans';

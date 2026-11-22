@@ -886,6 +886,7 @@ async function syncAddFormMode() {
   const isStrength = metric?.metricKind === 'strength_session';
   ui.numericValueField.classList.toggle('hidden', isStrength);
   ui.strengthWorkoutFields.classList.toggle('hidden', !isStrength);
+  ui.strengthWorkoutFields.classList.toggle('strength-duration', metric?.strengthMeasure === 'duration');
 
   const isScore = metric?.metricKind === 'score' || metric?.unitType === 'integer_range';
   ui.targetActionField.classList.toggle('hidden', isScore);
@@ -914,7 +915,7 @@ async function syncAddFormMode() {
     if (lastEntry && Array.isArray(lastEntry.sets) && lastEntry.sets.length > 0) {
       const formattedSets = lastEntry.sets
         .map((set, index) => strengthMeasure === 'duration'
-          ? `Set ${index + 1}: ${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${loadUnit}`}`
+          ? `Set ${index + 1}: ${set.durationSeconds} sec hold${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${loadUnit}`}`
           : `Set ${index + 1}: ${Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0).toFixed(1)} ${loadUnit} × ${set.reps} reps`)
         .join(' — ');
       const dateStr = new Date(lastEntry.recordedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1489,7 +1490,7 @@ async function openStrengthSessionDetails(metricId) {
     const setLines = sets.length
       ? sets.map((set, index) => {
           if (strengthMeasure === 'duration') {
-            return `<li>Set ${index + 1}: ${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${loadUnit}`}</li>`;
+            return `<li>Set ${index + 1}: ${set.durationSeconds} sec hold${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${loadUnit}`}</li>`;
           }
           const load = Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0).toFixed(1);
           const reps = Number(set.reps ?? 0);
@@ -3682,7 +3683,7 @@ async function renderEntriesTable(metricId, metric, actionId = null) {
         const strengthMeasure = metric.strengthMeasure || 'reps';
         const setRows = sets.map((set, index) => {
           if (strengthMeasure === 'duration') {
-            return `<li>Set ${index + 1}: ${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${metric.unitName || 'kg'}`}</li>`;
+            return `<li>Set ${index + 1}: ${set.durationSeconds} sec hold${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${metric.unitName || 'kg'}`}</li>`;
           }
           const loadValue = Number(set.loadValue ?? set.loadKg ?? set.load_kg ?? 0);
           const reps = Number(set.reps ?? 0);

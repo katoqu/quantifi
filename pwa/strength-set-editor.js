@@ -42,21 +42,26 @@ export function mountStrengthSetEditor({
         const measureValue = currentMeasure === 'duration' ? set.durationSeconds : set.reps;
         const measureLabel = currentMeasure === 'duration' ? 'Hold (seconds)' : 'Reps';
         const setDescription = currentMeasure === 'duration'
-          ? `${set.durationSeconds} sec${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${currentLoadUnit}`}`
+          ? `${set.durationSeconds} sec hold${set.loadValue === undefined ? '' : ` · ${set.loadValue} ${currentLoadUnit}`}`
           : `${set.loadValue.toFixed(1)} ${currentLoadUnit} × ${set.reps} reps`;
         if (editingIndex === index) {
+          const loadEditorLabel = `
+            <label>
+              Load (${currentLoadUnit})${currentMeasure === 'duration' ? ' (optional)' : ''}
+              <input type="number" class="strength-set-edit-load" step="0.5" min="0" value="${set.loadValue ?? ''}" ${currentMeasure === 'duration' ? '' : 'required'} />
+            </label>
+          `;
+          const measureEditorLabel = `
+            <label>
+              ${measureLabel}
+              <input type="number" class="strength-set-edit-measure" step="${currentMeasure === 'duration' ? 'any' : '1'}" min="${currentMeasure === 'duration' ? '0.01' : '1'}" value="${measureValue}" required />
+            </label>
+          `;
           return `
             <div class="item edit-mode">
               <strong>Set ${index + 1} (Editing)</strong>
-              <div class="strength-grid" style="margin: 0.5rem 0;">
-                <label>
-                  Load (${currentLoadUnit})${currentMeasure === 'duration' ? ' (optional)' : ''}
-                  <input type="number" class="strength-set-edit-load" step="0.5" min="0" value="${set.loadValue ?? ''}" ${currentMeasure === 'duration' ? '' : 'required'} />
-                </label>
-                <label>
-                  ${measureLabel}
-                  <input type="number" class="strength-set-edit-measure" step="${currentMeasure === 'duration' ? 'any' : '1'}" min="${currentMeasure === 'duration' ? '0.01' : '1'}" value="${measureValue}" required />
-                </label>
+              <div class="strength-grid strength-set-edit-grid ${currentMeasure === 'duration' ? 'strength-set-edit-grid--duration' : ''}">
+                ${currentMeasure === 'duration' ? `${measureEditorLabel}${loadEditorLabel}` : `${loadEditorLabel}${measureEditorLabel}`}
               </div>
               <div style="display: flex; gap: 0.5rem; width: 100%;">
                 <button type="button" data-save-strength-set="${index}" class="primary" style="flex: 1;">Save</button>
@@ -67,9 +72,11 @@ export function mountStrengthSetEditor({
         }
         return `
           <div class="item">
-            <strong>Set ${index + 1}</strong>
-            <div>${setDescription}</div>
-            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+            <div class="strength-set-summary">
+              <strong>Set ${index + 1}</strong>
+              <span>${setDescription}</span>
+            </div>
+            <div class="strength-set-actions">
               <button type="button" data-edit-strength-set="${index}" class="secondary">Edit</button>
               <button type="button" data-remove-strength-set="${index}" class="secondary">Remove</button>
             </div>
