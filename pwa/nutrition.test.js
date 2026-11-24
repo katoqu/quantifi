@@ -40,6 +40,7 @@ test('parses a JSON array and fills unspecified nutrients with null', () => {
     fat: 72,
     saturated_fat: null,
     fiber: null,
+    vegetables: null,
   });
   assert.deepEqual(parsed.unknownFields, []);
 });
@@ -50,6 +51,14 @@ test('accepts a days wrapper and reports unknown fields without importing them',
   }));
   assert.deepEqual(parsed.unknownFields, ['salt_g']);
   assert.equal(parsed.records[0].values.calories, 2000);
+});
+
+test('normalizes daily vegetable intake in grams', () => {
+  const parsed = parseNutritionImportJson(JSON.stringify([
+    { date: '2026-11-08', vegetables_g: 400 },
+  ]));
+  assert.equal(parsed.records[0].values.vegetables, 400);
+  assert.deepEqual(parsed.unknownFields, []);
 });
 
 test('limits preview to 30 days while retaining the full import count', () => {

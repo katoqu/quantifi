@@ -7,6 +7,7 @@ export const NUTRIENTS = [
   { id: 'fat', key: 'fat_g', label: 'Fat', name: 'fat', unit: 'g', decimals: 1 },
   { id: 'saturated_fat', key: 'saturated_fat_g', label: 'Saturated fat', name: 'saturated fat', unit: 'g', decimals: 1 },
   { id: 'fiber', key: 'fiber_g', label: 'Fiber', name: 'fiber', unit: 'g', decimals: 1 },
+  { id: 'vegetables', key: 'vegetables_g', label: 'Vegetables', name: 'vegetables', unit: 'g', decimals: 1 },
 ];
 
 export const RESERVED_NUTRITION_METRIC_NAMES = new Set(

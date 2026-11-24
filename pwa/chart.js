@@ -51,6 +51,7 @@ const NUTRITION_SERIES_COLORS = {
   fat: '#ef4444',
   saturated_fat: '#a855f7',
   fiber: '#06b6d4',
+  vegetables: '#84a92f',
 };
 
 export function generateNutritionSvgChart(days) {

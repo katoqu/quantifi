@@ -350,27 +350,28 @@ test('stores nutrition as managed metrics and includes it in CSV backup round-tr
   const { exportDataAsCsv, importCsvText, listEntries, listMetrics, listNutritionDays, saveNutritionDay } = await import('./db.js');
   await saveNutritionDay({
     date: '2026-11-08',
-    values: { calories: 2140, protein: 142, carbs: 230, fat: 72, saturated_fat: 19, fiber: 28 },
+    values: { calories: 2140, protein: 142, carbs: 230, fat: 72, saturated_fat: 19, fiber: 28, vegetables: 400 },
   });
   await saveNutritionDay({
     date: '2026-11-08',
-    values: { calories: 2100, protein: 140, carbs: 225, fat: 70, saturated_fat: 18, fiber: 27 },
+    values: { calories: 2100, protein: 140, carbs: 225, fat: 70, saturated_fat: 18, fiber: 27, vegetables: 380 },
   });
   assert.equal((await listNutritionDays()).length, 1);
   assert.equal((await listNutritionDays())[0].values.calories, 2100);
-  assert.equal((await listEntries()).filter((entry) => entry.recordedAt.startsWith('2026-11-08')).length, 6);
-  assert.equal((await listMetrics()).filter((metric) => metric.nutritionId).length, 6);
+  assert.equal((await listEntries()).filter((entry) => entry.recordedAt.startsWith('2026-11-08')).length, 7);
+  assert.equal((await listMetrics()).filter((metric) => metric.nutritionId).length, 7);
 
   const csv = await exportDataAsCsv();
   assert.match(csv, /NutritionId/);
   assert.doesNotMatch(csv, /nutrition_day/);
   for (const records of stores.values()) records.clear();
   const imported = await importCsvText(csv);
-  assert.equal(imported.metrics, 6);
-  assert.equal(imported.entries, 6);
+  assert.equal(imported.metrics, 7);
+  assert.equal(imported.entries, 7);
   const [day] = await listNutritionDays();
   assert.equal(day.date, '2026-11-08');
   assert.equal(day.values.protein, 140);
+  assert.equal(day.values.vegetables, 380);
 });
 
 test('reserves nutrition metric names and protects catalog metrics from editing or deletion', async () => {

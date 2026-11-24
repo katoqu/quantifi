@@ -8,7 +8,7 @@ const sampleData = [
   { date: new Date(2026, 0, 2), dateStr: 'Jan 2', value: 4 },
 ];
 
-test('renders nutrition trends with two axes, six legend entries, and sparse values', () => {
+test('renders nutrition trends with two axes, seven legend entries, and sparse values', () => {
   const chart = generateNutritionSvgChart([
     {
       date: '2026-01-01',
@@ -19,6 +19,7 @@ test('renders nutrition trends with two axes, six legend entries, and sparse val
         fat: 70,
         saturated_fat: 18,
         fiber: 28,
+        vegetables: 400,
       },
     },
     {
@@ -30,6 +31,7 @@ test('renders nutrition trends with two axes, six legend entries, and sparse val
         fat: 72,
         saturated_fat: null,
         fiber: 30,
+        vegetables: null,
       },
     },
   ]);
@@ -37,12 +39,13 @@ test('renders nutrition trends with two axes, six legend entries, and sparse val
   assert.match(chart, /Calories \(kcal\)/);
   assert.match(chart, /Grams \(g\)/);
   assert.doesNotMatch(chart, /<line x1="652" y1="[\d.]+" x2="656"/);
-  for (const nutrient of ['Calories', 'Protein', 'Carbs', 'Fat', 'Saturated fat', 'Fiber']) {
+  for (const nutrient of ['Calories', 'Protein', 'Carbs', 'Fat', 'Saturated fat', 'Fiber', 'Vegetables']) {
     assert.match(chart, new RegExp(nutrient));
   }
   assert.match(chart, /aria-label="Jan 2: Protein 135\.0 g"/);
   assert.doesNotMatch(chart, /Jan 2: Carbs/);
   assert.doesNotMatch(chart, /Jan 2: Saturated fat/);
+  assert.match(chart, /aria-label="Jan 1: Vegetables 400\.0 g"/);
   assert.match(chart, /2 days plotted/);
 });
 

@@ -258,6 +258,7 @@ let revivingEventId = null;
 let editingEntryId = null;
 let pendingNutritionImport = null;
 const NUTRITION_VISIBILITY_KEY = 'quantifi-nutrition-visible-nutrients';
+const NUTRITION_VISIBILITY_MIGRATION_KEY = 'quantifi-nutrition-vegetables-visible-migrated';
 let visibleNutritionNutrients = loadVisibleNutritionNutrients();
 
 let activeFilters = { home: 'Recent', add: 'Recent', stats: 'Recent', log: 'Recent' };
@@ -497,11 +498,20 @@ function snoozeBackupReminder() {
 
 function loadVisibleNutritionNutrients() {
   const saved = localStorage.getItem(NUTRITION_VISIBILITY_KEY);
-  if (!saved) return new Set(NUTRIENTS.map((nutrient) => nutrient.id));
+  if (!saved) {
+    localStorage.setItem(NUTRITION_VISIBILITY_MIGRATION_KEY, 'true');
+    return new Set(NUTRIENTS.map((nutrient) => nutrient.id));
+  }
   try {
     const parsed = JSON.parse(saved);
     if (!Array.isArray(parsed)) throw new Error('Stored nutrient visibility must be an array.');
-    return new Set(parsed.filter((id) => NUTRIENTS.some((nutrient) => nutrient.id === id)));
+    const visible = new Set(parsed.filter((id) => NUTRIENTS.some((nutrient) => nutrient.id === id)));
+    if (localStorage.getItem(NUTRITION_VISIBILITY_MIGRATION_KEY) !== 'true') {
+      visible.add('vegetables');
+      localStorage.setItem(NUTRITION_VISIBILITY_KEY, JSON.stringify([...visible]));
+      localStorage.setItem(NUTRITION_VISIBILITY_MIGRATION_KEY, 'true');
+    }
+    return visible;
   } catch (error) {
     console.warn('Could not read nutrition visibility settings:', error);
     return new Set(NUTRIENTS.map((nutrient) => nutrient.id));
