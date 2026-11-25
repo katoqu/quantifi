@@ -84,16 +84,31 @@ test('renders quantitative values as a line chart with average and unit', () => 
   assert.match(chart, /class="chart-tooltip"/);
 });
 
-test('breaks quantitative lines across unrecorded days', () => {
+test('renders dotted curves for gaps beyond the metric cadence and smooth curves otherwise', () => {
   const chart = generateSvgChart([
     { date: new Date(2026, 0, 1), dateStr: 'Jan 1', value: 2 },
-    { date: new Date(2026, 0, 3), dateStr: 'Jan 3', value: 4 },
+    { date: new Date(2026, 0, 2), dateStr: 'Jan 2', value: 3 },
+    { date: new Date(2026, 0, 7), dateStr: 'Jan 7', value: 4 },
+    { date: new Date(2026, 0, 8), dateStr: 'Jan 8', value: 5 },
   ], { metricKind: 'quantitative' });
-  const path = chart.match(/<path d="([^"]+)"/)?.[1];
 
-  assert.ok(path);
-  assert.equal((path.match(/\bM\b/g) || []).length, 2);
-  assert.doesNotMatch(path, /\bC\b/);
+  assert.match(chart, /<path d="M [\d.]+ [\d.]+ C /);
+  assert.match(chart, /stroke-dasharray="4,4"/);
+  assert.match(chart, /<path d="M [\d.]+ [\d.]+ C [^"]+"[^>]*stroke-dasharray="4,4"/);
+  assert.equal((chart.match(/<circle class="chart-mark"/g) || []).length, 4);
+});
+
+test('keeps regular weekly measurements connected with smooth solid curves', () => {
+  const chart = generateSvgChart([
+    { date: new Date(2026, 0, 1), dateStr: 'Jan 1', value: 2 },
+    { date: new Date(2026, 0, 8), dateStr: 'Jan 8', value: 4 },
+    { date: new Date(2026, 0, 15), dateStr: 'Jan 15', value: 3 },
+  ], { metricKind: 'quantitative' });
+  const solidPath = chart.match(/<path d="([^"]+)" fill="none" stroke="var\(--primary, #3b82f6\)" stroke-width="3" \/>/)?.[1];
+
+  assert.ok(solidPath);
+  assert.equal((solidPath.match(/\bC\b/g) || []).length, 2);
+  assert.doesNotMatch(chart, /<path[^>]*stroke-dasharray="4,4"/);
 });
 
 test('uses rounded, evenly spaced guide values for quantitative y-axis labels', () => {

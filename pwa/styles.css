@@ -301,6 +301,14 @@ button:hover { filter: brightness(0.98); }
   min-height: 40px;
   padding: 8px 10px;
   border-radius: 10px;
+  font-size: 16px;
+}
+
+.workout-next-exercise-preview {
+  margin: 0 0 2px;
+  padding: 2px 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 .workout-hold-stopwatch {

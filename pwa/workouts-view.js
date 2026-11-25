@@ -633,6 +633,32 @@ export function mountWorkoutsView(root, {
         </article>
       `;
     }).join('');
+    const nextExercise = editingExerciseIndex === null
+      ? selectedPlan.exercises.find((exercise, index) => (
+        index > activeExerciseIndex && !completedExercises[index]
+      ))
+      : null;
+    const nextMetric = nextExercise ? metricFor(nextExercise.metricId) : null;
+    const nextPrevious = nextExercise
+      ? entries
+        .filter((entry) => entry.metricId === nextExercise.metricId)
+        .sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0]
+      : null;
+    const nextPreviousSets = nextPrevious?.sets || [];
+    const lastNextSet = nextPreviousSets[nextPreviousSets.length - 1];
+    const nextLoadValue = lastNextSet?.loadValue
+      ?? lastNextSet?.loadKg
+      ?? lastNextSet?.load_kg
+      ?? nextPrevious?.loadValue
+      ?? nextPrevious?.loadKg
+      ?? nextPrevious?.value;
+    const hasNextLoad = nextLoadValue !== null
+      && nextLoadValue !== undefined
+      && String(nextLoadValue).trim() !== ''
+      && Number.isFinite(Number(nextLoadValue));
+    const nextExercisePreview = nextExercise
+      ? `<p class="workout-next-exercise-preview">${escapeHtml(metricFor(nextExercise.metricId)?.name || 'Archived exercise')}${hasNextLoad ? `: ${escapeHtml(Number(nextLoadValue))} ${escapeHtml(metricFor(nextExercise.metricId)?.unitName || 'kg')}` : ''}</p>`
+      : '';
     const allExercisesComplete = completedExercises.every(Boolean) && editingExerciseIndex === null;
     return `
       <div class="panel workout-session-panel">
@@ -647,6 +673,7 @@ export function mountWorkoutsView(root, {
         </div>
         <form id="workoutSessionForm" class="stacked-form workout-session-form">
           ${exerciseCards}
+          ${nextExercisePreview}
           ${allExercisesComplete ? `
             <button type="submit" class="primary">Save workout</button>
           ` : ''}

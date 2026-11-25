@@ -321,11 +321,24 @@ export function generateSvgChart(data, metric) {
     }).join('');
   } else {
     let pathD = '';
+    let hasSolidSegments = false;
+    const gapPathDs = [];
     const calendarDay = (date) => Date.UTC(
       date.getFullYear(),
       date.getMonth(),
       date.getDate()
     );
+    const dayIntervals = data.slice(1).map((d, index) => (
+      (calendarDay(d.date) - calendarDay(data[index].date)) / 86_400_000
+    ));
+    const sortedIntervals = [...dayIntervals].sort((a, b) => a - b);
+    const middle = Math.floor(sortedIntervals.length / 2);
+    const typicalInterval = sortedIntervals.length
+      ? sortedIntervals.length % 2
+        ? sortedIntervals[middle]
+        : (sortedIntervals[middle - 1] + sortedIntervals[middle]) / 2
+      : Infinity;
+    const gapThreshold = typicalInterval * 1.5;
     data.forEach((d, idx) => {
       const x = getX(d.date);
       const y = getY(d.value);
@@ -334,22 +347,24 @@ export function generateSvgChart(data, metric) {
       } else {
         const prev = data[idx - 1];
         const dayGap = (calendarDay(d.date) - calendarDay(prev.date)) / 86_400_000;
-        if (dayGap > 1) {
+        const prevX = getX(prev.date);
+        const prevY = getY(prev.value);
+        const cpX1 = prevX + (x - prevX) / 3;
+        const cpX2 = prevX + 2 * (x - prevX) / 3;
+        const curve = `C ${cpX1} ${prevY}, ${cpX2} ${y}, ${x} ${y}`;
+        if (dayGap > gapThreshold) {
           pathD += ` M ${x} ${y}`;
+          gapPathDs.push(`M ${prevX} ${prevY} ${curve}`);
         } else {
-          const prevX = getX(prev.date);
-          const prevY = getY(prev.value);
-          const cpX1 = prevX + (x - prevX) / 3;
-          const cpY1 = prevY;
-          const cpX2 = prevX + 2 * (x - prevX) / 3;
-          const cpY2 = y;
-          pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${x} ${y}`;
+          hasSolidSegments = true;
+          pathD += ` ${curve}`;
         }
       }
     });
 
     chartElements = `
-      <path d="${pathD}" fill="none" stroke="var(--primary, #3b82f6)" stroke-width="3" />
+      ${hasSolidSegments ? `<path d="${pathD}" fill="none" stroke="var(--primary, #3b82f6)" stroke-width="3" />` : ''}
+      ${gapPathDs.map((gapPath) => `<path d="${gapPath}" fill="none" stroke="var(--primary, #3b82f6)" stroke-width="3" stroke-dasharray="4,4" opacity="0.75" />`).join('')}
       ${data.map((d) => {
         const x = getX(d.date);
         const y = getY(d.value);
